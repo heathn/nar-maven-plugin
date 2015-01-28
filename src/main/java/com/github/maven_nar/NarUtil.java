@@ -145,7 +145,12 @@ public final class NarUtil {
       throw new IOException("Source directory doesn't exists (" + sourceDirectory.getAbsolutePath() + ").");
     }
 
-    final List files = FileUtils.getFiles(sourceDirectory, includes, excludes);
+    // Call copyDirectoryLayout first to make sure any empty directories
+    // are included when copying the directory tree.
+    final String[] inc = includes == null ? null : includes.split(",");
+    final String[] exc = excludes == null ? null : excludes.split(",");
+    FileUtils.copyDirectoryLayout(sourceDirectory, destinationDirectory, inc, exc);
+    List<File> files = FileUtils.getFiles(sourceDirectory, includes, excludes);
     final String sourcePath = sourceDirectory.getAbsolutePath();
 
     int copied = 0;
