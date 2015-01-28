@@ -127,6 +127,17 @@ public class NarTestMojo extends AbstractCompileMojo {
     // necessary to find WinSxS
     if (getOS().equals(OS.WINDOWS)) {
       env.add("SystemRoot=" + NarUtil.getEnv("SystemRoot", "SystemRoot", "C:\\Windows"));
+    } else {
+      // binPath is added to the PATH on Windows but not on a non-Windows
+      // env.  Add the bin dir to the path in these cases to be able to
+      // locate any test resources.
+      // Add executable directory
+      // NOTE should we use layout here ?
+      File binPath = new File(getTestTargetDirectory(), "bin");
+      binPath = new File(binPath, getAOL().toString());
+      String path = NarUtil.getEnv("PATH", "Path", "");
+      if (path.length() > 0) path += File.pathSeparator;
+      env.add("PATH=" + path + binPath);
     }
 
     // add CLASSPATH
