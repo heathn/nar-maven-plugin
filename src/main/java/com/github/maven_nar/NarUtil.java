@@ -31,6 +31,7 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.nio.file.attribute.PosixFilePermission;
 import java.util.*;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import org.apache.bcel.classfile.ClassParser;
@@ -433,17 +434,61 @@ public final class NarUtil {
         makeLink(file2, log);
       }
     }
-    if (file.isFile() && file.canRead() && file.canWrite() && !file.isHidden()
-        && file.getName().matches(".*\\.so(\\.\\d+)+$")) {
-      final File sofile = new File(file.getParent(), file.getName().substring(0, file.getName().indexOf(".so") + 3));
-      if (!sofile.exists()) {
-        // ln -s lib.so.xx lib.so
-        final int result = runCommand("ln", new String[] {
-            "-s", file.getName(), sofile.getPath()
-        }, null, null, log);
-        if (result != 0) {
-          throw new MojoExecutionException("Failed to execute 'ln -s " + file.getName() + " " + sofile.getPath() + "'"
-              + " return code: \'" + result + "\'.");
+    if (file.isFile() && file.canRead() && file.canWrite() && !file.isHidden()) {
+      // Create the link name if it doesn't exist
+      if (file.getName().matches(".*\\.so(\\.\\d+)+$")) {
+        final File sofile = new File(file.getParent(), file.getName().substring(0, file.getName().indexOf(".so") + 3));
+        if (!sofile.exists()) {
+          // ln -s lib.so.xx lib.so
+          final int result = runCommand("ln", new String[] {
+              "-s", file.getName(), sofile.getPath()
+          }, null, null, log);
+          if (result != 0) {
+            throw new MojoExecutionException("Failed to execute 'ln -s " + file.getName() + " " + sofile.getPath() + "'"
+                + " return code: \'" + result + "\'.");
+          }
+        }
+      } else if (file.getName().matches(".*\\.so$")) {
+        // Create the soname if it doesn't exists
+        StringTextStream out = new StringTextStream();
+        runCommand("objdump",
+            new String[] { "-p", file.getAbsolutePath() },
+            null,
+            null,
+            out,
+            new TextStream() {
+              @Override
+              public void println(String text) {
+                log.error(text);
+              }
+            },
+            new TextStream() {
+              @Override
+              public void println(String text) {
+                log.debug(text);
+              }
+            }, log);
+
+        Pattern p = Pattern.compile("SONAME\\s+(\\S+\\.so(?:\\.\\d+)+)?");
+        Matcher m = p.matcher(out.toString());
+        // It is possible that there is no SONAME set
+        String soname = null;
+        if (m.find()) {
+          soname = m.group(1);
+        }
+
+        if (soname != null) {
+          final File sofile = new File(file.getParent(), soname);
+          if (!sofile.exists()) {
+            // ln -s lib.so lib.so.xx
+            final int result = runCommand("ln", new String[] {
+                "-s", file.getName(), sofile.getPath()
+            }, null, null, log);
+            if (result != 0) {
+              throw new MojoExecutionException("Failed to execute 'ln -s " + file.getName() + " " + sofile.getPath() + "'"
+                  + " return code: \'" + result + "\'.");
+            }
+          }
         }
       }
     }
