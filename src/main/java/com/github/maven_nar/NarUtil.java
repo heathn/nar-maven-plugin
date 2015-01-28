@@ -110,7 +110,10 @@ public final class NarUtil {
     String libPath = path;
     libPath = libPath.replace(File.pathSeparatorChar, separator);
     if (value != null) {
-      value += separator + libPath;
+      // Insert the libPath at the front of the path to make certain
+      // that dependencies of this project are used before any similarly
+      // named libraries already on the path.
+      value = libPath + separator + value;
     } else {
       value = libPath;
     }
