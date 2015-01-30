@@ -23,6 +23,7 @@ import java.io.File;
 import java.io.IOException;
 import java.util.List;
 
+import org.apache.maven.model.FileSet;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
 import org.apache.maven.plugins.annotations.Component;
@@ -43,25 +44,33 @@ public abstract class AbstractResourcesMojo extends AbstractNarMojo {
    * Binary directory
    */
   @Parameter(defaultValue = "bin", required = true)
-  private String resourceBinDir;
+  protected String resourceBinDir;
 
   /**
    * Include directory
    */
-  @Parameter(defaultValue = "include", required = true)
-  private String resourceIncludeDir;
+  @Parameter
+  private FileSet resourceIncludes;
 
   /**
    * Library directory
    */
   @Parameter(defaultValue = "lib", required = true)
-  private String resourceLibDir;
+  protected String resourceLibDir;
 
   /**
    * To look up Archiver/UnArchiver implementations
    */
   @Component(role = org.codehaus.plexus.archiver.manager.ArchiverManager.class)
   private ArchiverManager archiverManager;
+
+  private static final FileSet defaultIncludes = new FileSet();
+
+  {
+    defaultIncludes.setDirectory("include");
+    defaultIncludes.addInclude("**");
+    defaultIncludes.addExclude(NarUtil.DEFAULT_EXCLUDES);
+  }
 
   protected final int copyBinaries(final File srcDir, final String aol)
       throws IOException, MojoExecutionException, MojoFailureException {
@@ -80,15 +89,31 @@ public abstract class AbstractResourcesMojo extends AbstractNarMojo {
   }
 
   protected final int copyIncludes(final File srcDir) throws IOException, MojoExecutionException, MojoFailureException {
+    if (resourceIncludes == null) {
+      resourceIncludes = defaultIncludes;
+    }
     int copied = 0;
+    String sourcePath = srcDir.getAbsolutePath();
+    final File includeDstDir = getLayout().getIncludeDirectory(
+        getTargetDirectory(), getMavenProject().getArtifactId(),
+        getMavenProject().getVersion());
 
     // copy includes
-    final File includeDir = new File(srcDir, this.resourceIncludeDir);
+    if (resourceIncludes.getDirectory() != null) {
+      sourcePath += File.separator + resourceIncludes.getDirectory();
+    }
+    resourceIncludes.setDirectory(sourcePath);
+    final File includeDir = new File(sourcePath);
     if (includeDir.exists()) {
-      final File includeDstDir = getLayout().getIncludeDirectory(getTargetDirectory(),
-          getMavenProject().getArtifactId(), getMavenProject().getVersion());
-      getLog().debug("Copying includes from " + includeDir + " to " + includeDstDir);
-      copied += NarUtil.copyDirectoryStructure(includeDir, includeDstDir, null, NarUtil.DEFAULT_EXCLUDES);
+      final List<File> files = FileSetTransformer.toFileList(resourceIncludes);
+      for (File file : files) {
+        String dest = file.getAbsolutePath();
+        dest = dest.substring(sourcePath.length() + 1);
+        File destination = new File(includeDstDir, dest);
+        getLog().debug("Copying " + file + " to " + destination);
+        FileUtils.copyFile(file, destination);
+        copied++;
+      }
     }
 
     return copied;
