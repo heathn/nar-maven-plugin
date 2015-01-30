@@ -838,4 +838,27 @@ public abstract class AbstractDependencyMojo extends AbstractNarMojo {
 
     return ret;
   }
+
+  protected File getIncludePath(NarArtifact artifact) throws MojoExecutionException, MojoFailureException {
+
+    return getLayout().getIncludeDirectory(getUnpackDirectory(),
+        artifact.getArtifactId(), artifact.getVersion());
+  }
+
+  protected File getLibraryPath(NarArtifact artifact) throws MojoExecutionException, MojoFailureException {
+
+    return getLayout().getLibDirectory(getUnpackDirectory(),
+        artifact.getArtifactId(), artifact.getVersion(),
+        getAOL().toString(),
+        artifact.getNarInfo().getBinding(getAOL(), Library.SHARED));
+  }
+
+  protected String getLinkName(String libName) throws MojoFailureException, MojoExecutionException {
+    String linkName = libName;
+    if (getAOL().getOS() == OS.WINDOWS) {
+      linkName = libName + ".lib";
+    }
+    return linkName;
+  }
+
 }
