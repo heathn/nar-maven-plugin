@@ -209,13 +209,18 @@
     </dependency>
     <dependency>
       <groupId>org.apache.maven.surefire</groupId>
+      <artifactId>maven-surefire-common</artifactId>
+      <version>2.12.4</version>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.maven.surefire</groupId>
       <artifactId>surefire-api</artifactId>
-      <version>2.6</version>
+      <version>2.12.4</version>
     </dependency>
     <dependency>
       <groupId>org.apache.maven.surefire</groupId>
       <artifactId>surefire-booter</artifactId>
-      <version>2.6</version>
+      <version>2.12.4</version>
     </dependency>
     <dependency>
       <groupId>org.codehaus.plexus</groupId>
