@@ -263,6 +263,10 @@ public class NarSystemMojo extends AbstractNarMojo {
       p.println("        " + loadLibraryString);
       p.println("    }");
       p.println("");
+      p.println("    public static String getLibraryName() {");
+      p.println("        return \"" + output + "\";");
+      p.println("    }");
+      p.println("");
       p.println("    public static int runUnitTests() {");
       p.println("	       return new NarSystem().runUnitTestsNative();");
       p.println("    }");
