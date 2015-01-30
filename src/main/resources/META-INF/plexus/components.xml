@@ -37,7 +37,8 @@
 						com.github.maven-nar:nar-maven-plugin:nar-unpack
 					</generate-sources>
 					<process-sources>
-						com.github.maven-nar:nar-maven-plugin:nar-gnu-configure
+						com.github.maven-nar:nar-maven-plugin:nar-gnu-configure,
+						com.github.maven-nar:nar-maven-plugin:nar-cmake-configure
 					</process-sources>
 					<generate-resources>
 						com.github.maven-nar:nar-maven-plugin:nar-system-generate,
@@ -46,16 +47,20 @@
 					<process-resources>
 						org.apache.maven.plugins:maven-resources-plugin:resources,
 						com.github.maven-nar:nar-maven-plugin:nar-resources,
-						com.github.maven-nar:nar-maven-plugin:nar-gnu-resources
+						com.github.maven-nar:nar-maven-plugin:nar-gnu-resources,
+						com.github.maven-nar:nar-maven-plugin:nar-cmake-resources,
+						com.github.maven-nar:nar-maven-plugin:nar-vcproj
 					</process-resources>
 					<compile>
 						org.apache.maven.plugins:maven-compiler-plugin:compile,
 						com.github.maven-nar:nar-maven-plugin:nar-javah,
 						com.github.maven-nar:nar-maven-plugin:nar-gnu-make,
+						com.github.maven-nar:nar-maven-plugin:nar-cmake,
 						com.github.maven-nar:nar-maven-plugin:nar-compile
 					</compile>
 					<process-classes>
 						com.github.maven-nar:nar-maven-plugin:nar-gnu-process,
+						com.github.maven-nar:nar-maven-plugin:nar-cmake-process,
 						com.github.maven-nar:nar-maven-plugin:nar-process-libraries
 					</process-classes>
 					<generate-test-sources>
