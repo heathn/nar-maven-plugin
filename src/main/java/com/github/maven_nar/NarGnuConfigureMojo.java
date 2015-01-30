@@ -27,6 +27,7 @@ import org.apache.maven.plugin.MojoFailureException;
 import org.apache.maven.plugins.annotations.LifecyclePhase;
 import org.apache.maven.plugins.annotations.Mojo;
 import org.apache.maven.plugins.annotations.Parameter;
+import org.apache.maven.plugins.annotations.ResolutionScope;
 import org.codehaus.plexus.util.FileUtils;
 
 /**
@@ -35,7 +36,8 @@ import org.codehaus.plexus.util.FileUtils;
  * 
  * @author Mark Donszelmann
  */
-@Mojo(name = "nar-gnu-configure", requiresProject = true, defaultPhase = LifecyclePhase.PROCESS_SOURCES)
+@Mojo(name = "nar-gnu-configure", requiresProject = true, defaultPhase = LifecyclePhase.PROCESS_SOURCES,
+    requiresDependencyResolution = ResolutionScope.COMPILE)
 public class NarGnuConfigureMojo extends AbstractGnuMojo {
 
   private static final String AUTOGEN = "autogen.sh";
@@ -100,6 +102,15 @@ public class NarGnuConfigureMojo extends AbstractGnuMojo {
   @Parameter(property = "nar.gnu.buildconf.args", defaultValue = "")
   private String gnuBuildconfArgs;
 
+  @Parameter
+  private String cflags;
+
+  @Parameter
+  private String cppflags;
+
+  @Parameter
+  private String ldflags;
+
   public NarGnuConfigureMojo() {
   }
 
@@ -159,7 +170,47 @@ public class NarGnuConfigureMojo extends AbstractGnuMojo {
         getLog().info("Running GNU " + CONFIGURE);
 
         NarUtil.makeExecutable(configure, getLog());
+        List<String> env = new ArrayList<String>();
         String[] args = null;
+
+        final List<String> includeDirs = getIncludeDirs();
+        if (includeDirs.size() > 0) {
+          StringBuffer sb = new StringBuffer("CFLAGS=");
+          if (cflags != null) {
+            sb.append(cflags).append(" ");
+          }
+          for (int i = 0; i < includeDirs.size(); i++) {
+            sb.append("-I").append(includeDirs.get(i)).append(" ");
+          }
+          env.add(sb.toString());
+        }
+
+        if (cppflags != null) {
+          StringBuffer sb = new StringBuffer("CPPFLAGS=").append(cppflags);
+          env.add(sb.toString());
+        }
+
+        final List<File> libDirs = getLibDirs();
+        final List<String> libs = getDependentLibs();
+        if (libDirs.size() > 0) {
+          StringBuffer ldLibPath = new StringBuffer("LD_LIBRARY_PATH=");
+          StringBuffer sb = new StringBuffer("LDFLAGS=");
+          if (ldflags != null) {
+            sb.append(ldflags).append(" ");
+          }
+          for (int i = 0; i < libDirs.size(); i++) {
+            sb.append("-L").append(libDirs.get(i)).append(" ");
+            ldLibPath.append(libDirs.get(i)).append(":");
+          }
+
+          if (libs.size() > 0) {
+            for (int i = 0; i < libs.size(); i++) {
+              sb.append("-l").append(libs.get(i)).append(" ");
+            }
+          }
+          env.add(ldLibPath.toString());
+          env.add(sb.toString());
+        }
 
         // create the array to hold constant and additional args
         if (this.gnuConfigureArgs != null) {
@@ -179,7 +230,8 @@ public class NarGnuConfigureMojo extends AbstractGnuMojo {
         FileUtils.mkdir(buildDir.getPath());
 
         getLog().info("args: " + arraysToString(args));
-        final int result = NarUtil.runCommand("sh", args, buildDir, null, getLog());
+        final int result = NarUtil.runCommand("sh", args, buildDir,
+            (String[])env.toArray(new String[env.size()]), getLog());
         if (result != 0) {
           throw new MojoExecutionException("'" + CONFIGURE + "' errorcode: " + result);
         }
