@@ -129,6 +129,8 @@ public class NarGnuConfigureMojo extends AbstractGnuMojo {
         if (!this.gnuConfigureSkip && !this.gnuAutogenSkip) {
           final File autogen = new File(targetDir, AUTOGEN);
           final File buildconf = new File(targetDir, BUILDCONF);
+          final File configureac = new File(targetDir, CONFIGURE + ".ac");
+          final File configurein = new File(targetDir, CONFIGURE + ".in");
           if (autogen.exists()) {
             getLog().info("Running GNU " + AUTOGEN);
             runAutogen(autogen, targetDir, null);
@@ -139,6 +141,13 @@ public class NarGnuConfigureMojo extends AbstractGnuMojo {
               gnuBuildconfArgsArray = this.gnuBuildconfArgs.split("\\s");
             }
             runAutogen(buildconf, targetDir, gnuBuildconfArgsArray);
+          } else if (configureac.exists() || configurein.exists()) {
+            final int result = NarUtil.runCommand("autoreconf",
+                new String[] { "-fi" }, targetDir, null, getLog());
+            if (result != 0) {
+              throw new MojoExecutionException("'" + autogen.getName()
+                  + "' errorcode: " + result);
+            }
           }
         }
       } else {
