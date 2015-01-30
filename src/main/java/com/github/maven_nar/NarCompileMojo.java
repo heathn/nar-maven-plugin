@@ -545,7 +545,9 @@ public class NarCompileMojo extends AbstractCompileMojo {
       for (final Object srcDir : srcDirs) {
         final File dir = (File) srcDir;
         if (dir.exists()) {
-          files.addAll(FileUtils.getFiles(dir, StringUtils.join(compiler.getIncludes().iterator(), ","), null));
+          files.addAll(FileUtils.getFiles(dir,
+              StringUtils.join(compiler.getIncludes().iterator(), ","),
+              StringUtils.join(compiler.getExcludes().iterator(), ",")));
         }
       }
       return files;
