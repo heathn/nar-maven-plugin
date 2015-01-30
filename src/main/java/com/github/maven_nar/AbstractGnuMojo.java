@@ -20,7 +20,11 @@
 package com.github.maven_nar;
 
 import java.io.File;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 
+import org.apache.maven.artifact.repository.ArtifactRepository;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
 import org.apache.maven.plugins.annotations.Parameter;
@@ -48,6 +52,9 @@ public abstract class AbstractGnuMojo extends AbstractResourcesMojo {
    */
   @Parameter(defaultValue = "${project.build.directory}/nar/gnu")
   private File gnuTargetDirectory;
+
+  @Parameter(defaultValue = "${localRepository}", required = true, readonly = true)
+  private ArtifactRepository localRepository;
 
   /**
    * @return
@@ -87,5 +94,108 @@ public abstract class AbstractGnuMojo extends AbstractResourcesMojo {
    */
   protected final boolean useGnu() {
     return this.gnuUseOnWindows || !NarUtil.isWindows();
+  }
+
+  protected final NarManager getNarManager() throws MojoFailureException, MojoExecutionException {
+    return new NarManager(getLog(), localRepository, getMavenProject(), getArchitecture(), getOS(), getLinker());
+  }
+
+  protected List<String> getIncludeDirs() throws MojoExecutionException, MojoFailureException {
+    // add dependency include paths (copied from NarCompileMojo.java)
+    List<String> includeDirs = new ArrayList<String>();
+    for (Object dep : getNarManager().getNarDependencies("compile")) {
+      NarArtifact narDependency = (NarArtifact) dep;
+      // FIXME, handle multiple includes from one NAR
+      String binding = narDependency.getNarInfo().getBinding(getAOL(), Library.STATIC);
+      getLog().debug("Looking for " + narDependency + " found binding " + binding);
+      if (!binding.equals(Library.JNI)) {
+        File unpackDirectory = getUnpackDirectory();
+        File include = getLayout().getIncludeDirectory(unpackDirectory,
+            narDependency.getArtifactId(), narDependency.getVersion());
+        getLog().debug("Looking for include directory: " + include);
+        if (include.exists()) {
+          includeDirs.add(include.getPath());
+        } else {
+          throw new MojoExecutionException(
+              "NAR: unable to locate include path: " + include);
+        }
+      }
+    }
+    return includeDirs;
+  }
+
+  protected List<File> getLibDirs() throws MojoExecutionException, MojoFailureException {
+    // add dependency include paths (copied from NarCompileMojo.java)
+    List<File> libDirs = new ArrayList<File>();
+    for (Object dep : getNarManager().getNarDependencies("compile")) {
+      NarArtifact narDependency = (NarArtifact) dep;
+      // FIXME, handle multiple includes from one NAR
+      String binding = narDependency.getNarInfo().getBinding(getAOL(), Library.STATIC);
+      getLog().debug("Looking for " + narDependency + " found binding " + binding);
+      if (!binding.equals(Library.JNI)) {
+        if (narDependency.getNarInfo().getBinding(getAOL(), Library.SHARED).equals(Library.EXECUTABLE))
+          continue;
+
+        File unpackDirectory = getUnpackDirectory();
+        File libDir = getLayout().getLibDirectory(unpackDirectory,
+            narDependency.getArtifactId(), narDependency.getVersion(),
+            getAOL().toString(),
+            narDependency.getNarInfo().getBinding(getAOL(), Library.SHARED));
+        if (libDir.exists()) {
+          libDirs.add(libDir);
+        } else {
+          throw new MojoExecutionException(
+              "NAR: unable to locate lib path: " + libDir);
+        }
+      }
+    }
+    return libDirs;
+  }
+
+  protected List<String> getDependentLibs() throws MojoExecutionException, MojoFailureException {
+    // add dependency include paths (copied from NarCompileMojo.java)
+    List<String> libs = new ArrayList<String>();
+    for (Object dep : getNarManager().getNarDependencies("compile")) {
+      NarArtifact narDependency = (NarArtifact) dep;
+      // FIXME, handle multiple includes from one NAR
+      String binding = narDependency.getNarInfo().getBinding(getAOL(), Library.STATIC);
+      getLog().debug("Looking for " + narDependency + " found binding " + binding);
+      if (!binding.equals(Library.JNI)) {
+        if (narDependency.getNarInfo().getBinding(getAOL(), Library.SHARED).equals(Library.EXECUTABLE))
+          continue;
+
+        File unpackDirectory = getUnpackDirectory();
+        File libDir = getLayout().getLibDirectory(unpackDirectory,
+            narDependency.getArtifactId(), narDependency.getVersion(),
+            getAOL().toString(),
+            narDependency.getNarInfo().getBinding(getAOL(), Library.SHARED));
+        if (libDir.exists()) {
+          List<String> libNames = Arrays.asList(narDependency.getNarInfo().getLibs(getAOL()).split(" "));
+          for (int idx = 0; idx < libNames.size(); idx++) {
+            String linkName = getLinkName(libDir, (String)libNames.get(idx));
+            if (linkName != null) {
+              libs.add(linkName);
+            }
+          }
+        } else {
+          throw new MojoExecutionException(
+              "NAR: unable to locate lib path: " + libDir);
+        }
+      }
+    }
+    return libs;
+  }
+
+  private String getLinkName(File libDir, String libName) throws MojoFailureException, MojoExecutionException {
+    String linkerName = libName;
+    if (getAOL().getOS() == OS.WINDOWS) {
+      File f = new File(libDir, linkerName + ".lib");
+      if (f.exists()) {
+        linkerName += ".lib";
+      } else {
+        linkerName = null;
+      }
+    }
+    return linkerName;
   }
 }
