@@ -56,6 +56,7 @@
 						com.github.maven-nar:nar-maven-plugin:nar-javah,
 						com.github.maven-nar:nar-maven-plugin:nar-gnu-make,
 						com.github.maven-nar:nar-maven-plugin:nar-cmake,
+						com.github.maven-nar:nar-maven-plugin:nar-win-msbuild,
 						com.github.maven-nar:nar-maven-plugin:nar-compile
 					</compile>
 					<process-classes>
