@@ -173,16 +173,19 @@ public class NarGnuConfigureMojo extends AbstractGnuMojo {
         List<String> env = new ArrayList<String>();
         String[] args = null;
 
+        StringBuffer cflagsStr = new StringBuffer("CFLAGS=");
+        if (cflags != null) {
+          cflagsStr.append(cflags).append(" ");
+        }
+
         final List<String> includeDirs = getIncludeDirs();
         if (includeDirs.size() > 0) {
-          StringBuffer sb = new StringBuffer("CFLAGS=");
-          if (cflags != null) {
-            sb.append(cflags).append(" ");
-          }
           for (int i = 0; i < includeDirs.size(); i++) {
-            sb.append("-I").append(includeDirs.get(i)).append(" ");
+            cflagsStr.append("-I").append(includeDirs.get(i)).append(" ");
           }
-          env.add(sb.toString());
+        }
+        if (cflagsStr.length() > "CFLAGS=".length()) {
+          env.add(cflagsStr.toString());
         }
 
         if (cppflags != null) {
