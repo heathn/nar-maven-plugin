@@ -37,7 +37,8 @@ import org.apache.maven.shared.artifact.filter.collection.ScopeFilter;
  *   <li>${groupId:artifactId:binding} - path to the platform-dependent
  *       dependency.  Currently binding can be either "static", "shared", or
  *       "executable".  If the platform-dependent dependency includes multiple
- *       files, only the first defined in the nar.properties file is returned.</li>
+ *       files, only the first defined in the nar.properties file is
+ *       returned.</li>
  * </ul>
  *
  * @author Heath Nielson
@@ -70,11 +71,13 @@ public class NarPropertiesMojo extends AbstractDependencyMojo {
       // TODO: How to handle multiple libraries?
       String filename = null;
       String libName = dependency.getNarInfo().getLibs(getAOL()).split(" ")[0];
+      String prefix = NarProperties.getInstance(getMavenProject()).getProperty(getAOL().getKey() + ".lib.prefix");
+      String ext = NarProperties.getInstance(getMavenProject()).getProperty(getAOL().getKey() + "." + binding + ".extension");
       // On Windows return the import library instead of the library 
       if (getAOL().getOS() == OS.WINDOWS) {
         filename = libName + ".lib";
       } else {
-        filename = System.mapLibraryName(libName);
+        filename = prefix + libName + "." + ext;
       }
       File libPath = new File(getLibraryPath(dependency), filename);
       getLog().debug("Setting " + property + " to: " + libPath.toString());
