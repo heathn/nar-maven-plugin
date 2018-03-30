@@ -34,6 +34,10 @@ import org.apache.maven.plugins.annotations.Parameter;
  */
 @Mojo(name = "nar-gnu-make", requiresProject = true, defaultPhase = LifecyclePhase.COMPILE)
 public class NarGnuMakeMojo extends AbstractGnuMojo {
+
+  @Parameter(defaultValue = "make")
+  private String make;
+
   /**
    * Space delimited list of arguments to pass to make
    */
@@ -61,6 +65,7 @@ public class NarGnuMakeMojo extends AbstractGnuMojo {
 
   @Override
   public final void narExecute() throws MojoExecutionException, MojoFailureException {
+
     if (!useGnu() || gnuMakeSkip) {
       return;
     }
@@ -78,9 +83,10 @@ public class NarGnuMakeMojo extends AbstractGnuMojo {
       }
 
       getLog().info("Running GNU make");
-      int result = NarUtil.runCommand("make", args, srcDir, env, getLog());
+      int result = NarUtil.runCommand(make, args, srcDir, env, getLog());
       if (result != 0) {
-        throw new MojoExecutionException("'make' errorcode: " + result);
+        throw new MojoExecutionException("'" + make + "' errorcode: " +
+            result);
       }
 
       if (!this.gnuMakeInstallSkip) {
@@ -93,9 +99,10 @@ public class NarGnuMakeMojo extends AbstractGnuMojo {
             "install"
           };
         }
-        result = NarUtil.runCommand("make", args, srcDir, null, getLog());
+        result = NarUtil.runCommand(make, args, srcDir, null, getLog());
         if (result != 0) {
-          throw new MojoExecutionException("'make install' errorcode: " + result);
+          throw new MojoExecutionException("'" + make +
+              " install' errorcode: " + result);
         }
       }
     }
