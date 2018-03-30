@@ -69,6 +69,8 @@ public class AOL {
       tempLinkerName = "";
     } else if (this.linkerName.equals("g++")) {
       tempLinkerName = ".gpp";
+    } else if (this.linkerName.equals("clang++")) {
+      tempLinkerName = ".clang";
     } else {
       tempLinkerName = "." + this.linkerName;
     }
@@ -97,6 +99,8 @@ public class AOL {
       tempLinkerName = "";
     } else if (this.linkerName.equals("g++")) {
       tempLinkerName = "-gpp";
+    } else if (this.linkerName.equals("clang++")) {
+      tempLinkerName = "-clang";
     } else {
       tempLinkerName = "-" + this.linkerName;
     }

@@ -68,10 +68,6 @@ public class GppLinker extends AbstractLdLinker {
   // FREEHEP added dllLinker for windows
   private static final GppLinker dllLinker = new GppLinker(GPP_COMMAND, objFiles, discardFiles, "", ".dll", false, null);
 
-  public static GppLinker getCLangInstance() {
-    return clangInstance;
-  }
-
   public static GppLinker getInstance() {
     return instance;
   }
