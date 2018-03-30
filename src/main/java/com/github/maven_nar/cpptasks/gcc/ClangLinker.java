@@ -7,9 +7,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  * http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -34,8 +34,8 @@ import com.github.maven_nar.cpptasks.types.LibrarySet;
  *
  * @author Stephen M. Webb <stephen.webb@bregmasoft.com>
  */
-public class GppLinker extends AbstractLdLinker {
-  public static final String GPP_COMMAND = "g++";
+public class ClangLinker extends AbstractLdLinker {
+  public static final String CLANGPP_COMMAND = "clang++";
 
   protected static final String[] discardFiles = new String[0];
   protected static final String[] objFiles = new String[] {
@@ -47,28 +47,24 @@ public class GppLinker extends AbstractLdLinker {
   };
   private static String[] linkerOptions = new String[] {
       "-bundle", "-dylib", "-dynamic", "-dynamiclib", "-nostartfiles", "-nostdlib", "-prebind", "-s", "-static",
-      "-shared", "-symbolic", "-Xlinker", "-static-libgcc", "-shared-libgcc", "-p", "-pg", "-pthread",
-      // Regex based
-      "-specs=.*", "-std=.*", "--specs=.*", "--std=.*"
+      "-shared", "-symbolic", "-Xlinker", "-static-libgcc", "-shared-libgcc", "-p", "-pg", "-pthread"
   };
   // FREEHEP refactored dllLinker into soLinker
-  private static final GppLinker soLinker = new GppLinker(GPP_COMMAND, objFiles, discardFiles, "lib", ".so", false,
-      new GppLinker(GPP_COMMAND, objFiles, discardFiles, "lib", ".so", true, null));
-  private static final GppLinker instance = new GppLinker(GPP_COMMAND, objFiles, discardFiles, "", "", false, null);
-  private static final GppLinker clangInstance = new GppLinker("clang++", objFiles, discardFiles, "", "", false, null);
-  private static final GppLinker machDllLinker = new GppLinker(GPP_COMMAND, objFiles, discardFiles, "lib", ".dylib",
+  private static final ClangLinker soLinker = new ClangLinker(CLANGPP_COMMAND, objFiles, discardFiles, "lib", ".so", false,
+      new ClangLinker(CLANGPP_COMMAND, objFiles, discardFiles, "lib", ".so", true, null));
+  private static final ClangLinker instance = new ClangLinker("clang", objFiles, discardFiles, "", "", false, null);
+  private static final ClangLinker machDllLinker = new ClangLinker(CLANGPP_COMMAND, objFiles, discardFiles, "lib", ".dylib",
       false, null);
-  private static final GppLinker machPluginLinker = new GppLinker(GPP_COMMAND, objFiles, discardFiles, "lib",
+  private static final ClangLinker machPluginLinker = new ClangLinker(CLANGPP_COMMAND, objFiles, discardFiles, "lib",
       ".bundle", false, null);
-  /*On AIX shared libaries use .a for extension */
-    private static final GppLinker aLinker = new GppLinker(GPP_COMMAND,objFiles, discardFiles, "lib", ".a", false, null);
   // FREEHEP
-  private static final GppLinker machJNILinker = new GppLinker(GPP_COMMAND, objFiles, discardFiles, "lib", ".jnilib",
+  private static final ClangLinker machJNILinker = new ClangLinker(CLANGPP_COMMAND, objFiles, discardFiles, "lib", ".jnilib",
       false, null);
   // FREEHEP added dllLinker for windows
-  private static final GppLinker dllLinker = new GppLinker(GPP_COMMAND, objFiles, discardFiles, "", ".dll", false, null);
+  private static final ClangLinker dllLinker = new ClangLinker(CLANGPP_COMMAND, objFiles, discardFiles, "", ".dll", false, null);
 
-  public static GppLinker getInstance() {
+
+  public static ClangLinker getInstance() {
     return instance;
   }
 
@@ -77,9 +73,9 @@ public class GppLinker extends AbstractLdLinker {
   // FREEEHEP
   private String gccLibrary, gfortranLibrary, gfortranMainLibrary;
 
-  protected GppLinker(final String command, final String[] extensions, final String[] ignoredExtensions,
-      final String outputPrefix, final String outputSuffix, final boolean isLibtool, final GppLinker libtoolLinker) {
-    super(command, "-dumpversion", extensions, ignoredExtensions, outputPrefix, outputSuffix, isLibtool, libtoolLinker);
+  protected ClangLinker(final String command, final String[] extensions, final String[] ignoredExtensions,
+      final String outputPrefix, final String outputSuffix, final boolean isLibtool, final ClangLinker libtoolLinker) {
+    super(command, "-v", extensions, ignoredExtensions, outputPrefix, outputSuffix, isLibtool, libtoolLinker);
   }
 
   @Override
@@ -133,11 +129,7 @@ public class GppLinker extends AbstractLdLinker {
     if (linkType.linkCPP()) {
       if (linkType.isStaticRuntime()) {
         if (isDarwin()) {
-          if (isClang()) {
-            task.log("Warning: clang cannot statically link to C++");
-          } else {
-            this.runtimeLibrary = "-lstdc++-static";
-          }
+          task.log("Warning: clang cannot statically link to C++");
         } else {
           final String[] cmdin = new String[] {
               "g++", "-print-file-name=libstdc++.a"
@@ -148,27 +140,19 @@ public class GppLinker extends AbstractLdLinker {
           }
         }
       } else {
-        this.runtimeLibrary = "-lstdc++";
+        this.runtimeLibrary = "-lc++";
       }
     }
 
     this.gccLibrary = null;
     if (linkType.isStaticRuntime()) {
-      if (isClang()) {
-        task.log("Warning: clang cannot statically link libgcc");
-      } else {
-        this.gccLibrary = "-static-libgcc";
-      }
+      task.log("Warning: clang cannot statically link libgcc");
     } else {
       if (linkType.linkCPP()) {
         // NOTE: added -fexceptions here for MacOS X
         this.gccLibrary = "-fexceptions";
       } else {
-        if (isClang()) {
-          task.log("Warning: clang cannot dynamically link libgcc");
-        } else {
-          this.gccLibrary = "-shared-libgcc";
-        }
+        task.log("Warning: clang cannot dynamically link libgcc");
       }
     }
     // ENDFREEHEP
@@ -198,9 +182,9 @@ public class GppLinker extends AbstractLdLinker {
   /**
    * Allows drived linker to decorate linker option. Override by GppLinker to
    * prepend a "-Wl," to pass option to through gcc to linker.
-   * 
+   *
    * @param buf
-   *          buffer that may be used and abused in the decoration process,
+   *          buffer that may be used and abused in the decoration process
    *          must not be null.
    * @param arg
    *          linker argument
@@ -228,7 +212,7 @@ public class GppLinker extends AbstractLdLinker {
         default:
           boolean known = false;
           for (final String linkerOption : linkerOptions) {
-            if (arg.matches(linkerOption)) {
+            if (linkerOption.equals(arg)) {
               known = true;
               break;
             }
@@ -247,7 +231,7 @@ public class GppLinker extends AbstractLdLinker {
 
   /**
    * Returns library path.
-   * 
+   *
    */
   @Override
   public File[] getLibraryPath() {
@@ -305,34 +289,10 @@ public class GppLinker extends AbstractLdLinker {
       return isDarwin() ? machPluginLinker : isWindows() ? dllLinker : soLinker;
     }
     if (type.isSharedLibrary()) {
-      return isDarwin() ? machDllLinker : isWindows() ? dllLinker :isAIX() ?  aLinker : soLinker;
-    }
-    if (getCommand().startsWith("clang")) {
-      return clangInstance;
+      return isDarwin() ? machDllLinker : isWindows() ? dllLinker : soLinker;
     }
     // ENDFREEHEP
     return instance;
   }
 
-  /**
-   * Checks whether the compiler is actually clang masquerading as gcc
-   * (e.g., the situation on OS X 10.9 Mavericks).
-   */
-  private boolean isClang() {
-    final String command = getCommand();
-    if (command == null) {
-      return false;
-    }
-    if (command.startsWith("clang")) {
-      return true;
-    }
-    if (!GPP_COMMAND.equals(command)) {
-      return false;
-    }
-    final String[] cmd = {
-        command, "--version"
-    };
-    final String[] cmdout = CaptureStreamHandler.execute(cmd).getStdout();
-    return cmdout != null && cmdout.length > 0 && cmdout[0].contains("(clang-");
-  }
 }

@@ -25,6 +25,7 @@ import com.github.maven_nar.cpptasks.arm.ADSLinker;
 import com.github.maven_nar.cpptasks.borland.BorlandLinker;
 import com.github.maven_nar.cpptasks.compaq.CompaqVisualFortranLinker;
 import com.github.maven_nar.cpptasks.compiler.Linker;
+import com.github.maven_nar.cpptasks.gcc.ClangLinker;
 import com.github.maven_nar.cpptasks.gcc.GccLibrarian;
 import com.github.maven_nar.cpptasks.gcc.GccLinker;
 import com.github.maven_nar.cpptasks.gcc.GppLinker;
@@ -57,7 +58,7 @@ public class LinkerEnum extends EnumeratedAttribute {
       new ProcessorEnumValue("gcc", GccLinker.getInstance()),
       new ProcessorEnumValue("g++", GppLinker.getInstance()),
       new ProcessorEnumValue("clang", GccLinker.getCLangInstance()),
-      new ProcessorEnumValue("clang++", GppLinker.getCLangInstance()),
+      new ProcessorEnumValue("clang++", ClangLinker.getInstance()),
       new ProcessorEnumValue("ld", LdLinker.getInstance()),
       new ProcessorEnumValue("ar", GccLibrarian.getInstance()),
       new ProcessorEnumValue("msvc", MsvcLinker.getInstance()),

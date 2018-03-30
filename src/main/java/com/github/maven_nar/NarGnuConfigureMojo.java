@@ -170,8 +170,14 @@ public class NarGnuConfigureMojo extends AbstractGnuMojo {
         getLog().info("Running GNU " + CONFIGURE);
 
         NarUtil.makeExecutable(configure, getLog());
+
+        // Build the environment string
         List<String> env = new ArrayList<String>();
-        String[] args = null;
+        if (getLinker().getName().startsWith("clang")) {
+           env.add("CC=clang");
+           env.add("CPP=clang-cpp");
+           env.add("CXX=clang++");
+        }
 
         StringBuffer cflagsStr = new StringBuffer("CFLAGS=");
         if (cflags != null) {
@@ -184,6 +190,7 @@ public class NarGnuConfigureMojo extends AbstractGnuMojo {
             cflagsStr.append("-I").append(includeDirs.get(i)).append(" ");
           }
         }
+
         if (cflagsStr.length() > "CFLAGS=".length()) {
           env.add(cflagsStr.toString());
         }
@@ -216,6 +223,7 @@ public class NarGnuConfigureMojo extends AbstractGnuMojo {
         }
 
         // create the array to hold constant and additional args
+        String[] args = null;
         if (this.gnuConfigureArgs != null) {
           final String[] a = this.gnuConfigureArgs.split(" ");
           args = new String[a.length + 2];
