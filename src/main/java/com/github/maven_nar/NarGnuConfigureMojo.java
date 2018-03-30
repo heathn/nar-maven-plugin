@@ -21,6 +21,9 @@ package com.github.maven_nar;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
@@ -95,6 +98,9 @@ public class NarGnuConfigureMojo extends AbstractGnuMojo {
    */
   @Parameter(property = "nar.gnu.configure.args", defaultValue = "")
   private String gnuConfigureArgs;
+
+  @Parameter(property = "nar.gnu.configure.env", defaultValue = "")
+  private String gnuConfigureEnv;
 
   /**
    * Arguments to pass to GNU buildconf.
@@ -179,11 +185,18 @@ public class NarGnuConfigureMojo extends AbstractGnuMojo {
            env.add("CXX=clang++");
         }
 
+        // Add any specifically set env values
+        if (gnuConfigureEnv != null) {
+          env.addAll(Arrays.asList(gnuConfigureEnv.split(",")));
+        }
+
+        // If the cflags property is set, add it to the CFLAGS env variable
         StringBuffer cflagsStr = new StringBuffer("CFLAGS=");
         if (cflags != null) {
           cflagsStr.append(cflags).append(" ");
         }
 
+        // Add dependent libs to the CFLAGS env variable
         final List<String> includeDirs = getIncludeDirs();
         if (includeDirs.size() > 0) {
           for (int i = 0; i < includeDirs.size(); i++) {
@@ -191,15 +204,18 @@ public class NarGnuConfigureMojo extends AbstractGnuMojo {
           }
         }
 
+        // If the CFLAGS has a value add it to the environment
         if (cflagsStr.length() > "CFLAGS=".length()) {
           env.add(cflagsStr.toString());
         }
 
+        // If the CPPFLAGS property is set, add it to the environment
         if (cppflags != null) {
           StringBuffer sb = new StringBuffer("CPPFLAGS=").append(cppflags);
           env.add(sb.toString());
         }
 
+        // Build and add the LD_LIBRARY_PATH and LDFLAGS env variables
         final List<File> libDirs = getLibDirs();
         final List<String> libs = getDependentLibs();
         if (libDirs.size() > 0) {
