@@ -1,8 +1,6 @@
 package com.github.maven_nar.cpptasks;
 
 
-import org.apache.tools.ant.Project;
-
 import java.io.*;
 
 
