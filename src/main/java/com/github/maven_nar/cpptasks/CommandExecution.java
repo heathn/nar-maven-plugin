@@ -6,13 +6,11 @@ import java.io.*;
 
 class StreamGobbler extends Thread {
     InputStream is;
-    String type;
     CCTask task;
 
 
-    StreamGobbler(InputStream is, String type, CCTask task) {
+    StreamGobbler(InputStream is, CCTask task) {
         this.is = is;
-        this.type = type;
         this.task = task;
     }
 
@@ -23,7 +21,7 @@ class StreamGobbler extends Thread {
             BufferedReader br = new BufferedReader(isr);
             String line;
             while ((line = br.readLine()) != null)
-                task.log(type +">"+ line );
+                task.log(line);
 
         } catch (IOException ioe) {
             ioe.printStackTrace();
@@ -68,7 +66,7 @@ public class CommandExecution {
 
 
             //Create the StreamGobbler to read the process output
-            StreamGobbler outputGobbler = new StreamGobbler(process.getInputStream(), "OUTPUT",task);
+            StreamGobbler outputGobbler = new StreamGobbler(process.getInputStream(), task);
 
             outputGobbler.start();
 
