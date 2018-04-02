@@ -73,6 +73,13 @@ public class NarPropertiesMojo extends AbstractDependencyMojo {
       String libName = dependency.getNarInfo().getLibs(getAOL()).split(" ")[0];
       String prefix = NarProperties.getInstance(getMavenProject()).getProperty(getAOL().getKey() + ".lib.prefix");
       String ext = NarProperties.getInstance(getMavenProject()).getProperty(getAOL().getKey() + "." + binding + ".extension");
+
+      // Some of the values for the extension property contain a wildcard to
+      // match versioned shared objects e.g. libfile.so.2.3.  In this
+      // case assume the link name is what is wanted e.g. libfile.so and
+      // remove the wildcard.
+      ext = ext.replaceAll("\\*", "");
+
       // On Windows return the import library instead of the library 
       if (getAOL().getOS() == OS.WINDOWS) {
         filename = libName + ".lib";
