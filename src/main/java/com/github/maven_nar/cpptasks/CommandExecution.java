@@ -80,7 +80,6 @@ public class CommandExecution {
 
         } catch (InterruptedException e) {
 
-            e.printStackTrace();
             return -2;
         }
 
