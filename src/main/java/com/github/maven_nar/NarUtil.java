@@ -444,9 +444,9 @@ public final class NarUtil {
       if (file.getName().matches(".*\\.so(\\.\\d+)+$")) {
         final File sofile = new File(file.getParent(), file.getName().substring(0, file.getName().indexOf(".so") + 3));
         if (!sofile.exists()) {
-          // ln -s lib.so.xx lib.so
+          // ln lib.so.xx lib.so
           final int result = runCommand("ln", new String[] {
-              "-s", file.getName(), sofile.getPath()
+              file.getPath(), sofile.getPath()
           }, null, null, log);
           if (result != 0) {
             throw new MojoExecutionException("Failed to execute 'ln -s " + file.getName() + " " + sofile.getPath() + "'"
@@ -485,9 +485,9 @@ public final class NarUtil {
         if (soname != null) {
           final File sofile = new File(file.getParent(), soname);
           if (!sofile.exists()) {
-            // ln -s lib.so lib.so.xx
+            // ln lib.so lib.so.xx
             final int result = runCommand("ln", new String[] {
-                "-s", file.getName(), sofile.getPath()
+                file.getPath(), sofile.getPath()
             }, null, null, log);
             if (result != 0) {
               throw new MojoExecutionException("Failed to execute 'ln -s " + file.getName() + " " + sofile.getPath() + "'"
