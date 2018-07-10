@@ -132,7 +132,9 @@ public class Javah {
 
   public final void execute() throws MojoExecutionException, MojoFailureException {
       
-    if (skip) {
+    String jreVersion = System.getProperty("java.version");
+    int majorVer = Integer.parseInt(jreVersion.split("\\.")[0]);
+    if (majorVer >= 10 || skip) {
         this.mojo.getLog().info("javah skipped");
         return;
     }  
