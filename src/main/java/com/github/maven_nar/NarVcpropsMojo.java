@@ -89,7 +89,7 @@ public class NarVcpropsMojo extends AbstractCompileMojo {
       if (!binding.equals(Library.JNI)) {
         File unpackDirectory = getUnpackDirectory();
         File include = getLayout().getIncludeDirectory(unpackDirectory,
-            narDependency.getArtifactId(), narDependency.getVersion());
+            narDependency.getArtifactId(), narDependency.getBaseVersion());
         getLog().debug("Looking for include directory: " + include);
         if (include.exists()) {
           includeDirs.add(include);
@@ -145,7 +145,7 @@ public class NarVcpropsMojo extends AbstractCompileMojo {
         File unpackDirectory = getUnpackDirectory();
 
         File dir = getLayout().getLibDirectory(unpackDirectory,
-            dependency.getArtifactId(), dependency.getVersion(),
+            dependency.getArtifactId(), dependency.getBaseVersion(),
             aol.toString(), binding);
 
         getLog().debug("Looking for Library Directory: " + dir);
