@@ -21,10 +21,12 @@ package com.github.maven_nar;
 
 import java.io.File;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import org.apache.maven.plugin.MojoExecutionException;
@@ -210,10 +212,16 @@ public class NarLayout21 extends AbstractNarLayout {
 
     if (!classifiers.isEmpty()) {
 
+      final String presetDfltBinding = narInfo.getBinding(null, null);
+      final Map<AOL, String> presetAOLBinding = new HashMap<>();
       for (final String classifier : classifiers) {
         final int lastDash = classifier.lastIndexOf('-');
         final String type = classifier.substring(lastDash + 1);
         final AOL aol = new AOL(classifier.substring(0, lastDash));
+
+        if (!presetAOLBinding.containsKey(aol)) {
+           presetAOLBinding.put(aol, narInfo.getBinding(aol, null));
+        }
 
         if (narInfo.getOutput(aol, null) == null) {
           narInfo.setOutput(aol, mojo.getOutput(!Library.EXECUTABLE.equals(type)));
@@ -228,8 +236,14 @@ public class NarLayout21 extends AbstractNarLayout {
         // We prefer shared to jni/executable/static/none,
         if (type.equals(Library.SHARED)) // overwrite whatever we had
         {
-          narInfo.setBinding(aol, type);
-          narInfo.setBinding(null, type);
+          // Don't override the default/aol binding if it was preset in
+          // nar.properties
+          if (presetAOLBinding.get(aol) == null) {
+            narInfo.setBinding(aol, type);
+          }
+          if (presetDfltBinding == null) {
+            narInfo.setBinding(null, type);
+          }
         } else {
           // if the binding is already set, then don't write it for
           // jni/executable/none.
@@ -239,7 +253,15 @@ public class NarLayout21 extends AbstractNarLayout {
           } else if (!Library.SHARED.equals(current)
 			  && type.equals(Library.STATIC)) {
             //static lib is preferred over other remaining types; see #231
-            narInfo.setBinding(aol, type);
+
+            // Don't override the default/aol binding if it was preset in
+            // nar.properties
+            if (presetAOLBinding.get(aol) == null) {
+              narInfo.setBinding(aol, type);
+            }
+            if (presetDfltBinding == null) {
+              narInfo.setBinding(null, type);
+            }
           }
 
           if (narInfo.getBinding(null, null) == null) {
