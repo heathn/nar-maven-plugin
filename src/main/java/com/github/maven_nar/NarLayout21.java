@@ -269,8 +269,14 @@ public class NarLayout21 extends AbstractNarLayout {
           }
         }
 
-        narInfo.setNar(null, type, project.getGroupId() + ":" + project.getArtifactId() + ":" + NarConstants.NAR_TYPE
-            + ":" + "${aol}" + "-" + type);
+        // If the more-specific platform key has been set, skip setting the
+        // generic key.
+        if (narInfo.getProperty(aol, NarConstants.NAR_TYPE + "." + type,
+            (String)null) == null) {
+          narInfo.setNar(null, type, project.getGroupId() + ":" +
+              project.getArtifactId() + ":" + NarConstants.NAR_TYPE + ":" +
+              "${aol}" + "-" + type);
+        }
         
         // set the system includes
         Set<String> flattenedSysLibs = new LinkedHashSet<>();
@@ -311,6 +317,7 @@ public class NarLayout21 extends AbstractNarLayout {
           getLog().debug("Added syslib to narInfo: " + b.toString());
           narInfo.setSysLibs(aol, b.toString());
         }
+
       }
 
       // setting this first stops the per type config because getOutput check
