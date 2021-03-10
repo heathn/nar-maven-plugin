@@ -5,16 +5,15 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileReader;
 import java.io.IOException;
+import java.io.StringReader;
 import java.util.*;
 import java.util.Map.Entry;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import com.sun.jna.platform.win32.Advapi32Util;
 import org.apache.maven.artifact.versioning.DefaultArtifactVersion;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
-import org.apache.maven.plugins.annotations.Parameter;
 import org.apache.tools.ant.types.Environment.Variable;
 import org.codehaus.plexus.util.StringUtils;
 
@@ -44,6 +43,7 @@ public class Msvc {
    * <li>12.0 for VS 2013</li>
    * <li>14.0 for VS 2015</li>
    * <li>15.0 for VS 2017</li>
+   * <li>16.0 for VS 2019</li>
    * </ul>
    */
   private String version = "";
@@ -572,21 +572,26 @@ public class Msvc {
       }
       mojo.getLog().debug(String.format(" VisualStudio %1s (%2s) found %3s ", version, internalVersion, home));
     } else {
-      this.version = ""; //
-      // First search registry for installed items, more reliable than environment.
-      for (final Entry<String, Object> entry : visualStudioVS7SxS(com.sun.jna.platform.win32.WinReg.HKEY_LOCAL_MACHINE,
-          "SOFTWARE\\Microsoft\\VisualStudio\\SxS\\VS7").entrySet()) {
-        final String newestVersion = entry.getKey();
-        final String value = entry.getValue().toString();
-        mojo.getLog().debug(String.format(" VisualStudio %1s found SxS %3s ", newestVersion, value));
-        if (versionStringComparator.compare(newestVersion, this.version) > 0) {
-          final File vsDirectory = new File(value);
-          if (vsDirectory.exists()) {
-            this.version = newestVersion;
-            home = vsDirectory;
+      this.version = "";
+      // Check for vswhere first.  It has been included with VisualStudio
+      // since at least 2017.
+      if (!initFromVSWhere()) {
+        // First search registry for installed items, more reliable than environment.
+        for (final Entry<String, Object> entry : visualStudioVS7SxS(com.sun.jna.platform.win32.WinReg.HKEY_LOCAL_MACHINE,
+            "SOFTWARE\\Microsoft\\VisualStudio\\SxS\\VS7").entrySet()) {
+          final String newestVersion = entry.getKey();
+          final String value = entry.getValue().toString();
+          mojo.getLog().debug(String.format(" VisualStudio %1s found SxS %3s ", newestVersion, value));
+          if (versionStringComparator.compare(newestVersion, this.version) > 0) {
+            final File vsDirectory = new File(value);
+            if (vsDirectory.exists()) {
+              this.version = newestVersion;
+              home = vsDirectory;
+            }
           }
         }
       }
+
       // Search environment for common tools which is within VS.
       final Pattern versionPattern = Pattern.compile("VS(\\d+)(\\d)COMNTOOLS");
       for (final Entry<String, String> entry : System.getenv().entrySet()) {
@@ -607,6 +612,45 @@ public class Msvc {
         }
       }
     }
+  }
+
+  private boolean initFromVSWhere() throws MojoExecutionException,
+      MojoFailureException {
+    final TextStream out = new StringTextStream();
+    final TextStream err = new StringTextStream();
+    final TextStream dbg = new StringTextStream();
+
+    String programDir = System.getenv("PROGRAMFILES(X86)");
+    final File installDir = new File(programDir,
+      "Microsoft Visual Studio\\Installer");
+
+    try {
+      NarUtil.runCommand("vswhere",
+          new String[] { "-requires",
+            "Microsoft.VisualStudio.Component.VC.Tools.x86.x64" },
+          installDir, null, out, err, dbg, null, false);
+    } catch (MojoExecutionException ex) {
+      return false;
+    }
+    try (BufferedReader reader =
+        new BufferedReader(new StringReader(out.toString()))) {
+      String line = null;
+      while ((line = reader.readLine()) != null) {
+        if (line.startsWith("installationPath")) {
+          home = new File(line.split(": ")[1]);
+        } else if (line.startsWith("installationVersion")) {
+          version = line.split(": ")[1];
+        }
+      }
+    } catch (IOException ex) {
+      throw new MojoExecutionException(ex, "Unable to parse vswhere output",
+        "Unable to parse vswhere output");
+    }
+
+    if (home == null || version == null) {
+      return false;
+    }
+    return true;
   }
 
   private final Comparator<String> versionStringComparator = new Comparator<String>() {
