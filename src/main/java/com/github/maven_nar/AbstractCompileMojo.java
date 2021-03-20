@@ -19,7 +19,6 @@
  */
 package com.github.maven_nar;
 
-import java.io.File;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -29,10 +28,6 @@ import org.apache.maven.plugin.MojoFailureException;
 import org.apache.maven.plugins.annotations.Parameter;
 import org.apache.tools.ant.Project;
 
-import com.github.maven_nar.cpptasks.CCTask;
-import com.github.maven_nar.cpptasks.CUtil;
-import com.github.maven_nar.cpptasks.types.LibraryTypeEnum;
-import com.github.maven_nar.cpptasks.types.SystemLibrarySet;
 
 /**
  * @author Mark Donszelmann
