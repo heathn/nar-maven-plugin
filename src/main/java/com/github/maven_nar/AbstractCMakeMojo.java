@@ -49,14 +49,22 @@ public abstract class AbstractCMakeMojo extends AbstractResourcesMojo {
   @Parameter(property = "nar.cmake.args")
   private String cmakeArgs;
 
+  private File cmakeHome = null;
+
   /**
    * Returns true if we do want to use CMake
    *
    * @return
    */
   protected final boolean useCMake() {
-    // TODO: Should check for existence of CMake program
-    return true;
+    if (NarUtil.isWindows()) {
+      cmakeHome = new File(NarUtil.registryGet32StringValue(
+        com.sun.jna.platform.win32.WinReg.HKEY_LOCAL_MACHINE,
+        "SOFTWARE\\Kitware\\CMake", "InstallDir"));
+    } else {
+      cmakeHome = new File("/usr/bin");
+    }
+    return cmakeHome != null;
   }
 
   /**
@@ -89,4 +97,13 @@ public abstract class AbstractCMakeMojo extends AbstractResourcesMojo {
   protected final File getCMakeSourceDirectory() {
     return cmakeSourceDirectory;
   }
+
+  protected final File getCMakeExeFile() {
+    if (NarUtil.isWindows()) {
+      return new File(cmakeHome, "bin\\cmake.exe");
+    } else {
+      return new File(cmakeHome, "cmake");
+    }
+  }
+
 }

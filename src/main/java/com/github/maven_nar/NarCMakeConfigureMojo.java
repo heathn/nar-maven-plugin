@@ -42,8 +42,6 @@ import org.codehaus.plexus.util.FileUtils;
     requiresProject = true)
 public class NarCMakeConfigureMojo extends AbstractCMakeMojo {
 
-  private static final String CMAKE = "cmake";
-
   /**
    * Arguments to pass to CMake.
    *
@@ -92,23 +90,24 @@ public class NarCMakeConfigureMojo extends AbstractCMakeMojo {
       args[args.length-1] = targetDir.getAbsolutePath();
 
       getLog().info("args: " + arraysToString(args));
-      int result = NarUtil.runCommand(CMAKE, args, targetDir, 
-          (String[])env.toArray(new String[env.size()]), getLog());
+      int result = NarUtil.runCommand(getCMakeExeFile().getAbsolutePath(),
+          args, targetDir,  (String[])env.toArray(new String[env.size()]),
+          getLog());
       if (result != 0) {
-        throw new MojoExecutionException("'" + CMAKE + "' errorcode: " +
-            result);
+        throw new MojoExecutionException("'" + getCMakeExeFile()
+            + "' errorcode: " + result);
       }
     }
 
   }
 
   private void validateCMake() throws MojoExecutionException, MojoFailureException {
-    int result = NarUtil.runCommand(CMAKE, new String[] { "-version" },
-        null, null, getLog());
+    int result = NarUtil.runCommand(getCMakeExeFile().getAbsolutePath(),
+        new String[] { "-version" }, null, null, getLog());
     if (result != 0) {
-      throw new MojoExecutionException("'" + CMAKE + "'" +
+      throw new MojoExecutionException("'" + getCMakeExeFile() + "'" +
           "does not appear to be installed.  Please install " +
-          "package from http://www.cmake.org");
+          "package from http://cmake.org");
     }
   }
 

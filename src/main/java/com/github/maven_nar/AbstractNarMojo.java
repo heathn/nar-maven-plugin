@@ -210,7 +210,7 @@ public abstract class AbstractNarMojo extends AbstractMojo implements NarConstan
   private File javaHome;
 
   @Parameter
-  private Msvc msvc = new Msvc();
+  private Msvc msvc = null;
 
   /**
    * The version of MSVC to use
@@ -328,8 +328,10 @@ public abstract class AbstractNarMojo extends AbstractMojo implements NarConstan
   }
 
   public Msvc getMsvc() throws MojoFailureException, MojoExecutionException {
-    this.msvc.init(this);
-    return this.msvc;
+    if (msvc == null) {
+      msvc = new Msvc(this);
+    }
+    return msvc;
   }
 
   protected NarInfo getNarInfo() throws MojoExecutionException {
