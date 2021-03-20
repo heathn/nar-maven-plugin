@@ -803,6 +803,38 @@ public final class NarUtil {
     return permissions;
   }
 
+  /**
+   * Get a registry REG_SZ value.
+   *
+   * @param root  Root key.
+   * @param key   Registry path.
+   * @param value Name of the value to retrieve.
+   * @return String value.
+   */
+  public static String registryGet32StringValue(
+    com.sun.jna.platform.win32.WinReg.HKEY root, String key, String value)
+      throws com.sun.jna.platform.win32.Win32Exception {
+
+    if (!isWindows()) {
+      return null;
+    }
+
+    com.sun.jna.platform.win32.WinReg.HKEYByReference phkKey = new com.sun.jna.platform.win32.WinReg.HKEYByReference();
+    int rc = com.sun.jna.platform.win32.Advapi32.INSTANCE.RegOpenKeyEx(root, key, 0,
+        com.sun.jna.platform.win32.WinNT.KEY_READ, phkKey);
+    if (rc != com.sun.jna.platform.win32.W32Errors.ERROR_SUCCESS) {
+      throw new com.sun.jna.platform.win32.Win32Exception(rc);
+    }
+    try {
+      return com.sun.jna.platform.win32.Advapi32Util.registryGetStringValue(phkKey.getValue(), value);
+    } finally {
+      rc = com.sun.jna.platform.win32.Advapi32.INSTANCE.RegCloseKey(phkKey.getValue());
+      if (rc != com.sun.jna.platform.win32.W32Errors.ERROR_SUCCESS) {
+        throw new com.sun.jna.platform.win32.Win32Exception(rc);
+      }
+    }
+  }
+
   private NarUtil() {
     // never instantiate
   }

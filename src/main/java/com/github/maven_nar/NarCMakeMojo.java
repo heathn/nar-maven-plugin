@@ -78,7 +78,7 @@ public class NarCMakeMojo extends AbstractCMakeMojo {
 
       if (getAOL().getOS().equals(OS.WINDOWS)) {
         getLog().info("Running MSBuild");
-        cmd = "msbuild";
+        cmd = getMsvc().getMSBuild().getAbsolutePath();
         if (cmakeMakeArgs != null) {
           String argList = cmakeMakeArgs + " " + cmakeProjectFile;
           args = argList.split(" ");
