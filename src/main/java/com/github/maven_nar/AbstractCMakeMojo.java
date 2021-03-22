@@ -58,9 +58,13 @@ public abstract class AbstractCMakeMojo extends AbstractResourcesMojo {
    */
   protected final boolean useCMake() {
     if (NarUtil.isWindows()) {
-      cmakeHome = new File(NarUtil.registryGet32StringValue(
-        com.sun.jna.platform.win32.WinReg.HKEY_LOCAL_MACHINE,
-        "SOFTWARE\\Kitware\\CMake", "InstallDir"));
+      try {
+        cmakeHome = new File(NarUtil.registryGet32StringValue(
+          com.sun.jna.platform.win32.WinReg.HKEY_LOCAL_MACHINE,
+          "SOFTWARE\\Kitware\\CMake", "InstallDir"));
+      } catch (com.sun.jna.platform.win32.Win32Exception e) {
+        // Registry key wasn't found.  Leave cmakeHome set to null.
+      }
     } else {
       cmakeHome = new File("/usr/bin");
     }
