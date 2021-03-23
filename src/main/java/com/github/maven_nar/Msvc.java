@@ -637,9 +637,18 @@ public class Msvc {
       "Microsoft Visual Studio\\Installer");
 
     try {
+      // NOTE: Remember that MSVC may be installed but it may not have
+      // installed the C++ components needed by this plugin.  Running vswhere
+      // and requiring the Microsoft.VisualStudio.Component.VC.Tools.x86.x64
+      // component will only list those MSVC environments which have the
+      // C++ build system installed.
+      // TODO: Allow the version to be overridden by property.
       NarUtil.runCommand("vswhere",
-          new String[] { "-requires",
-            "Microsoft.VisualStudio.Component.VC.Tools.x86.x64" },
+          new String[] {
+            "-latest",
+            "-requires",
+            "Microsoft.VisualStudio.Component.VC.Tools.x86.x64"
+          },
           installDir, null, out, err, dbg, null, false);
     } catch (MojoExecutionException ex) {
       return false;
