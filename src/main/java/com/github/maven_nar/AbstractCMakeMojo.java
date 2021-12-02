@@ -66,7 +66,13 @@ public abstract class AbstractCMakeMojo extends AbstractResourcesMojo {
         // Registry key wasn't found.  Leave cmakeHome set to null.
       }
     } else {
-      cmakeHome = new File("/usr/bin");
+      String[] dirs = { "/usr/bin", "/usr/local/bin" };
+      for (String dir : dirs) {
+        String[] res = new File(dir).list((dir1, name) -> name.equals("cmake"));        if (res.length > 0) {
+          cmakeHome = new File(dir);
+          break;
+        }
+      }
     }
     return cmakeHome != null;
   }
