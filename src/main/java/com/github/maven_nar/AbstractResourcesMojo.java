@@ -20,8 +20,18 @@
 package com.github.maven_nar;
 
 import java.io.File;
+import java.io.FilenameFilter;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import org.apache.maven.model.FileSet;
 import org.apache.maven.plugin.MojoExecutionException;
@@ -151,9 +161,60 @@ public abstract class AbstractResourcesMojo extends AbstractNarMojo {
             + NarProperties.getInstance(getMavenProject()).getProperty(
                 NarUtil.getAOLKey(aol) + "." + type + ".extension");
 
-        // add import lib for Windows shared libraries
-        if (new AOL(aol).getOS().equals(OS.WINDOWS) && type.equals(Library.SHARED)) {
-          includes += ",**/*.lib";
+        if (new AOL(aol).getOS().equals(OS.WINDOWS)) {
+          // Dynamic libraries on Windows come in 2 parts a (.dll) file and a
+          // (.lib) import library.  The dynamic import library can be confused
+          // with a static library because they share the same (.lib)
+          // extension.  There are a couple of ways to disambiguate between the
+          // two.  First, if there is a similarly named companion .dll file
+          // with the .lib file, it is a fairly good guess that the .lib file
+          // is an import library.  Second, running "lib /list <.lib file>"
+          // will print a list of object files if the lib file is a static
+          // library.
+          Set<String> dllFiles = Files.list(Paths.get(libDir.getAbsolutePath()))
+            .filter(path -> path.toString().endsWith(".dll"))
+            .map(path -> {
+              String s = path.getFileName().toString();
+              return s.substring(0, s.length() - 4);
+            })
+            .collect(Collectors.toSet());
+          Set<String> libFiles = Files.list(Paths.get(libDir.getAbsolutePath()))
+            .filter(path -> path.toString().endsWith(".lib"))
+            .map(path -> {
+              String s = path.getFileName().toString();
+              return s.substring(0, s.length() - 4);
+            })
+            .collect(Collectors.toSet());
+
+          Set<String> filter = new HashSet<>(dllFiles);
+          List<String> keepLibs = new ArrayList<>();
+          if (libsName != null) {
+            keepLibs.addAll(Arrays.asList(libsName.split(",")));
+          }
+          if (type.equals(Library.STATIC)) {
+            // Set difference, only include libFiles which are not found
+            // in the dll files set.
+            filter.removeAll(keepLibs);
+            libFiles.removeAll(filter);
+            libFiles = libFiles.stream()
+              .map(filename -> filename + ".lib")
+              .collect(Collectors.toSet());
+            includes = String.join(",", libFiles);
+          } else if (type.equals(Library.SHARED)) {
+            // Set intersection, only include lib (files which have a
+            // corresponding dll file (and vice versa).
+            filter.add(libsName);
+            libFiles.retainAll(filter);
+            libFiles = libFiles.stream()
+              .map(filename -> filename + ".lib")
+              .collect(Collectors.toSet());
+            includes = String.join(",", libFiles);
+            dllFiles = dllFiles.stream()
+              .map(filename -> filename + ".dll")
+              .collect(Collectors.toSet());
+            includes += "," + String.join(",", dllFiles);
+          }
+
         }
         copied += NarUtil.copyDirectoryStructure(libDir, libDstDir, includes, NarUtil.DEFAULT_EXCLUDES);
       }
