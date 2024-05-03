@@ -19,7 +19,6 @@
  */
 package com.github.maven_nar.test;
 
-import junit.framework.Assert;
 import junit.framework.TestCase;
 
 import com.github.maven_nar.Linker;
@@ -54,7 +53,7 @@ public class TestLinkerVersion extends TestCase {
       return;
     }
     final String version = this.linker.getVersion();
-    Assert.assertNotNull(version);
+    assertNotNull(version);
   }
 
 }

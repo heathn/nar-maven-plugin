@@ -60,6 +60,7 @@ public abstract class MsvcCompatibleCCompiler extends PrecompilingCommandLineCCo
 
   protected void addDebugSwitch(final Vector<String> args) {
     args.addElement("/Zi");
+    args.addElement("/FS"); // Force synchronous PDB writes
     args.addElement("/Od");
     args.addElement("/RTC1");
     args.addElement("/D_DEBUG");
