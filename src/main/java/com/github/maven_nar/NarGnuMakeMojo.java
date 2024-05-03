@@ -99,7 +99,7 @@ public class NarGnuMakeMojo extends AbstractGnuMojo {
             "install"
           };
         }
-        result = NarUtil.runCommand(make, args, srcDir, null, getLog());
+        result = NarUtil.runCommand(make, args, srcDir, env, getLog());
         if (result != 0) {
           throw new MojoExecutionException("'" + make +
               " install' errorcode: " + result);
