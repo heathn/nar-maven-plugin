@@ -41,7 +41,7 @@ public class NarProperties {
 
   private final static String AOL_PROPERTIES = "aol.properties";
   private final static String CUSTOM_AOL_PROPERTY_KEY = "nar.aolProperties";
-  private static Map<MavenProject,NarProperties> instances = new HashMap<MavenProject,NarProperties>();
+  private final static Map<MavenProject,NarProperties> instances = new HashMap<MavenProject,NarProperties>();
 
   /**
    * Retrieve the NarProperties
