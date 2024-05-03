@@ -35,8 +35,10 @@ import org.apache.maven.plugins.annotations.ResolutionScope;
 import org.codehaus.plexus.util.FileUtils;
 
 /**
- * Runs make on the GNU style generated Makefile
+ * Runs MSBuild
  *
+ * Uses the following inherited methods from AbstractGnuMojo:
+ * getGnuSourceDirectory(), getIncludeDirs(), getLibDirs(), getDependentLibs()
  * @author Heath Nielson
  */
 @Mojo(name = "nar-win-msbuild", defaultPhase = LifecyclePhase.COMPILE,
@@ -96,7 +98,9 @@ public class NarMSBuildMakeMojo extends AbstractGnuMojo {
       throw new MojoExecutionException("Failed to copy GNU sources", e);
     }
 
-    String[] env = null;
+    final String[] env = new String[] {
+      "PATH=" + getMsvc().getPathVariable().getValue()
+    };
 
     Linker linker = getLinker();
     String strVersion = linker.getVersion(this);
@@ -271,13 +275,16 @@ public class NarMSBuildMakeMojo extends AbstractGnuMojo {
       getLog().info("Running MSBuild");
       String[] args = null;
       if (msProjectArgs != null) {
-        args = new String[2];
-        args[1] = msProjectArgs;
+        args = msProjectArgs.split(" ");
+        String[] newArgs = new String[args.length+1];
+        System.arraycopy(args, 0, newArgs, 1, args.length);
+        args = newArgs;
       } else {
         args = new String[1];
       }
       args[0] = msProjectFile;
-      final int result = NarUtil.runCommand("msbuild", args, targetDir, env, getLog());
+      final int result = NarUtil.runCommand(getMsvc().getMSBuild().toString(),
+        args, targetDir, env, getLog());
       if (result != 0) {
         throw new MojoExecutionException("'MSBuild' errorcode: " + result);
       }
