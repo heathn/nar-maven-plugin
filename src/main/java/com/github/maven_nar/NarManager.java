@@ -259,12 +259,15 @@ public class NarManager {
     final List narDependencies = new LinkedList();
     for (final Iterator i = getDependencies(scopes).iterator(); i.hasNext();) {
       final Artifact dependency = (Artifact) i.next();
-      this.log.debug("Examining artifact for NarInfo: " + dependency);
 
-      final NarInfo narInfo = getNarInfo(dependency);
-      if (narInfo != null) {
-        this.log.debug("    - added as NarDependency");
-        narDependencies.add(new NarArtifact(dependency, narInfo));
+      if ("nar".equalsIgnoreCase(dependency.getType())) {
+         this.log.debug("Examining artifact for NarInfo: " + dependency);
+
+         final NarInfo narInfo = getNarInfo(dependency);
+         if (narInfo != null) {
+           this.log.debug("    - added as NarDependency");
+           narDependencies.add(new NarArtifact(dependency, narInfo));
+         }
       }
     }
     return narDependencies;
