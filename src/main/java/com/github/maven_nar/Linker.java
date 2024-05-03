@@ -272,6 +272,10 @@ public class Linker {
     final LinkerEnum linkerEnum = new LinkerEnum();
     linkerEnum.setValue(this.name);
     linker.setName(linkerEnum);
+    boolean isDebug = (mojo.getC() == null ? false : mojo.getC().isDebug()) ||
+        (mojo.getCpp() == null ? false : mojo.getCpp().isDebug()) ||
+        (mojo.getFortran() == null ? false : mojo.getFortran().isDebug());
+    linker.setDebug(isDebug);
 
     // tool path
     if (this.toolPath != null) {
