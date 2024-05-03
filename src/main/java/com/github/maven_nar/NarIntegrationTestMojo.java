@@ -30,7 +30,6 @@ import org.apache.maven.plugin.surefire.AbstractSurefireMojo;
 import org.apache.maven.plugin.surefire.Summary;
 import org.apache.maven.plugin.surefire.SurefireHelper;
 import org.apache.maven.plugin.surefire.SurefireReportParameters;
-import org.apache.maven.plugins.annotations.Component;
 import org.apache.maven.plugins.annotations.LifecyclePhase;
 import org.apache.maven.plugins.annotations.Mojo;
 import org.apache.maven.plugins.annotations.Parameter;
@@ -307,7 +306,7 @@ public class NarIntegrationTestMojo extends AbstractSurefireMojo
   @Parameter(property = "surefire.useManifestOnlyJar", defaultValue = "true")
   private boolean useManifestOnlyJar;
 
-  @Component
+  @Parameter(defaultValue = "${project}", readonly = true)
   private MavenProject mavenProject;
 
   @Override
