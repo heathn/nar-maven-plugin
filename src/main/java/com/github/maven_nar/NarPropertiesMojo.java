@@ -39,6 +39,8 @@ import org.apache.maven.shared.artifact.filter.collection.ScopeFilter;
  *       "executable".  If the platform-dependent dependency includes multiple
  *       files, only the first defined in the nar.properties file is
  *       returned.</li>
+ *   <li>${groupId:artifactId:binding:dir} - path to the folder of the
+ *       platform-dependent dependency.</li>
  * </ul>
  *
  * @author Heath Nielson
@@ -90,6 +92,8 @@ public class NarPropertiesMojo extends AbstractDependencyMojo {
       getLog().debug("Setting " + property + " to: " + libPath.toString());
       getMavenProject().getProperties().setProperty(property,
           libPath.toString());
+      getMavenProject().getProperties().setProperty(property + ":dir",
+          libPath.getParent());
     }
 
   }
