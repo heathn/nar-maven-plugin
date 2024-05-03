@@ -344,7 +344,7 @@ public abstract class Compiler {
     if (!this.clearDefaultOptions) {
       final String optionsProperty = NarProperties.getInstance(this.mojo.getMavenProject()).getProperty(
           getPrefix() + "options");
-      if (optionsProperty != null) {
+      if (optionsProperty != null && optionsProperty.length() > 0) {
         final String[] option = optionsProperty.split(" ");
         for (final String element : option) {
           final CompilerArgument arg = new CompilerArgument();
@@ -586,6 +586,10 @@ public abstract class Compiler {
 
   public final List<File> getSourceDirectories() {
     return getSourceDirectories("dummy");
+  }
+
+  public final boolean isDebug() {
+    return debug;
   }
 
   private List<File> getSourceDirectories(final String type) {
