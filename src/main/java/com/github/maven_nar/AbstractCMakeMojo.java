@@ -51,6 +51,8 @@ public abstract class AbstractCMakeMojo extends AbstractResourcesMojo {
 
   private File cmakeHome = null;
 
+  private String cmakeExe = null;
+
   /**
    * Returns true if we do want to use CMake
    *
@@ -61,15 +63,20 @@ public abstract class AbstractCMakeMojo extends AbstractResourcesMojo {
       try {
         cmakeHome = new File(NarUtil.registryGet32StringValue(
           com.sun.jna.platform.win32.WinReg.HKEY_LOCAL_MACHINE,
-          "SOFTWARE\\Kitware\\CMake", "InstallDir"));
+          "SOFTWARE\\Kitware\\CMake", "InstallDir"), "bin");
       } catch (com.sun.jna.platform.win32.Win32Exception e) {
         // Registry key wasn't found.  Leave cmakeHome set to null.
       }
+      cmakeExe = "cmake.exe";
     } else {
       String[] dirs = { "/usr/bin", "/usr/local/bin" };
       for (String dir : dirs) {
-        String[] res = new File(dir).list((dir1, name) -> name.equals("cmake"));        if (res.length > 0) {
+        // Use a startsWith because some Linux distros install the cmake
+        // executable as cmake3.
+        String[] res = new File(dir).list((dir1, name) -> name.startsWith("cmake"));
+        if (res.length > 0) {
           cmakeHome = new File(dir);
+          cmakeExe = res[0];
           break;
         }
       }
@@ -109,11 +116,7 @@ public abstract class AbstractCMakeMojo extends AbstractResourcesMojo {
   }
 
   protected final File getCMakeExeFile() {
-    if (NarUtil.isWindows()) {
-      return new File(cmakeHome, "bin\\cmake.exe");
-    } else {
-      return new File(cmakeHome, "cmake");
-    }
+    return new File(cmakeHome, cmakeExe);
   }
 
 }

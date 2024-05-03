@@ -35,6 +35,9 @@ import org.apache.maven.plugins.annotations.Parameter;
 @Mojo(name = "nar-cmake", defaultPhase = LifecyclePhase.COMPILE, requiresProject = true)
 public class NarCMakeMojo extends AbstractCMakeMojo {
 
+  @Parameter(defaultValue = "make")
+  private String make;
+
   /**
    * Space delimited list of arguments to pass to make
    *
@@ -87,7 +90,7 @@ public class NarCMakeMojo extends AbstractCMakeMojo {
         }
       } else {
         getLog().info("Running GNU make");
-        cmd = "make";
+        cmd = make;
         if (cmakeMakeArgs != null) {
           args = cmakeMakeArgs.split(" ");
         } else {
