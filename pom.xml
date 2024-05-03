@@ -11,7 +11,7 @@
 
   <groupId>com.github.maven-nar</groupId>
   <artifactId>nar-maven-plugin</artifactId>
-  <version>3.10.2-SNAPSHOT</version>
+  <version>3.10.1-fh8</version>
   <packaging>maven-plugin</packaging>
 
   <name>Native ARchive plugin for Maven</name>
@@ -121,8 +121,8 @@
     <mavenVersion>3.0.4</mavenVersion>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
-    <maven.compiler.source>1.7</maven.compiler.source>
-    <maven.compiler.target>1.7</maven.compiler.target>
+    <maven.compiler.source>1.8</maven.compiler.source>
+    <maven.compiler.target>1.8</maven.compiler.target>
     <skip.autoconf.it>it0013-gnu-executable/**</skip.autoconf.it>
     <skip.it0029>it0029-gnu-libsName/**</skip.it0029>
     <skip.fortran.it>it0018-fortran/**</skip.fortran.it>
