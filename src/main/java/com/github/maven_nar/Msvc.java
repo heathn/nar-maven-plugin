@@ -550,7 +550,7 @@ public class Msvc {
         this.version = envVisualStudioVersion;
       }
     }
-    mojo.getLog().debug("Requested Linker version is  \"" + version + "\"");
+    log.debug("Requested Linker version is  \"" + version + "\"");
     if (version != null && version.trim().length() > 1) {
       String internalVersion;
       Pattern r = Pattern.compile("(\\d+)\\.*(\\d)");
