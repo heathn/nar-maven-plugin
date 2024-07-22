@@ -19,6 +19,7 @@
  */
 package com.github.maven_nar.cpptasks.types;
 
+import java.util.List;
 import java.util.Vector;
 
 import org.apache.tools.ant.BuildException;
@@ -56,7 +57,7 @@ public class DefineSet extends DataType {
   }
 
   /** Adds defines/undefines. */
-  private void addDefines(final String[] defs, final boolean isDefine) {
+  private void addDefines(final List<String> defs, final boolean isDefine) {
     for (final String def2 : defs) {
       UndefineArgument def;
       if (isDefine) {

@@ -20,10 +20,13 @@
 package com.github.maven_nar.cpptasks.compiler;
 
 import java.io.BufferedReader;
-import java.io.File;
 import java.io.FileReader;
 import java.io.IOException;
 import java.io.Reader;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
+import java.util.List;
 import java.util.Vector;
 
 import org.apache.commons.io.FilenameUtils;
@@ -46,8 +49,8 @@ import com.github.maven_nar.cpptasks.parser.Parser;
 public abstract class AbstractCompiler extends AbstractProcessor implements Compiler {
   private static final String[] emptyIncludeArray = new String[0];
   private final String outputSuffix;
-  protected File workDir;
-  protected File objDir;
+  protected Path workDir;
+  protected Path objDir;
   protected boolean gccFileAbsolutePath;
 
   protected AbstractCompiler(final String[] sourceExtensions, final String[] headerExtensions, final String outputSuffix) {
@@ -62,7 +65,7 @@ public abstract class AbstractCompiler extends AbstractProcessor implements Comp
    * 'tlb', '.res'
    *
    */
-  protected boolean canParse(final File sourceFile) {
+  protected boolean canParse(final Path sourceFile) {
     final String sourceName = sourceFile.toString();
     final int lastPeriod = sourceName.lastIndexOf('.');
     if (lastPeriod >= 0 && lastPeriod == sourceName.length() - 4) {
@@ -87,24 +90,24 @@ public abstract class AbstractCompiler extends AbstractProcessor implements Comp
     return createConfiguration(task, linkType, baseConfigs, (CompilerDef) specificConfig, targetPlatform, versionInfo);
   }
 
-  abstract protected Parser createParser(File sourceFile);
+  abstract protected Parser createParser(Path sourceFile);
   
-  protected String getBaseOutputName(final String inputFile) {
-    return FilenameUtils.getBaseName(inputFile);
+  protected String getBaseOutputName(final Path inputFile) {
+    return FilenameUtils.getBaseName(inputFile.toString());
   }
 
   @Override
-  public String[] getOutputFileNames(final String inputFile, final VersionInfo versionInfo) {
+  public Path[] getOutputFileNames(final Path inputFile, final VersionInfo versionInfo) {
     //
     // if a recognized input file
     //
     if (bid(inputFile) > 1) {
       final String baseName = getBaseOutputName(inputFile);
-      return new String[] {
-        baseName + this.outputSuffix
+      return new Path[] {
+        Path.of(baseName + this.outputSuffix)
       };
     }
-    return new String[0];
+    return new Path[0];
   }
 
   /**
@@ -132,29 +135,28 @@ public abstract class AbstractCompiler extends AbstractProcessor implements Comp
    *          path settings
    *
    */
-  public final DependencyInfo parseIncludes(final CCTask task, final File source, final File[] includePath,
-      final File[] sysIncludePath, final File[] envIncludePath, final File baseDir, final String includePathIdentifier) {
+  public final DependencyInfo parseIncludes(final CCTask task, final Path source, final List<Path> includePath,
+      final List<Path> sysIncludePath, final List<Path> envIncludePath, final Path baseDir, final String includePathIdentifier) {
     //
     // if any of the include files can not be identified
     // change the sourceLastModified to Long.MAX_VALUE to
     // force recompilation of anything that depends on it
-    long sourceLastModified = source.lastModified();
-    final File[] sourcePath = new File[1];
-    sourcePath[0] = new File(source.getParent());
-    final Vector onIncludePath = new Vector();
-    final Vector onSysIncludePath = new Vector();
-    String baseDirPath;
+    FileTime sourceLastModified;
     try {
-      baseDirPath = baseDir.getCanonicalPath();
-    } catch (final IOException ex) {
-      baseDirPath = baseDir.toString();
+      sourceLastModified = Files.getLastModifiedTime(source);
+    } catch (IOException e) {
+      throw new RuntimeException(e);
     }
-    final String relativeSource = CUtil.getRelativePath(baseDirPath, source);
+    final List<Path> sourcePath = List.of(source.getParent());
+    final Vector<Path> onIncludePath = new Vector<>();
+    final Vector<Path> onSysIncludePath = new Vector<>();
+    final Path relativeSource = baseDir.relativize(source);
+
     String[] includes = emptyIncludeArray;
     if (canParse(source)) {
       final Parser parser = createParser(source);
       try {
-        final Reader reader = new BufferedReader(new FileReader(source));
+        final Reader reader = Files.newBufferedReader(source);
         parser.parse(reader);
         includes = parser.getIncludes();
       } catch (final IOException ex) {
@@ -171,28 +173,28 @@ public abstract class AbstractCompiler extends AbstractProcessor implements Comp
               // this should be enough to require us to reparse
               // the file with the missing include for dependency
               // information without forcing a rebuild
-              sourceLastModified += 2 * CUtil.FILETIME_EPSILON;
+              sourceLastModified = FileTime.fromMillis(sourceLastModified.toMillis() + 2 * CUtil.FILETIME_EPSILON);
             }
           }
         }
       }
     }
     for (int i = 0; i < onIncludePath.size(); i++) {
-      final String relativeInclude = CUtil.getRelativePath(baseDirPath, (File) onIncludePath.elementAt(i));
+      final Path relativeInclude = baseDir.relativize(onIncludePath.elementAt(i));
       onIncludePath.setElementAt(relativeInclude, i);
     }
     for (int i = 0; i < onSysIncludePath.size(); i++) {
-      final String relativeInclude = CUtil.getRelativePath(baseDirPath, (File) onSysIncludePath.elementAt(i));
+      final Path relativeInclude = baseDir.relativize(onSysIncludePath.elementAt(i));
       onSysIncludePath.setElementAt(relativeInclude, i);
     }
     return new DependencyInfo(includePathIdentifier, relativeSource, sourceLastModified, onIncludePath,
         onSysIncludePath);
   }
 
-  protected boolean resolveInclude(final String includeName, final File[] includePath, final Vector onThisPath) {
-    for (final File element : includePath) {
-      final File includeFile = new File(element, includeName);
-      if (includeFile.exists()) {
+  protected boolean resolveInclude(final String includeName, final List<Path> includePath, final Vector<Path> onThisPath) {
+    for (final Path element : includePath) {
+      final Path includeFile = element.resolve(includeName);
+      if (Files.exists(includeFile)) {
         onThisPath.addElement(includeFile);
         return true;
       }
@@ -204,7 +206,7 @@ public abstract class AbstractCompiler extends AbstractProcessor implements Comp
     return this.outputSuffix;
   }
 
-  public void setWorkDir(final File workDir) {
+  public void setWorkDir(final Path workDir) {
     this.workDir = workDir;
   }
 
@@ -212,7 +214,7 @@ public abstract class AbstractCompiler extends AbstractProcessor implements Comp
     this.gccFileAbsolutePath = gccFileAbsolutePath;
   }
 
-  public void setObjDir(final File objDir) {
+  public void setObjDir(final Path objDir) {
     this.objDir = objDir;
   }
 }

@@ -134,11 +134,12 @@ public abstract class AbstractCompileMojo extends AbstractDependencyMojo {
    */
   @Parameter(defaultValue = "")
   protected String sharedObjectName;
+
   /**
    * List of tests to create
    */
   @Parameter
-  private List tests;
+  private List<Test> tests;
 
   /**
    * Java info for includes and linking
@@ -172,7 +173,7 @@ public abstract class AbstractCompileMojo extends AbstractDependencyMojo {
   @Parameter(defaultValue = "false", required = true)
   protected boolean syslibsFromDependencies;
   
-  private List/* <String> */dependencyLibOrder;
+  private List<String> dependencyLibOrder;
 
   private Project antProject;
   
@@ -209,7 +210,7 @@ public abstract class AbstractCompileMojo extends AbstractDependencyMojo {
     return this.cpp;
   }
 
-  protected final List/* <String> */getDependencyLibOrder() {
+  protected final List<String> getDependencyLibOrder() {
     return this.dependencyLibOrder;
   }
 
@@ -280,7 +281,7 @@ public abstract class AbstractCompileMojo extends AbstractDependencyMojo {
     return getNarInfo().getProperty(aol, "runtime", this.runtime);
   }
 
-  protected final List getTests() {
+  protected final List<Test> getTests() {
     if (this.tests == null) {
       this.tests = Collections.emptyList();
     }
@@ -302,7 +303,7 @@ public abstract class AbstractCompileMojo extends AbstractDependencyMojo {
     return this.fortifyID;
   }
 
-  public final void setDependencyLibOrder(final List/* <String> */order) {
+  public final void setDependencyLibOrder(final List<String> order) {
     this.dependencyLibOrder = order;
   }
 

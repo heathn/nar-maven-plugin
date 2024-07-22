@@ -19,8 +19,9 @@
  */
 package com.github.maven_nar.cpptasks.apple;
 
-import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.text.NumberFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -199,13 +200,13 @@ public final class XcodeProjectWriter implements ProjectWriter {
    *          file.
    * @return PBXFileReference object.
    */
-  private static PBXObjectRef createPBXFileReference(final String sourceTree, final String baseDir, final File file) {
+  private static PBXObjectRef createPBXFileReference(final String sourceTree, final Path baseDir, final Path file) {
     final Map map = new HashMap();
     map.put("isa", "PBXFileReference");
 
-    final String relPath = CUtil.toUnixPath(CUtil.getRelativePath(baseDir, file));
+    final Path relPath = baseDir.relativize(file);
     map.put("path", relPath);
-    map.put("name", file.getName());
+    map.put("name", file.getFileName());
     map.put("sourceTree", sourceTree);
     return new PBXObjectRef(map);
   }
@@ -307,7 +308,7 @@ public final class XcodeProjectWriter implements ProjectWriter {
    * @return project.
    */
   private static PBXObjectRef createPBXProject(final PBXObjectRef buildConfigurationList, final PBXObjectRef mainGroup,
-      final String projectDirPath, final String projectRoot, final List targets) {
+      final String projectDirPath, final Path projectRoot, final List targets) {
     final Map map = new HashMap();
     map.put("isa", "PBXProject");
     map.put("buildConfigurationList", buildConfigurationList.getID());
@@ -334,7 +335,7 @@ public final class XcodeProjectWriter implements ProjectWriter {
     final String fileType = "compiled.mach-o.dylib";
     map.put("fileType", fileType);
     map.put("remoteRef", remoteRef);
-    map.put("path", dependency.getFile().getName() + ".dylib");
+    map.put("path", dependency.getFile().getFileName().toString() + ".dylib");
     map.put("sourceTree", "BUILT_PRODUCTS_DIR");
     return new PBXObjectRef(map);
   }
@@ -423,10 +424,10 @@ public final class XcodeProjectWriter implements ProjectWriter {
    * @return PBXBuildFile to add to PBXFrameworksBuildPhase.
    */
   private PBXObjectRef addDependency(final Map objects, final PBXObjectRef project, final List mainGroupChildren,
-      final String baseDir, final DependencyDef dependency) {
+      final Path baseDir, final DependencyDef dependency) {
     if (dependency.getFile() != null) {
-      final File xcodeDir = new File(dependency.getFile().getAbsolutePath() + ".xcodeproj");
-      if (xcodeDir.exists()) {
+      final Path xcodeDir = Path.of(dependency.getFile().toAbsolutePath() + ".xcodeproj");
+      if (Files.exists(xcodeDir)) {
         final PBXObjectRef xcodePrj = createPBXFileReference("SOURCE_ROOT", baseDir, xcodeDir);
         mainGroupChildren.add(xcodePrj);
         objects.put(xcodePrj.getID(), xcodePrj.getProperties());
@@ -624,7 +625,7 @@ public final class XcodeProjectWriter implements ProjectWriter {
    *          compiler configuration.
    * @return project configuration object.
    */
-  private PBXObjectRef addProjectConfigurationList(final Map objects, final String baseDir,
+  private PBXObjectRef addProjectConfigurationList(final Map objects, final Path baseDir,
       final List<DependencyDef> dependencies, final CommandLineCompilerConfiguration compilerConfig,
       final CommandLineLinkerConfiguration linkerConfig) {
     //
@@ -659,25 +660,25 @@ public final class XcodeProjectWriter implements ProjectWriter {
     //
     // add include paths to both configurations
     //
-    final File[] includeDirs = compilerConfig.getIncludePath();
-    if (includeDirs.length > 0) {
-      final List<String> includePaths = new ArrayList<>();
-      final Map<String, String> includePathMap = new HashMap<>();
-      for (final File includeDir : includeDirs) {
+    final List<Path> includeDirs = compilerConfig.getIncludePath();
+    if (includeDirs.size() > 0) {
+      final List<Path> includePaths = new ArrayList<>();
+      final Map<Path, Path> includePathMap = new HashMap<>();
+      for (final Path includeDir : includeDirs) {
         if (!CUtil.isSystemPath(includeDir)) {
-          final String absPath = includeDir.getAbsolutePath();
+          final Path absPath = includeDir.toAbsolutePath();
           if (!includePathMap.containsKey(absPath)) {
-            if (absPath.startsWith("/usr/")) {
-              includePaths.add(CUtil.toUnixPath(absPath));
+            if (absPath.startsWith("usr")) {
+              includePaths.add(absPath);
             } else {
-              final String relPath = CUtil.toUnixPath(CUtil.getRelativePath(baseDir, includeDir));
+              final Path relPath = baseDir.relativize(includeDir);
               includePaths.add(relPath);
             }
             includePathMap.put(absPath, absPath);
           }
         }
       }
-      includePaths.add("${inherited)");
+      includePaths.add(Path.of("${inherited)"));
       debugSettings.put("HEADER_SEARCH_PATHS", includePaths);
       releaseSettings.put("HEADER_SEARCH_PATHS", includePaths);
     }
@@ -700,16 +701,16 @@ public final class XcodeProjectWriter implements ProjectWriter {
     }
 
     if (linkerConfig != null) {
-      final Map<String, String> librarySearchMap = new HashMap<>();
-      final List<String> librarySearchPaths = new ArrayList<>();
+      final Map<Path, Path> librarySearchMap = new HashMap<>();
+      final List<Path> librarySearchPaths = new ArrayList<>();
       final List<String> otherLdFlags = new ArrayList<>();
       final String[] linkerArgs = linkerConfig.getEndArguments();
       for (final String linkerArg : linkerArgs) {
         if (linkerArg.startsWith("-L")) {
-          final String libDir = linkerArg.substring(2);
+          final Path libDir = Path.of(linkerArg.substring(2));
           if (!librarySearchMap.containsKey(libDir)) {
-            if (!libDir.equals("/usr/lib")) {
-              librarySearchPaths.add(CUtil.toUnixPath(CUtil.getRelativePath(baseDir, new File(libDir))));
+            if (!libDir.equals(Path.of("/usr/lib"))) {
+              librarySearchPaths.add(baseDir.relativize(libDir));
             }
             librarySearchMap.put(libDir, libDir);
 
@@ -722,8 +723,8 @@ public final class XcodeProjectWriter implements ProjectWriter {
           boolean found = false;
           for (final DependencyDef dependency : dependencies) {
             if (libName.startsWith(dependency.getName())) {
-              final File dependencyFile = dependency.getFile();
-              if (dependencyFile != null && new File(dependencyFile.getAbsolutePath() + ".xcodeproj").exists()) {
+              final Path dependencyFile = dependency.getFile();
+              if (dependencyFile != null && Files.exists(Path.of(dependencyFile.toAbsolutePath().toString() + ".xcodeproj"))) {
                 found = true;
                 break;
               }
@@ -756,23 +757,22 @@ public final class XcodeProjectWriter implements ProjectWriter {
    *          build targets.
    * @return list containing file references of source files.
    */
-  private List<PBXObjectRef> addSources(final Map objects, final String sourceTree, final String basePath,
-      final Map<String, TargetInfo> targets) {
+  private List<PBXObjectRef> addSources(final Map objects, final String sourceTree, final Path basePath,
+      final Map<Path, TargetInfo> targets) {
     final List<PBXObjectRef> sourceGroupChildren = new ArrayList<>();
 
-    final List<File> sourceList = new ArrayList<>(targets.size());
+    final List<Path> sourceList = new ArrayList<>(targets.size());
     for (final TargetInfo info : targets.values()) {
-      final File[] targetsources = info.getSources();
-      Collections.addAll(sourceList, targetsources);
+      sourceList.addAll(info.getSources());
     }
-    final File[] sortedSources = sourceList.toArray(new File[sourceList.size()]);
-    Arrays.sort(sortedSources, new Comparator<File>() {
+    final Path[] sortedSources = sourceList.toArray(new Path[sourceList.size()]);
+    Arrays.sort(sortedSources, new Comparator<Path>() {
       @Override
-      public int compare(final File o1, final File o2) {
-        return o1.getName().compareTo(o2.getName());
+      public int compare(final Path o1, final Path o2) {
+        return o1.getFileName().compareTo(o2.getFileName());
       }
     });
-    for (final File sortedSource : sortedSources) {
+    for (final Path sortedSource : sortedSources) {
       final PBXObjectRef fileRef = createPBXFileReference(sourceTree, basePath, sortedSource);
       sourceGroupChildren.add(fileRef);
       objects.put(fileRef.getID(), fileRef.getProperties());
@@ -836,7 +836,7 @@ public final class XcodeProjectWriter implements ProjectWriter {
   }
 
   private int getProductTypeIndex(final TargetInfo linkTarget) {
-    final String outPath = linkTarget.getOutput().getPath();
+    final String outPath = linkTarget.getOutput().toString();
     String outExtension = null;
     final int lastDot = outPath.lastIndexOf('.');
     if (lastDot != -1) {
@@ -868,11 +868,11 @@ public final class XcodeProjectWriter implements ProjectWriter {
    *           if error writing project file
    */
   @Override
-  public void writeProject(final File fileName, final CCTask task, final ProjectDef projectDef,
-      final List<File> sources, final Map<String, TargetInfo> targets, final TargetInfo linkTarget) throws IOException {
+  public void writeProject(final Path fileName, final CCTask task, final ProjectDef projectDef,
+      final List<Path> sources, final Map<Path, TargetInfo> targets, final TargetInfo linkTarget) throws IOException {
 
-    final File xcodeDir = new File(fileName + ".xcodeproj");
-    if (!projectDef.getOverwrite() && xcodeDir.exists()) {
+    final Path xcodeDir = Path.of(fileName + ".xcodeproj");
+    if (!projectDef.getOverwrite() && Files.exists(xcodeDir)) {
       throw new BuildException("Not allowed to overwrite project file " + xcodeDir.toString());
     }
 
@@ -888,13 +888,13 @@ public final class XcodeProjectWriter implements ProjectWriter {
 
     String projectName = projectDef.getName();
     if (projectName == null) {
-      projectName = fileName.getName();
+      projectName = fileName.getFileName().toString();
     }
-    final String basePath = fileName.getAbsoluteFile().getParent();
+    final Path basePath = fileName.getParent().toAbsolutePath();
 
-    xcodeDir.mkdir();
+    Files.createDirectory(xcodeDir);
 
-    final File xcodeProj = new File(xcodeDir, "project.pbxproj");
+    final Path xcodeProj = xcodeDir.resolve("project.pbxproj");
 
     //
     // create property list
@@ -961,7 +961,7 @@ public final class XcodeProjectWriter implements ProjectWriter {
     // Calculate path (typically several ../..) of the root directory
     // (where build.xml lives) relative to the XCode project directory.
     // XCode 3.0 will now prompt user to supply the value if not specified.
-    final String projectRoot = CUtil.toUnixPath(CUtil.getRelativePath(basePath, projectDef.getProject().getBaseDir()));
+    final Path projectRoot = basePath.relativize(projectDef.getProject().getBaseDir().toPath());
     final PBXObjectRef project = createPBXProject(compilerConfigurations, mainGroup, projectDirPath, projectRoot,
         projectTargets);
     objects.put(project.getID(), project.getProperties());

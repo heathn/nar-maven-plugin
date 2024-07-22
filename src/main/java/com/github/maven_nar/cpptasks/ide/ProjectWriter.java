@@ -19,8 +19,8 @@
  */
 package com.github.maven_nar.cpptasks.ide;
 
-import java.io.File;
 import java.io.IOException;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 
@@ -56,6 +56,6 @@ public interface ProjectWriter {
    * @throws SAXException
    *           if I/O error during XML serialization
    */
-  void writeProject(final File baseName, final CCTask task, final ProjectDef projectDef, final List<File> files,
-      final Map<String, TargetInfo> targets, final TargetInfo linkTarget) throws IOException, SAXException;
+  void writeProject(final Path baseName, final CCTask task, final ProjectDef projectDef, final List<Path> files,
+      final Map<Path, TargetInfo> targets, final TargetInfo linkTarget) throws IOException, SAXException;
 }

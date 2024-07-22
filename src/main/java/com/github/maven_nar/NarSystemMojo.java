@@ -19,10 +19,10 @@
  */
 package com.github.maven_nar;
 
-import java.io.File;
-import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -142,7 +142,6 @@ public class NarSystemMojo extends AbstractNarMojo {
     return getNativeLibLoaderVersion() != null;
   }
 
-
   private String getNativeLibLoaderVersion() {
     for (MavenProject project = getMavenProject(); project != null; project = project.getParent()) {
       final List<Dependency> dependencies = project.getDependencies();
@@ -161,13 +160,13 @@ public class NarSystemMojo extends AbstractNarMojo {
     // get packageName if specified for JNI.
     String packageName = null;
     String narSystemName = null;
-    File narSystemDirectory = null;
+    Path narSystemDirectory = null;
     boolean jniFound = false;
     for (final Library library : getLibraries()) {
       if (library.getType().equals(Library.JNI) || library.getType().equals(Library.SHARED)) {
         packageName = library.getNarSystemPackage();
         narSystemName = library.getNarSystemName();
-        narSystemDirectory = new File(getTargetDirectory(), library.getNarSystemDirectory());
+        narSystemDirectory = getTargetDirectory().resolve(library.getNarSystemDirectory());
         jniFound = true;
       }
     }
@@ -181,109 +180,107 @@ public class NarSystemMojo extends AbstractNarMojo {
       return;
     }
 
-    // make sure destination is there
-    narSystemDirectory.mkdirs();
+    final Path fullDir = narSystemDirectory.resolve(packageName.replace('.', '/'));
+    try {
+      // make sure destination is there
+      Files.createDirectories(narSystemDirectory);
+      Files.createDirectories(fullDir);
+    } catch (IOException e) {
+      throw new MojoExecutionException(e);
+    }
+    getMavenProject().addCompileSourceRoot(narSystemDirectory.toString());
 
-    getMavenProject().addCompileSourceRoot(narSystemDirectory.getPath());
-
-    final File fullDir = new File(narSystemDirectory, packageName.replace('.', '/'));
-    fullDir.mkdirs();
-
-    final File narSystem = new File(fullDir, narSystemName + ".java");
+    final Path narSystem = fullDir.resolve(narSystemName + ".java");
     getLog().info("Generating " + narSystem);
     // initialize string variable to be used in NarSystem.java
     final String importString, loadLibraryString, extraMethods, output = getOutput(true);
     if (hasNativeLibLoaderAsDependency()) {
       getLog().info("Using 'native-lib-loader'");
-      importString = "import java.io.File;\n" + "import java.net.URL;\n"
-          + "import org.scijava.nativelib.DefaultJniExtractor;\n" + "import org.scijava.nativelib.JniExtractor;\n";
-      loadLibraryString = "final String fileName = \""
-          + output
-          + "\";\n"
-          + "        //first try if the library is on the configured library path\n"
-          + "        try {\n"
-          + "            System.loadLibrary(\""
-          + output
-          + "\");\n"
-          + "            return;\n"
-          + "        }\n"
-          + "        catch (Exception e) {\n"
-          + "        }\n"
-          + "        catch (UnsatisfiedLinkError e) {\n"
-          + "        }\n"
-          + "        final String[] mappedNames = getMappedLibraryNames(fileName);\n"
-          + "        final String[] aols = getAOLs();\n"
-          + "        final ClassLoader loader = NarSystem.class.getClassLoader();\n"
-          + "        final File unpacked = getUnpackedLibPath(loader, aols, fileName, mappedNames);\n"
-          + "        if (unpacked != null) {\n"
-          + "            System.load(unpacked.getPath());\n"
-          + "        } else try {\n"
-          + "            final String libPath = getLibPath(loader, aols, mappedNames);\n"
-          + "            final JniExtractor extractor = "+ getJniExtractorCreationStatement() +"\n"
-          + "            final File extracted = extractor.extractJni(libPath, fileName);\n"
-          + "            System.load(extracted.getAbsolutePath());\n" + "        } catch (final Exception e) {\n"
-          + "            e.printStackTrace();\n" + "            throw e instanceof RuntimeException ?\n"
-          + "                (RuntimeException) e : new RuntimeException(e);\n" + "        }";
+      importString = """
+
+        import java.io.File;
+        import java.net.URL;
+        import org.scijava.nativelib.DefaultJniExtractor;
+        import org.scijava.nativelib.JniExtractor;
+        """;
+      loadLibraryString = String.format("""
+        final String fileName = "%1$s";
+        // first try if the library is on the configured library path
+        try {
+          System.loadLibrary("%1$s");
+          return;
+        } catch (Exception | UnsatisfiedLinkError e) {
+        }
+        final String[] mappedNames = getMappedLibraryNames(fileName);
+        final String[] aols = getAOLs();
+        final ClassLoader loader = NarSystem.class.getClassLoader();
+        final File unpacked = getUnpackedLibPath(loader, aols, fileName, mappedNames);
+        if (unpacked != null) {
+          System.load(unpacked.getPath());
+        } else {
+          try {
+            final String libPath = getLibPath(loader, aols, mappedNames);
+            final JniExtractor extractor = %2$s
+            final File extracted = extractor.extractJni(libPath, fileName);
+            System.load(extracted.getAbsolutePath());
+          } catch (final Exception e) {
+            e.printStackTrace();
+            throw e instanceof RuntimeException ?
+                (RuntimeException) e : new RuntimeException(e);
+          }
+        }
+      """, output, getJniExtractorCreationStatement());
       extraMethods = generateExtraMethods();
     } else {
-      getLog().info("Not using 'native-lib-loader' because it is not a dependency)");
-      importString = null;
+      getLog().info("Not using 'native-lib-loader' (because it is not a dependency)");
+      importString = "";
       loadLibraryString = "System.loadLibrary(\"" + output + "\");";
-      extraMethods = null;
+      extraMethods = "";
     }
 
-    try {
-      final FileOutputStream fos = new FileOutputStream(narSystem);
-      final PrintWriter p = new PrintWriter(fos);
-      p.println("// DO NOT EDIT: Generated by NarSystemGenerate.");
-      p.println("package " + packageName + ";");
-      p.println("");
-      if (importString != null) {
-        p.println(importString);
-      }
-      p.println("/**");
-      p.println(" * Generated class to load the correct version of the jni library");
-      p.println(" *");
-      p.println(" * @author nar-maven-plugin");
-      p.println(" */");
-      p.println("public final class NarSystem");
-      p.println("{");
-      p.println("");
-      p.println("    private NarSystem() ");
-      p.println("    {");
-      p.println("    }");
-      p.println("");
-      p.println("    /**");
-      p.println("     * Load jni library: " + output);
-      p.println("     *");
-      p.println("     * @author nar-maven-plugin");
-      p.println("     */");
-      p.println("    public static void loadLibrary()");
-      p.println("    {");
-      p.println("        " + loadLibraryString);
-      p.println("    }");
-      p.println("");
-      p.println("    public static String getLibraryName() {");
-      p.println("        return \"" + output + "\";");
-      p.println("    }");
-      p.println("");
-      p.println("    public static int runUnitTests() {");
-      p.println("	       return new NarSystem().runUnitTestsNative();");
-      p.println("    }");
-      p.println("");
-      p.println("    public native int runUnitTestsNative();");
-      if (extraMethods != null) {
-        p.println(extraMethods);
-      }
-      p.println("}");
-      p.close();
-      fos.close();
+    try (final PrintWriter p = new PrintWriter(Files.newOutputStream(narSystem))) {
+      p.print(String.format("""
+        // DO NOT EDIT: Generated by NarSystemGenerate.
+        package %1$s;
+        %2$s
+
+        /**
+         * Generated class to load the correct version of the jni library
+         *
+         * @author nar-maven-plugin
+         */
+        public final class NarSystem {
+
+          private NarSystem() {
+          }
+
+          /**
+           * Load jni library: %3$s
+           *
+           * @author nar-maven-plugin
+           */
+          public static void loadLibrary() {
+            %4$s
+          }
+
+          public static String getLibraryName() {
+            return "%3$s";
+          }
+
+          public static int runUnitTests() {
+            return new NarSystem().runUnitTestsNative();
+          }
+
+          public native int runUnitTestsNative();
+          %5$s
+        }
+        """, packageName, importString, output, loadLibraryString, extraMethods));
     } catch (final IOException e) {
       throw new MojoExecutionException("Could not write '" + narSystemName + "'", e);
     }
 
     if (this.buildContext != null) {
-      this.buildContext.refresh(narSystem);
+      this.buildContext.refresh(narSystem.toFile());
     }
   }
 

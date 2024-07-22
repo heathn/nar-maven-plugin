@@ -19,29 +19,26 @@
  */
 package com.github.maven_nar;
 
-import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ListIterator;
+import java.util.Objects;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
-import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Set;
-import java.util.Map;
+import java.util.function.Predicate;
 import java.util.jar.JarFile;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import java.util.zip.ZipInputStream;
-import org.apache.commons.io.IOUtils;
 
-import org.apache.maven.model.Dependency;
-import org.apache.maven.artifact.Artifact;
-import org.apache.maven.artifact.repository.ArtifactRepository;
-import org.apache.maven.artifact.resolver.ArtifactNotFoundException;
-import org.apache.maven.artifact.resolver.ArtifactResolutionException;
-import org.apache.maven.artifact.resolver.ArtifactResolver;
-import org.apache.maven.artifact.versioning.InvalidVersionSpecificationException;
+import org.apache.commons.lang3.function.Failable;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
 import org.apache.maven.plugins.annotations.Component;
@@ -51,49 +48,37 @@ import org.apache.maven.shared.artifact.filter.collection.ArtifactIdFilter;
 import org.apache.maven.shared.artifact.filter.collection.FilterArtifacts;
 import org.apache.maven.shared.artifact.filter.collection.GroupIdFilter;
 import org.apache.maven.shared.artifact.filter.collection.ScopeFilter;
+
 import org.codehaus.plexus.archiver.manager.ArchiverManager;
 import org.codehaus.plexus.util.StringUtils;
 
 import org.apache.maven.shared.dependency.graph.DependencyGraphBuilder;
-import org.apache.maven.shared.dependency.graph.DependencyGraphBuilderException;
-import org.apache.maven.shared.dependency.graph.DependencyNode;
-import org.apache.maven.shared.dependency.graph.internal.DefaultDependencyNode;
-import org.apache.maven.artifact.resolver.filter.ArtifactFilter;
-import org.apache.maven.artifact.DefaultArtifact;
-
 import org.eclipse.aether.RepositorySystem;
 import org.eclipse.aether.RepositorySystemSession;
+import org.eclipse.aether.artifact.Artifact;
+import org.eclipse.aether.artifact.DefaultArtifact;
 import org.eclipse.aether.repository.RemoteRepository;
+import org.eclipse.aether.resolution.ArtifactRequest;
+import org.eclipse.aether.resolution.ArtifactResolutionException;
+import org.eclipse.aether.resolution.ArtifactResult;
 import org.eclipse.aether.collection.CollectRequest;
-import org.eclipse.aether.collection.CollectRequest;
+
 import org.eclipse.aether.util.graph.selector.AndDependencySelector;
 import org.eclipse.aether.util.graph.selector.OptionalDependencySelector;
 import org.eclipse.aether.util.graph.selector.ScopeDependencySelector;
-import org.eclipse.aether.util.graph.transformer.ConflictResolver;
+
 import org.eclipse.aether.util.graph.transformer.NoopDependencyGraphTransformer;
 import org.eclipse.aether.collection.DependencyCollectionException;
 import org.eclipse.aether.collection.DependencySelector;
+import org.eclipse.aether.graph.Dependency;
+
+import org.eclipse.aether.graph.DependencyNode;
 import org.eclipse.aether.DefaultRepositorySystemSession;
 
 /**
  * @author Mark Donszelmann
  */
 public abstract class AbstractDependencyMojo extends AbstractNarMojo {
-
-  @Parameter(defaultValue = "${localRepository}", required = true, readonly = true)
-  private ArtifactRepository localRepository;
-
-  /**
-   * Artifact resolver, needed to download the attached nar files.
-   */
-  @Component(role = org.apache.maven.artifact.resolver.ArtifactResolver.class)
-  protected ArtifactResolver artifactResolver;
-
-  /**
-   * Remote repositories which will be searched for nar attachments.
-   */
-  @Parameter(defaultValue = "${project.remoteArtifactRepositories}", required = true, readonly = true)
-  protected List remoteArtifactRepositories;
 
   /**
    * Comma separated list of Artifact names to exclude.
@@ -130,13 +115,13 @@ public abstract class AbstractDependencyMojo extends AbstractNarMojo {
   /**
    * The computed dependency tree root node of the Maven project.
    */
-  protected  DependencyNode rootNode;
+  protected DependencyNode rootNode;
 
   /**
    * The dependency tree builder to use.
    */
   @Component( hint = "default" )
-  protected  DependencyGraphBuilder dependencyGraphBuilder;
+  protected DependencyGraphBuilder dependencyGraphBuilder;
 
   /**
    * The Repository object that dispatches the verbose dependency graph collection request.
@@ -173,13 +158,13 @@ public abstract class AbstractDependencyMojo extends AbstractNarMojo {
    * @return {@link org.eclipse.aether.graph.DependencyNode Root node} of the projects verbose dependency tree.
    * @since 3.5.2
   */
-  protected org.eclipse.aether.graph.DependencyNode getVerboseDependencyTree ()
+  protected DependencyNode getVerboseDependencyTree()
   {
     // Create CollectRequest object that will be submitted to collect the dependencies
     CollectRequest collectReq = new CollectRequest();
 
     // Get artifact this Maven project is attempting to build
-    Artifact art = getMavenProject().getArtifact();
+    Artifact art = new DefaultArtifact(getMavenProject().getArtifact().getId());
     
     DefaultRepositorySystemSession session = new DefaultRepositorySystemSession(repoSession);
 
@@ -187,8 +172,7 @@ public abstract class AbstractDependencyMojo extends AbstractNarMojo {
     session.setDependencyGraphTransformer(new NoopDependencyGraphTransformer());
     
     // Create Aether graph dependency object from params extracted above
-    org.eclipse.aether.graph.Dependency dep = new org.eclipse.aether.graph.Dependency (
-      new org.eclipse.aether.artifact.DefaultArtifact(art.getGroupId(), art.getArtifactId (), null, art.getVersion()), null);
+    Dependency dep = new Dependency(art, getMavenProject().getArtifact().getScope());
     
     // Set the root of the request, in this case the current project will be the root
     collectReq.setRoot(dep);
@@ -199,12 +183,12 @@ public abstract class AbstractDependencyMojo extends AbstractNarMojo {
     // Get test scope dependencies if we are in the testCompile phase
     if (this instanceof NarTestCompileMojo)
     {
-      DependencySelector dependencySelector = new AndDependencySelector(new OptionalDependencySelector(), new ScopeDependencySelector(null));
+      DependencySelector dependencySelector = new AndDependencySelector(new OptionalDependencySelector(), new ScopeDependencySelector(dep.getScope()));
       session.setDependencySelector(dependencySelector);
     }
 
     try {
-      return repoSystem.collectDependencies (session, collectReq).getRoot();
+      return repoSystem.collectDependencies(session, collectReq).getRoot();
     } catch (DependencyCollectionException exception) {
       this.getLog().warn("Could not collect dependencies from repo system", exception);
       return null;
@@ -220,8 +204,10 @@ public abstract class AbstractDependencyMojo extends AbstractNarMojo {
    * @return {@link String Dependency tree string} of comma separated list of groupId:artifactId
    * @throws MojoExecutionException
    */
-  protected String dependencyTreeOrderStr(boolean pushDepsToLowestOrder, boolean specifyDirectDeps) throws MojoExecutionException
+  protected List<DependencyNode> dependencyTreeOrderStr(boolean pushDepsToLowestOrder, boolean specifyDirectDeps) throws MojoExecutionException
   {
+    return repoSystem.flattenDependencyNodes(repoSession, rootNode, null);
+/**
     String depLevelOrderStr = "";
     DependencyNode libTreeRootNode;
 
@@ -239,6 +225,7 @@ public abstract class AbstractDependencyMojo extends AbstractNarMojo {
      * link order. We will use the full dependency tree from Aether (unmediated)
      * to determine this order. 
      */
+/***
     if (pushDepsToLowestOrder || specifyDirectDeps)
     {
       org.eclipse.aether.graph.DependencyNode verboseTreeRootNode = getVerboseDependencyTree ();
@@ -258,6 +245,7 @@ public abstract class AbstractDependencyMojo extends AbstractNarMojo {
        * end of the list signify the ones that are most heavily depended on 
        * and therefore need to occur later in the link order.
        */
+/**
       for (int i = verboseDepList.size()-1; i >= 0; i--)
       {
         String depStr = verboseDepList.get(i);
@@ -265,6 +253,7 @@ public abstract class AbstractDependencyMojo extends AbstractNarMojo {
         /* Create link order by pushing new dep to the front of the list. Do not
          * insert dep if it was added already (i.e. if adding to ReducedDepSet fails)
          */
+/**
         if (reducedDepSet.add(depStr))
         {
           this.getLog().debug(depStr);
@@ -303,7 +292,7 @@ public abstract class AbstractDependencyMojo extends AbstractNarMojo {
       {
         if ( node != null )
         {
-          String[] nodestring = node.toNodeString().split(":");
+          String[] nodestring = node.toString().split(":");
           String usestring = nodestring[0] + ":" + nodestring[1];
 
           this.getLog().debug(usestring);
@@ -319,6 +308,7 @@ public abstract class AbstractDependencyMojo extends AbstractNarMojo {
       
     this.getLog().debug("}");
     return depLevelOrderStr;
+*/
   }
 
   /**
@@ -335,7 +325,7 @@ public abstract class AbstractDependencyMojo extends AbstractNarMojo {
     ListIterator <org.eclipse.aether.graph.DependencyNode> iter = directDepsList.listIterator();
 
     // Accumulate set that represents the collection of direct deps
-    while(iter.hasNext()){
+    while (iter.hasNext()){
       org.eclipse.aether.artifact.Artifact art = iter.next().getArtifact();
       directDepsSet.add(createArtifactString(art));
     }
@@ -355,10 +345,10 @@ public abstract class AbstractDependencyMojo extends AbstractNarMojo {
   {
 
     // Create list to store aggregate list of all nodes in tree
-    List <DependencyNode> aggDepNodeList = new LinkedList<DependencyNode> ();
+    List<DependencyNode> aggDepNodeList = new LinkedList<>();
     
     // Create list that stores current breadth
-    List <DependencyNode> nodeChildList = rootNode.getChildren();
+    List<DependencyNode> nodeChildList = rootNode.getChildren();
     //LevelOrderList.add(rootNode);
 
     while (!nodeChildList.isEmpty()) {
@@ -372,7 +362,7 @@ public abstract class AbstractDependencyMojo extends AbstractNarMojo {
    * helper function for traversing nodes
    * in Level-Order way (also called BFS algorithm)
    */
-  private List<DependencyNode> levelTraverseTreeList(List<DependencyNode>  nodeList, List <DependencyNode> aggDepNodeList )
+  private List<DependencyNode> levelTraverseTreeList(List<DependencyNode>  nodeList, List<DependencyNode> aggDepNodeList )
   {
     aggDepNodeList.addAll(nodeList);
     List<DependencyNode> NodeChildList = new ArrayList<DependencyNode>();
@@ -464,7 +454,7 @@ public abstract class AbstractDependencyMojo extends AbstractNarMojo {
    * @return {@link String} in the form "<groupId>:<artifactId>" representing the artifact
    * @since 3.5.3
    */
-  private String createArtifactString (org.eclipse.aether.artifact.Artifact artifact)
+  private String createArtifactString(Artifact artifact)
   {
     return new String(artifact.getGroupId() + ":" + artifact.getArtifactId());
   }
@@ -479,8 +469,8 @@ public abstract class AbstractDependencyMojo extends AbstractNarMojo {
    * @since 3.5.2
    */
 
-  private boolean nodeArtifactsMatch (org.eclipse.aether.graph.DependencyNode nodeA,
-                                      org.eclipse.aether.graph.DependencyNode nodeB)
+  private boolean nodeArtifactsMatch (DependencyNode nodeA,
+                                      DependencyNode nodeB)
   {
     if (nodeA == null || nodeB == null) {
       return false;
@@ -498,20 +488,25 @@ public abstract class AbstractDependencyMojo extends AbstractNarMojo {
    * @return root node of the project Dependency tree
    * @throws MojoExecutionException
    */
+  /*
   protected DependencyNode getRootNodeDependecyTree() throws MojoExecutionException{
     try {
       ArtifactFilter artifactFilter = null;
 
       // works for only maven 3. Use of dependency graph component not handled for maven 2
       // as current version of NAR already requires Maven 3.x
-      rootNode = dependencyGraphBuilder.buildDependencyGraph(getMavenProject(), artifactFilter);
+      ProjectBuildingRequest buildingRequest =
+                new DefaultProjectBuildingRequest(session.getProjectBuildingRequest());
+      buildingRequest.setProject(getMavenProject());
+
+      rootNode = dependencyGraphBuilder.buildDependencyGraph(buildingRequest, artifactFilter);
 
     } catch (DependencyGraphBuilderException exception) {
       throw new MojoExecutionException("Cannot build project dependency graph", exception);
     }
 
     return rootNode;
-  }
+  }*/
 
   /**
    * To look up Archiver/UnArchiver implementations
@@ -519,34 +514,36 @@ public abstract class AbstractDependencyMojo extends AbstractNarMojo {
   @Component(role = org.codehaus.plexus.archiver.manager.ArchiverManager.class)
   protected ArchiverManager archiverManager;
 
-  public final void downloadAttachedNars(final List<AttachedNarArtifact> dependencies)
+  public final void downloadAttachedNars(final List<Artifact> dependencies)
       throws MojoExecutionException, MojoFailureException {
     getLog().debug("Download for NarDependencies {");
-    for (final AttachedNarArtifact attachedNarArtifact : dependencies) {
+    for (final Artifact attachedNarArtifact : dependencies) {
       getLog().debug("  - " + attachedNarArtifact);
     }
     getLog().debug("}");
 
-    for (final AttachedNarArtifact attachedNarArtifact : dependencies) {
+    for (final Artifact attachedNarArtifact : dependencies) {
       try {
         getLog().debug("Resolving " + attachedNarArtifact);
-        this.artifactResolver.resolve(attachedNarArtifact, this.remoteArtifactRepositories, getLocalRepository());
-      } catch (final ArtifactNotFoundException e) {
-        final String message = "nar not found " + attachedNarArtifact.getId();
-        throw new MojoExecutionException(message, e);
+        ArtifactRequest ar = new ArtifactRequest(attachedNarArtifact, projectRepos, null);
+        ArtifactResult res = repoSystem.resolveArtifact(repoSession, ar);
+        if (res.getArtifact() == null) {
+          final String message = "nar not found " + attachedNarArtifact;
+          throw new MojoExecutionException(message);
+        }
       } catch (final ArtifactResolutionException e) {
-        final String message = "nar cannot resolve " + attachedNarArtifact.getId();
+        final String message = "nar cannot resolve " + attachedNarArtifact;
         throw new MojoExecutionException(message, e);
       }
     }
   }
 
-  public final List<AttachedNarArtifact> getAllAttachedNarArtifacts(final List<NarArtifact> narArtifacts,
+  public final List<Artifact> getAllAttachedNarArtifacts(final List<NarArtifact> narArtifacts,
       List<? extends Executable> libraries) throws MojoExecutionException, MojoFailureException {
-    final List<AttachedNarArtifact> artifactList = new ArrayList<>();
+    final List<Artifact> artifactList = new ArrayList<>();
     for (NarArtifact dependency : narArtifacts) {
       if ("NAR".equalsIgnoreCase(getMavenProject().getPackaging())) {
-        final String bindings[] = getBindings(libraries, dependency);
+        final List<String> bindings = getBindings(libraries, dependency);
 
         // TODO: dependency.getFile(); find out what the stored pom says
         // about this - what nars should exist, what layout are they
@@ -590,66 +587,61 @@ public abstract class AbstractDependencyMojo extends AbstractNarMojo {
    * 
    * @see getArtifacts
    */
-  protected List<AttachedNarArtifact> getAttachedNarArtifacts(List<? extends Executable> libraries)
+  protected List<Artifact> getAttachedNarArtifacts(List<? extends Executable> libraries)
       throws MojoFailureException, MojoExecutionException {
     getLog().info("Getting Nar dependencies");
     final List<NarArtifact> narArtifacts = getNarArtifacts();
-    final List<AttachedNarArtifact> attachedNarArtifacts = getAllAttachedNarArtifacts(narArtifacts, libraries);
+    final List<Artifact> attachedNarArtifacts = getAllAttachedNarArtifacts(narArtifacts, libraries);
     return attachedNarArtifacts;
   }
 
-  private List<AttachedNarArtifact> getAttachedNarArtifacts(final NarArtifact dependency, final AOL aol,
+  private List<Artifact> getAttachedNarArtifacts(
+      final NarArtifact dependency,
+      final AOL aol,
       final String type) throws MojoExecutionException, MojoFailureException {
+
     getLog().debug("GetNarDependencies for " + dependency + ", aol: " + aol + ", type: " + type);
-    final List<AttachedNarArtifact> artifactList = new ArrayList<>();
     final NarInfo narInfo = dependency.getNarInfo();
-    final String[] nars = narInfo.getAttachedNars(aol, type);
+    final AOL aolString = narInfo.getAOL(aol);
     // FIXME Move this to NarInfo....
-    if (nars != null) {
-      for (final String nar2 : nars) {
-        getLog().debug("    Checking: " + nar2);
-        if (nar2.equals("")) {
-          continue;
-        }
-        final String[] nar = nar2.split(":", 5);
-        if (nar.length >= 4) {
-          try {
-            final String groupId = nar[0].trim();
-            final String artifactId = nar[1].trim();
-            final String ext = nar[2].trim();
-            String classifier = nar[3].trim();
-            // translate for instance g++ to gcc...
-            final AOL aolString = narInfo.getAOL(aol);
-            if (aolString != null) {
-              classifier = NarUtil.replace("${aol}", aolString.toString(), classifier);
-            }
-            final String version = nar.length >= 5 ? nar[4].trim() : dependency.getBaseVersion();
-            artifactList.add(new AttachedNarArtifact(groupId, artifactId, version, dependency.getScope(), ext,
-                classifier, dependency.isOptional(), dependency.getFile()));
-          } catch (final InvalidVersionSpecificationException e) {
-            throw new MojoExecutionException("Error while reading nar file for dependency " + dependency, e);
+    List<ArtifactRequest> req = narInfo.getAttachedNars(aol, type).stream()
+        .peek(dep -> getLog().debug("    Checking: " + dep))
+        .filter(Predicate.not(String::isEmpty))
+        .map(dep -> {
+          // Set the AOL, if any
+          if (aolString != null) {
+            dep = NarUtil.replace("${aol}", aolString.toString(), dep);
           }
-        } else {
-          getLog().warn("nars property in " + dependency.getArtifactId() + " contains invalid field: '" + nar2);
-        }
-      }
+          // Add version if not already included
+          long cnt = dep.chars().filter(ch -> ch == ':').count() + 1;
+          if (cnt < 5) {
+            dep += ":" + dependency.getBaseVersion();
+          }
+          return dep;
+        })
+        .map(dep -> new ArtifactRequest(new DefaultArtifact(dep), projectRepos, null))
+        .collect(Collectors.toList());
+
+    try {
+      final List<Artifact> artifactList = repoSystem.resolveArtifacts(repoSession, req).stream()
+        .map(ArtifactResult::getArtifact)
+        .collect(Collectors.toList());
+      return artifactList;
+    } catch(ArtifactResolutionException e) {
+      throw new MojoExecutionException("Could resolve artifacts", e);
     }
-    return artifactList;
   }
 
-  protected String[] getBindings(List<? extends Executable> libraries, NarArtifact dependency)
+  protected List<String> getBindings(List<? extends Executable> libraries, NarArtifact dependency)
       throws MojoFailureException, MojoExecutionException {
 
-    Set<String> bindings = new HashSet<>();
-    if (libraries != null){
-      for (Object library : libraries) {
-        Executable exec = (Executable) library;
-        // how does this project specify the dependency is used
-        String binding = exec.getBinding(dependency);
-        if( null != binding )
-          bindings.add(binding);
-      }
-    }
+
+    List<String> bindings = Stream.ofNullable(libraries)
+        .flatMap(List::stream)
+        .map(lib -> ((Executable)lib).getBinding(dependency))
+        .filter(Objects::nonNull)
+        .distinct()
+        .collect(Collectors.toList());
 
     // - if it is specified but the atrifact is not available should fail.
     // otherwise
@@ -662,7 +654,7 @@ public abstract class AbstractDependencyMojo extends AbstractNarMojo {
     if (bindings.isEmpty())
       bindings.add(dependency.getNarInfo().getBinding(getAOL(), Library.STATIC));
 
-    return bindings.toArray(new String[1]);
+    return Collections.unmodifiableList(bindings);
   }
 
   protected String getBinding(Executable exec, NarArtifact dependency)
@@ -686,18 +678,6 @@ public abstract class AbstractDependencyMojo extends AbstractNarMojo {
   }
 
   /**
-   * The plugin remote repositories declared in the pom.
-   * 
-   * @since 2.2
-   */
-  // @Parameter(defaultValue = "${project.pluginArtifactRepositories}")
-  // private List remotePluginRepositories;
-
-  protected final ArtifactRepository getLocalRepository() {
-    return this.localRepository;
-  }
-
-  /**
    * Returns dependencies which are dependent on NAR files (i.e. contain
    * NarInfo)
    */
@@ -707,35 +687,40 @@ public abstract class AbstractDependencyMojo extends AbstractNarMojo {
     }
 
     FilterArtifacts filter = new FilterArtifacts();
-
     filter.addFilter(new GroupIdFilter(cleanToBeTokenizedString(this.includeGroupIds),
         cleanToBeTokenizedString(this.excludeGroupIds)));
-
+    
     filter.addFilter(new ArtifactIdFilter(cleanToBeTokenizedString(this.includeArtifactIds),
         cleanToBeTokenizedString(this.excludeArtifactIds)));
 
     filter.addFilter(getArtifactScopeFilter());
-
-    @SuppressWarnings("unchecked")
-    Set<Artifact> artifacts = getMavenProject().getArtifacts();
-
-    // perform filtering
+    
+    final Set<ArtifactRequest> dependencies;
     try {
-      artifacts = filter.filter(artifacts);
+      dependencies = filter.filter(getMavenProject().getArtifacts()).stream()
+        .map(a -> new ArtifactRequest(new DefaultArtifact(a.getId()), projectRepos, null))
+        .collect(Collectors.toSet());
     } catch (ArtifactFilterException e) {
       throw new MojoExecutionException(e.getMessage(), e);
     }
+    
+    List<ArtifactResult> results = null;
+    try {
+      results = repoSystem.resolveArtifacts(repoSession, dependencies);
+    } catch(ArtifactResolutionException e) {
+      throw new MojoExecutionException("Could resolve artifacts", e);
+    }
 
-    for (final Object element : artifacts) {
-      final Artifact dependency = (Artifact) element;
+    for (final ArtifactResult element : results) {
+      final Artifact artifact = element.getArtifact();
 
-      if ("nar".equalsIgnoreCase(dependency.getType())) {
-        getLog().debug("Examining artifact for NarInfo: " + dependency);
+      if ("nar".equalsIgnoreCase(artifact.getExtension())) {
+        getLog().debug("Examining artifact for NarInfo: " + artifact);
 
-        final NarInfo narInfo = getNarInfo(dependency);
+        final NarInfo narInfo = getNarInfo(artifact);
         if (narInfo != null) {
           getLog().debug("    - added as NarDependency");
-          narDependencies.add(new NarArtifact(dependency, narInfo));
+          narDependencies.add(new NarArtifact(artifact, narInfo));
         }
       }
     }
@@ -744,85 +729,75 @@ public abstract class AbstractDependencyMojo extends AbstractNarMojo {
   }
 
   public final NarInfo getNarInfo(final Artifact dependency) throws MojoExecutionException {
-    // FIXME reported to maven developer list, isSnapshot changes behaviour
-    // of getBaseVersion, called in pathOf.
-    dependency.isSnapshot();
 
-    if (dependency.getFile().isDirectory()) {
-      getLog().debug("Dependency is not packaged: " + dependency.getFile());
+    if (Files.isDirectory(dependency.getFile().toPath())) {
+      getLog().debug("Dependency is not packaged: " + dependency.getPath());
 
       return new NarInfo(dependency.getGroupId(), dependency.getArtifactId(), dependency.getBaseVersion(), getLog(),
-          dependency.getFile());
+          dependency.getPath());
     }
 
-    final File file = new File(getLocalRepository().getBasedir(), getLocalRepository().pathOf(dependency));
-    if (!file.exists()) {
-      getLog().debug("Dependency nar file does not exist: " + file);
-      return null;
+    if (!Files.exists(dependency.getFile().toPath())) {
+      getLog().debug("Dependency nar file does not exist: " + dependency.getPath());
+      return null;  
     }
 
-    ZipInputStream zipStream = null;
-    try {
-      zipStream = new ZipInputStream(new FileInputStream(file));
+    try(ZipInputStream zipStream = new ZipInputStream(new FileInputStream(dependency.getFile()))) {
       if (zipStream.getNextEntry() == null) {
-        getLog().debug("Skipping unreadable artifact: " + file);
+        getLog().debug("Skipping unreadable artifact: " + dependency.getFile().getPath());
         return null;
       }
     } catch (IOException e) {
-      throw new MojoExecutionException("Error while testing for zip file " + file, e);
-    } finally {
-      IOUtils.closeQuietly(zipStream);
+      throw new MojoExecutionException("Error while testing for zip file " + dependency.getPath(), e);
     }
 
-    JarFile jar = null;
-    try {
-      jar = new JarFile(file);
+    try (JarFile jar = new JarFile(dependency.getFile())) {
       final NarInfo info = new NarInfo(dependency.getGroupId(), dependency.getArtifactId(),
           dependency.getBaseVersion(), getLog());
       if (!info.exists(jar)) {
-        getLog().debug("Dependency nar file does not contain this artifact: " + file);
+        getLog().debug("Dependency nar file does not contain this artifact: " + dependency.getPath());
         return null;
       }
       info.read(jar);
       return info;
     } catch (final IOException e) {
-      throw new MojoExecutionException("Error while reading " + file, e);
-    } finally {
-      IOUtils.closeQuietly(jar);
+      throw new MojoExecutionException("Error while reading " + dependency.getPath(), e);
     }
   }
 
   protected final NarManager getNarManager() throws MojoFailureException, MojoExecutionException {
-    return new NarManager(getLog(), getLocalRepository(), getMavenProject(), getArchitecture(), getOS(), getLinker());
+    return new NarManager(getLog(), repoSystem, repoSession, projectRepos, getMavenProject(), getArchitecture(), getOS(), getLinker());
   }
 
-  protected final List/* <ArtifactRepository> */getRemoteRepositories() {
-    return this.remoteArtifactRepositories;
+  protected final List<RemoteRepository> getRemoteRepositories() {
+    return this.projectRepos;
   }
 
-  public final void unpackAttachedNars(final List<AttachedNarArtifact> dependencies)
+  public final void unpackAttachedNars(final List<Artifact> dependencies)
       throws MojoExecutionException, MojoFailureException {
-    final File unpackDir = getUnpackDirectory();
+    final Path unpackDir = getUnpackDirectory();
 
     getLog().info(String.format("Unpacking %1$d dependencies to %2$s", dependencies.size(), unpackDir));
 
-    for (final Object element : dependencies) {
-      final AttachedNarArtifact dependency = (AttachedNarArtifact) element;
-      final File file = getNarManager().getNarFile(dependency); // dependency.getNarFile();
-      getLog().debug(String.format("Unpack %1$s (%2$s) to %3$s", dependency, file, unpackDir));
-
-      // TODO: each dependency may have it's own (earlier) version of layout -
-      // if it is unknown then we should report an error to update the nar
-      // package
-      // NarLayout layout = AbstractNarLayout.getLayout( "NarLayout21"/* TODO:
-      // dependency.getLayout() */, getLog() );
-      // we should then target the layout to match the layout for this nar which
-      // is the workspace we are in.
-      final NarLayout layout = getLayout();
-      // TODO: the dependency may be specified against a different linker
-      // (version)?
-      // AOL aol = dependency.getClassifier(); Trim
-      layout.unpackNar(unpackDir, this.archiverManager, file, getOS(), getLinker().getName(), getAOL(), isSkipRanlib());
+    try {
+      dependencies.stream().forEach(Failable.asConsumer(artifact -> {
+        final Path file = artifact.getFile().toPath();
+        getLog().debug(String.format("Unpack %1$s (%2$s) to %3$s", artifact, file, unpackDir));
+        // TODO: each dependency may have it's own (earlier) version of layout -
+        // if it is unknown then we should report an error to update the nar
+        // package
+        // NarLayout layout = AbstractNarLayout.getLayout( "NarLayout21"/* TODO:
+        // dependency.getLayout() */, getLog() );
+        // we should then target the layout to match the layout for this nar which
+        // is the workspace we are in.
+        final NarLayout layout = getLayout();
+        // TODO: the dependency may be specified against a different linker
+        // (version)?
+        // AOL aol = dependency.getClassifier(); Trim
+        layout.unpackNar(unpackDir, this.archiverManager, file, getOS(), getLinker().getName(), getAOL(), isSkipRanlib());
+      }));
+    } catch (RuntimeException e) {
+      throw new MojoExecutionException(e);
     }
   }
 
@@ -839,13 +814,13 @@ public abstract class AbstractDependencyMojo extends AbstractNarMojo {
     return ret;
   }
 
-  protected File getIncludePath(NarArtifact artifact) throws MojoExecutionException, MojoFailureException {
+  protected Path getIncludePath(NarArtifact artifact) throws MojoExecutionException, MojoFailureException {
 
     return getLayout().getIncludeDirectory(getUnpackDirectory(),
         artifact.getArtifactId(), artifact.getVersion());
   }
 
-  protected File getLibraryPath(NarArtifact artifact) throws MojoExecutionException, MojoFailureException {
+  protected Path getLibraryPath(NarArtifact artifact) throws MojoExecutionException, MojoFailureException {
 
     return getLayout().getLibDirectory(getUnpackDirectory(),
         artifact.getArtifactId(), artifact.getVersion(),

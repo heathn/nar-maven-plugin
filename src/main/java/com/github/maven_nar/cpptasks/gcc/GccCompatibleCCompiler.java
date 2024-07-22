@@ -19,7 +19,8 @@
  */
 package com.github.maven_nar.cpptasks.gcc;
 
-import java.io.File;
+import java.nio.file.Path;
+import java.util.List;
 import java.util.Vector;
 
 import org.apache.tools.ant.types.Environment;
@@ -28,7 +29,6 @@ import com.github.maven_nar.cpptasks.CUtil;
 import com.github.maven_nar.cpptasks.OptimizationEnum;
 import com.github.maven_nar.cpptasks.compiler.CommandLineCCompiler;
 import com.github.maven_nar.cpptasks.compiler.LinkType;
-import org.apache.tools.ant.util.FileUtils;
 
 /**
  * Abstract base class for compilers that attempt to be command line compatible
@@ -145,29 +145,26 @@ public abstract class GccCompatibleCCompiler extends CommandLineCCompiler {
   }
 
   @Override
-  protected String getInputFileArgument(final File outputDir, final String filename, final int index) {
+  protected String getInputFileArgument(final Path outputDir, final Path filename, final int index) {
     switch (index) {
       case 0:
         return "-o";
       case 1:
-        final String outputFileName = getOutputFileNames(filename, null)[0];
-        final String objectName = new File(outputDir, outputFileName).toString();
+        final Path outputFileName = getOutputFileNames(filename, null)[0];
+        final String objectName = outputDir.resolve(outputFileName).toString();
         return objectName;
     }
-    String relative = "";
-    if ( this.gccFileAbsolutePath) {
-      return filename;
+    Path relative;
+    if (this.gccFileAbsolutePath) {
+      return filename.toString();
     } else {
-      try {
-        relative = FileUtils.getRelativePath(workDir, new File(filename));
-      } catch (Exception ex) {
-      }
+      relative = workDir.relativize(filename);
     }
 	
-    if (relative.isEmpty()) {
-      return filename;
+    if (relative.getNameCount() == 0) {
+      return filename.toString();
     } else {
-      return relative;
+      return relative.toString();
     }
   }
 
@@ -182,18 +179,18 @@ public abstract class GccCompatibleCCompiler extends CommandLineCCompiler {
   }
 
   @Override
-  protected File[] getEnvironmentIncludePath() {
+  protected List<Path> getEnvironmentIncludePath() {
     return CUtil.getPathFromEnvironment("INCLUDE", ":");
   }
 
   // Darren Sargent 22Oct2008 - added overloads to properly handle system paths
   @Override
-  public String getIncludeDirSwitch(final String includeDir) {
+  public String getIncludeDirSwitch(final Path includeDir) {
     return getIncludeDirSwitch(includeDir, false);
   }
 
   @Override
-  public String getIncludeDirSwitch(final String includeDir, final boolean isSystem) {
+  public String getIncludeDirSwitch(final Path includeDir, final boolean isSystem) {
     if (isSystem) {
       return "-isystem" + includeDir;
     } else {

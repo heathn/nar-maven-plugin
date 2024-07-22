@@ -19,11 +19,10 @@
  */
 package com.github.maven_nar.cpptasks.compiler;
 
-import java.io.BufferedReader;
-import java.io.File;
-import java.io.FileReader;
 import java.io.IOException;
 import java.io.Reader;
+import java.nio.file.Files;
+import java.nio.file.Path;
 
 import org.apache.tools.ant.BuildException;
 import org.apache.tools.ant.types.Environment;
@@ -67,7 +66,7 @@ public abstract class PrecompilingCommandLineCompiler extends CommandLineCompile
    */
   @Override
   public CompilerConfiguration[] createPrecompileConfigurations(final CompilerConfiguration config,
-      final File prototype, final String[] exceptFiles) {
+      final Path prototype, final Path[] exceptFiles) {
     //
     // cast should success or someone is passing us a configuration
     // that was prepared by another processor
@@ -78,8 +77,7 @@ public abstract class PrecompilingCommandLineCompiler extends CommandLineCompile
     //
     final Parser parser = createParser(prototype);
     String[] includes;
-    try {
-      final Reader reader = new BufferedReader(new FileReader(prototype));
+    try (final Reader reader = Files.newBufferedReader(prototype)) {
       parser.parse(reader);
       includes = parser.getIncludes();
     } catch (final IOException ex) {
@@ -97,8 +95,8 @@ public abstract class PrecompilingCommandLineCompiler extends CommandLineCompile
   }
 
   abstract protected CompilerConfiguration createPrecompileGeneratingConfig(
-      CommandLineCompilerConfiguration baseConfig, File prototype, String lastInclude);
+      CommandLineCompilerConfiguration baseConfig, Path prototype, String lastInclude);
 
   abstract protected CompilerConfiguration createPrecompileUsingConfig(CommandLineCompilerConfiguration baseConfig,
-      File prototype, String lastInclude, String[] exceptFiles);
+      Path prototype, String lastInclude, Path[] exceptFiles);
 }

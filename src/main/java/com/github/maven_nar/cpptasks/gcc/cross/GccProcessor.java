@@ -20,9 +20,9 @@
 package com.github.maven_nar.cpptasks.gcc.cross;
 
 import java.io.BufferedReader;
-import java.io.File;
-import java.io.FileReader;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Vector;
 
 import com.github.maven_nar.cpptasks.CUtil;
@@ -60,21 +60,17 @@ public class GccProcessor {
    *          array of names, some elements may be null, will be changed in
    *          place.
    */
-  public static void convertCygwinFilenames(final String[] names) {
+  public static void convertCygwinFilenames(final Path[] names) {
     if (names == null) {
       throw new NullPointerException("names");
     }
-    final File gccDir = CUtil.getExecutableLocation("gcc.exe");
+    final Path gccDir = CUtil.getExecutableLocation("gcc.exe");
     if (gccDir != null) {
-      final String prefix = gccDir.getAbsolutePath() + "/..";
-      final StringBuffer buf = new StringBuffer();
+      final Path prefix = gccDir.getParent();
       for (int i = 0; i < names.length; i++) {
-        final String name = names[i];
-        if (name != null && name.length() > 1 && name.charAt(0) == '/') {
-          buf.setLength(0);
-          buf.append(prefix);
-          buf.append(name);
-          names[i] = buf.toString();
+        final Path name = names[i];
+        if (name != null && name.toString().length() > 1 && name.toString().charAt(0) == '/') {
+          names[i] = prefix.resolve(name);
         }
       }
     }
@@ -122,7 +118,7 @@ public class GccProcessor {
    */
   public static String[] getSpecs() {
     if (specs == null) {
-      final File gccParent = CUtil.getExecutableLocation("gcc.exe");
+      final Path gccParent = CUtil.getExecutableLocation("gcc.exe");
       if (gccParent != null) {
         //
         // build a relative path like
@@ -131,19 +127,20 @@ public class GccProcessor {
         //
         // resolve it relative to the location of gcc.exe
         //
-        final String relativePath = "../lib/gcc-lib/" + getMachine() +
-            '/' +
-            getVersion() +
-            "/specs";
-        final File specsFile = new File(gccParent, relativePath);
+        final String[] relativePath = {
+          "../lib/gcc-lib",
+          getMachine(),
+          getVersion(),
+          "specs"
+        };
+        final Path specsFile = Path.of(gccParent.toString(), relativePath);
         //
         // found the specs file
         //
-        try {
+        try (final BufferedReader reader = Files.newBufferedReader(specsFile)) {
           //
           // read the lines in the file
           //
-          final BufferedReader reader = new BufferedReader(new FileReader(specsFile));
           final Vector<String> lines = new Vector<>(100);
           String line = reader.readLine();
           while (line != null) {
@@ -152,7 +149,8 @@ public class GccProcessor {
           }
           specs = new String[lines.size()];
           lines.copyInto(specs);
-        } catch (final IOException ex) {
+        } catch (IOException e) {
+          throw new RuntimeException(e);
         }
       }
     }

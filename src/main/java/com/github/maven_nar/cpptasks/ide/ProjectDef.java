@@ -21,6 +21,7 @@ package com.github.maven_nar.cpptasks.ide;
 
 import java.io.File;
 import java.lang.reflect.Method;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -59,7 +60,7 @@ public final class ProjectDef extends DataType {
   /**
    * Project file name.
    */
-  private File outFile;
+  private Path outFile;
 
   /**
    * Project name.
@@ -145,7 +146,7 @@ public final class ProjectDef extends DataType {
    * @param linkTarget
    *          link target
    */
-  public void execute(final CCTask task, final List<File> sources, final Map<String, TargetInfo> targets,
+  public void execute(final CCTask task, final List<Path> sources, final Map<Path, TargetInfo> targets,
       final TargetInfo linkTarget) {
     try {
       this.projectWriter.writeProject(this.outFile, task, this, sources, targets, linkTarget);
@@ -245,7 +246,7 @@ public final class ProjectDef extends DataType {
         final Method getInstance = implClass.getMethod("getInstance");
         proc = getInstance.invoke(null);
       } catch (final Exception ex) {
-        proc = implClass.newInstance();
+        proc = implClass.getDeclaredConstructor().newInstance();
       }
     } catch (final Exception ex) {
       throw new BuildException(ex);
@@ -296,7 +297,7 @@ public final class ProjectDef extends DataType {
    * @param outfile
    *          output file name
    */
-  public void setOutfile(final File outfile) {
+  public void setOutfile(final Path outfile) {
     //
     // if file name was empty, skip link step
     //

@@ -21,6 +21,8 @@ package com.github.maven_nar.cpptasks.gcc;
 
 import junit.framework.TestCase;
 
+import java.nio.file.Path;
+
 import com.github.maven_nar.cpptasks.OutputTypeEnum;
 import com.github.maven_nar.cpptasks.compiler.LinkType;
 import com.github.maven_nar.cpptasks.compiler.Linker;
@@ -55,7 +57,7 @@ public class TestGccLinker extends TestCase {
     final LinkType linkType = new LinkType();
     linkType.setOutputType(outputType);
     final Linker pluginLinker = linker.getLinker(linkType);
-    assertEquals("libfoo.bundle", pluginLinker.getOutputFileNames("foo", null)[0]);
+    assertEquals(Path.of("libfoo.bundle"), pluginLinker.getOutputFileNames(Path.of("foo"), null)[0]);
   }
 
   public void testGetLinkerDarwinShared() {
@@ -66,7 +68,7 @@ public class TestGccLinker extends TestCase {
     final LinkType linkType = new LinkType();
     linkType.setOutputType(outputType);
     final Linker sharedLinker = linker.getLinker(linkType);
-    assertEquals("libfoo.dylib", sharedLinker.getOutputFileNames("foo", null)[0]);
+    assertEquals(Path.of("libfoo.dylib"), sharedLinker.getOutputFileNames(Path.of("foo"), null)[0]);
   }
 
   public void testGetLinkerNonDarwinPlugin() {
@@ -77,7 +79,7 @@ public class TestGccLinker extends TestCase {
     final LinkType linkType = new LinkType();
     linkType.setOutputType(outputType);
     final Linker pluginLinker = linker.getLinker(linkType);
-    assertEquals("libfoo.so", pluginLinker.getOutputFileNames("foo", null)[0]);
+    assertEquals(Path.of("libfoo.so"), pluginLinker.getOutputFileNames(Path.of("foo"), null)[0]);
   }
 
   public void testGetLinkerNonDarwinShared() {
@@ -88,6 +90,6 @@ public class TestGccLinker extends TestCase {
     final LinkType linkType = new LinkType();
     linkType.setOutputType(outputType);
     final Linker sharedLinker = linker.getLinker(linkType);
-    assertEquals("libfoo.so", sharedLinker.getOutputFileNames("foo", null)[0]);
+    assertEquals(Path.of("libfoo.so"), sharedLinker.getOutputFileNames(Path.of("foo"), null)[0]);
   }
 }

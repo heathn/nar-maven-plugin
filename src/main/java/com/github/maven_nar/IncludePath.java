@@ -44,7 +44,7 @@ public class IncludePath {
    *
    * @parameter
    */
-  private List/* <String> */includes;
+  private List<String> includes;
 
   /**
    * File corresponding to the path above.

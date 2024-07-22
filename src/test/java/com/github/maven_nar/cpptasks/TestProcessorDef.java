@@ -21,6 +21,7 @@ package com.github.maven_nar.cpptasks;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Path;
 
 import junit.framework.TestCase;
 
@@ -82,7 +83,7 @@ public abstract class TestProcessorDef extends TestCase {
   protected final ProcessorConfiguration getConfiguration(final ProcessorDef extendedProcessor) {
     final CCTask cctask = new CCTask();
     final LinkType linkType = new LinkType();
-    final File objDir = new File("dummy");
+    final Path objDir = Path.of("dummy");
     cctask.setObjdir(objDir);
     return extendedProcessor.createConfiguration(cctask, linkType, null, null, null);
   }

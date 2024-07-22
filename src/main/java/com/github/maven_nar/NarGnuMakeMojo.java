@@ -19,7 +19,12 @@
  */
 package com.github.maven_nar;
 
-import java.io.File;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Arrays;
+import java.util.List;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
@@ -70,17 +75,17 @@ public class NarGnuMakeMojo extends AbstractGnuMojo {
       return;
     }
 
-    final File srcDir = getGnuAOLSourceDirectory();
-    if (srcDir.exists()) {
-      String[] args = null;
-      String[] env = null;
+    final Path srcDir = getGnuAOLSourceDirectory();
+    if (Files.exists(srcDir)) {
 
-      if (this.gnuMakeArgs != null) {
-        args = this.gnuMakeArgs.split(" ");
-      }
-      if (this.gnuMakeEnv != null) {
-        env = this.gnuMakeEnv.split(",");
-      }
+      List<String> args = Stream.ofNullable(this.gnuMakeArgs)
+          .map(s -> s.split(" "))
+          .flatMap(Arrays::stream)
+          .collect(Collectors.toList());
+      List<String> env = Stream.ofNullable(this.gnuMakeEnv)
+          .map(s -> s.split(","))
+          .flatMap(Arrays::stream)
+          .collect(Collectors.toList());
 
       getLog().info("Running GNU make");
       int result = NarUtil.runCommand(make, args, srcDir, env, getLog());
@@ -91,14 +96,8 @@ public class NarGnuMakeMojo extends AbstractGnuMojo {
 
       if (!this.gnuMakeInstallSkip) {
         getLog().info("Running make install");
-        if (args != null) {
-          this.gnuMakeArgs = this.gnuMakeArgs + " install";
-          args = this.gnuMakeArgs.split(" ");
-        } else {
-          args = new String[] {
-            "install"
-          };
-        }
+
+        args.add("install");
         result = NarUtil.runCommand(make, args, srcDir, env, getLog());
         if (result != 0) {
           throw new MojoExecutionException("'" + make +

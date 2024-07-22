@@ -19,6 +19,8 @@
  */
 package com.github.maven_nar.cpptasks.compiler;
 
+import java.nio.file.Path;
+
 import org.apache.tools.ant.types.Environment;
 
 /**
@@ -80,8 +82,8 @@ public abstract class AbstractProcessor implements Processor, Cloneable {
    *         files, for example), 100 indicates strong interest
    */
   @Override
-  public int bid(final String inputFile) {
-    final String lower = inputFile.toLowerCase();
+  public int bid(final Path inputFile) {
+    final String lower = inputFile.toString().toLowerCase();
     for (final String sourceExtension : this.sourceExtensions) {
       if (lower.endsWith(sourceExtension)) {
         return DEFAULT_PROCESS_BID;

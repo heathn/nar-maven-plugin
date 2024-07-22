@@ -19,7 +19,8 @@
  */
 package com.github.maven_nar.cpptasks.compaq;
 
-import java.io.File;
+import java.nio.file.Path;
+import java.util.List;
 import java.util.Vector;
 
 import org.apache.tools.ant.types.Environment;
@@ -124,12 +125,12 @@ public class CompaqVisualFortranCompiler extends CommandLineFortranCompiler {
   }
 
   @Override
-  protected File[] getEnvironmentIncludePath() {
+  protected List<Path> getEnvironmentIncludePath() {
     return CUtil.getPathFromEnvironment("INCLUDE", ";");
   }
 
   @Override
-  protected String getIncludeDirSwitch(final String includeDir) {
+  protected String getIncludeDirSwitch(final Path includeDir) {
     // BEGINFREEHEP quotes seem to confuse the compiler
     // if (includeDir.indexOf(' ') >= 0) {
     // buf.append('"');

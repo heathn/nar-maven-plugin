@@ -67,7 +67,7 @@ public class Test implements Executable {
    * option is only used if run=true.
    */
   @Parameter
-  private List/* <String> */args = new ArrayList();
+  private List<String> args = new ArrayList<>();
 
   /**
    * List of artifact:binding  for type of dependency to link against when there is a choice.
@@ -83,7 +83,7 @@ public class Test implements Executable {
   
 
   @Override
-  public final List/* <String> */getArgs() {
+  public final List<String> getArgs() {
     return this.args;
   }
 

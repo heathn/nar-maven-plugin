@@ -19,7 +19,8 @@
  */
 package com.github.maven_nar.cpptasks.borland;
 
-import java.io.File;
+import java.nio.file.Path;
+import java.util.List;
 import java.util.Vector;
 
 import org.apache.tools.ant.BuildException;
@@ -78,7 +79,7 @@ public class BorlandResourceCompiler extends CommandLineCompiler {
   }
 
   @Override
-  public void compile(final CCTask task, final File outputDir, final String[] sourceFiles, final String[] args,
+  public void compile(final CCTask task, final Path outputDir, final Path[] sourceFiles, final String[] args,
       final String[] endArgs, final boolean relentless, final CommandLineCompilerConfiguration config,
       final ProgressMonitor monitor) throws BuildException {
     super.compile(task, outputDir, sourceFiles, args, endArgs, relentless, config, monitor);
@@ -89,7 +90,7 @@ public class BorlandResourceCompiler extends CommandLineCompiler {
    * inherit from CommandLineCCompiler
    */
   @Override
-  protected Parser createParser(final File source) {
+  protected Parser createParser(final Path source) {
     return new CParser();
   }
 
@@ -109,25 +110,25 @@ public class BorlandResourceCompiler extends CommandLineCompiler {
   }
 
   @Override
-  protected File[] getEnvironmentIncludePath() {
+  protected List<Path> getEnvironmentIncludePath() {
     return BorlandProcessor.getEnvironmentPath("brc32", 'i', new String[] {
       "..\\include"
     });
   }
 
   @Override
-  protected String getIncludeDirSwitch(final String includeDir) {
+  protected String getIncludeDirSwitch(final Path includeDir) {
     return BorlandProcessor.getIncludeDirSwitch("-i", includeDir);
   }
 
   @Override
-  protected String getInputFileArgument(final File outputDir, final String filename, final int index) {
+  protected String getInputFileArgument(final Path outputDir, final Path filename, final int index) {
     if (index == 0) {
-      final String[] outputFileNames = getOutputFileNames(filename, null);
-      final String fullOutputName = new File(outputDir, outputFileNames[0]).toString();
+      final Path[] outputFileNames = getOutputFileNames(filename, null);
+      final String fullOutputName = outputDir.resolve(outputFileNames[0]).toString();
       return "-fo" + fullOutputName;
     }
-    return filename;
+    return filename.toString();
   }
 
   @Override

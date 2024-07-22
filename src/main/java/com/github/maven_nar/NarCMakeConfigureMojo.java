@@ -19,17 +19,19 @@
  */
 package com.github.maven_nar;
 
-import java.io.File;
 import java.io.IOException;
-import java.util.ArrayList;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.List;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
 import org.apache.maven.plugins.annotations.LifecyclePhase;
 import org.apache.maven.plugins.annotations.Mojo;
 import org.apache.maven.plugins.annotations.Parameter;
-import org.codehaus.plexus.util.FileUtils;
 
 /**
  * Copies the CMake style source files to a target area, runs CMake to
@@ -57,13 +59,13 @@ public class NarCMakeConfigureMojo extends AbstractCMakeMojo {
       return;
     }
 
-    File targetDir = getCMakeAOLSourceDirectory();
-    if (getCMakeSourceDirectory().exists()) {
+    Path targetDir = getCMakeAOLSourceDirectory();
+    if (Files.exists(getCMakeSourceDirectory())) {
       validateCMake();
       getLog().info("Copying CMake project");
 
       try {
-        FileUtils.mkdir(targetDir.getPath());
+        Files.createDirectories(targetDir);
         NarUtil.copyDirectoryStructure(getCMakeSourceDirectory(),
             targetDir, null, null);
       } catch (IOException e) {
@@ -72,26 +74,22 @@ public class NarCMakeConfigureMojo extends AbstractCMakeMojo {
 
       getLog().info("Running CMake");
 
-      String[] args;
-      if (cmakeConfigureArgs != null) {
-        String[] a = cmakeConfigureArgs.split(" ");
-        args = new String[a.length + 2];
-        for (int i = 0; i < a.length; i++) {
-          args[i] = a[i];
-        }
-      } else {
-        args = new String[2];
-      }
+      List<String> args = Stream.ofNullable(cmakeConfigureArgs)
+          .map(s -> s.split(" "))
+          .flatMap(Arrays::stream)
+          .collect(Collectors.toList());
 
-      List<String> env = new ArrayList<String>();
+      args.add("-DCMAKE_INSTALL_PREFIX=" +
+          getCMakeAOLTargetDirectory().toAbsolutePath().toString());
+      args.add(targetDir.toAbsolutePath().toString());
 
-      args[args.length-2] = "-DCMAKE_INSTALL_PREFIX=" +
-          getCMakeAOLTargetDirectory().getAbsolutePath();
-      args[args.length-1] = targetDir.getAbsolutePath();
+      getLog().info("args: " + args);
 
-      getLog().info("args: " + arraysToString(args));
-      int result = NarUtil.runCommand(getCMakeExeFile().getAbsolutePath(),
-          args, targetDir,  (String[])env.toArray(new String[env.size()]),
+      int result = NarUtil.runCommand(
+          getCMakeExeFile().toAbsolutePath().toString(),
+          args,
+          targetDir,
+          null,
           getLog());
       if (result != 0) {
         throw new MojoExecutionException("'" + getCMakeExeFile()
@@ -102,30 +100,12 @@ public class NarCMakeConfigureMojo extends AbstractCMakeMojo {
   }
 
   private void validateCMake() throws MojoExecutionException, MojoFailureException {
-    int result = NarUtil.runCommand(getCMakeExeFile().getAbsolutePath(),
-        new String[] { "-version" }, null, null, getLog());
+    int result = NarUtil.runCommand(getCMakeExeFile().toAbsolutePath().toString(),
+        List.of("-version"), null, null, getLog());
     if (result != 0) {
       throw new MojoExecutionException("'" + getCMakeExeFile() + "'" +
           "does not appear to be installed.  Please install " +
           "package from http://cmake.org");
-    }
-  }
-
-  // JDK 1.4 compatibility
-  private static String arraysToString(Object[] a) {
-    if (a == null)
-      return "null";
-    int iMax = a.length - 1;
-    if (iMax == -1)
-      return "[]";
-
-    StringBuilder b = new StringBuilder();
-    b.append('[');
-    for (int i = 0;; i++) {
-      b.append(String.valueOf(a[i]));
-      if (i == iMax)
-        return b.append(']').toString();
-      b.append(", ");
     }
   }
 

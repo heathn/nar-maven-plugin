@@ -19,6 +19,8 @@
  */
 package com.github.maven_nar.cpptasks.compiler;
 
+import java.nio.file.Path;
+
 import junit.framework.TestCase;
 
 /**
@@ -36,28 +38,28 @@ public abstract class TestCompilerConfiguration extends TestCase {
 
   public void testBid() {
     final CompilerConfiguration compiler = create();
-    int bid = compiler.bid("c:/foo\\bar\\hello.c");
+    int bid = compiler.bid(Path.of("c:/foo\\bar\\hello.c"));
     assertEquals(100, bid);
-    bid = compiler.bid("c:/foo\\bar/hello.c");
+    bid = compiler.bid(Path.of("c:/foo\\bar/hello.c"));
     assertEquals(100, bid);
-    bid = compiler.bid("c:/foo\\bar\\hello.h");
+    bid = compiler.bid(Path.of("c:/foo\\bar\\hello.h"));
     assertEquals(1, bid);
-    bid = compiler.bid("c:/foo\\bar/hello.h");
+    bid = compiler.bid(Path.of("c:/foo\\bar/hello.h"));
     assertEquals(1, bid);
-    bid = compiler.bid("c:/foo\\bar/hello.pas");
+    bid = compiler.bid(Path.of("c:/foo\\bar/hello.pas"));
     assertEquals(0, bid);
-    bid = compiler.bid("c:/foo\\bar/hello.java");
+    bid = compiler.bid(Path.of("c:/foo\\bar/hello.java"));
     assertEquals(0, bid);
   }
 
   public void testGetOutputFileName1() {
     final CompilerConfiguration compiler = create();
-    final String input = "c:/foo\\bar\\hello.c";
+    final Path input = Path.of("c:/foo\\bar\\hello.c");
     //
     // may cause IllegalStateException since
     // setPlatformInfo has not been called
     try {
-      final String[] output = compiler.getOutputFileNames(input, null);
+      final Path[] output = compiler.getOutputFileNames(input, null);
     } catch (final java.lang.IllegalStateException ex) {
     }
   }
@@ -65,19 +67,19 @@ public abstract class TestCompilerConfiguration extends TestCase {
   public void testGetOutputFileName2() {
     final CompilerConfiguration compiler = create();
 //    String[] output = compiler.getOutputFileNames("c:\\foo\\bar\\hello.c", null);  Windows only, on *nix gets treated as filename not pathed.
-    String[] output = compiler.getOutputFileNames("c:/foo/bar/hello.c", null);
-    String[] output2 = compiler.getOutputFileNames("c:/foo/bar/fake/../hello.c", null);
+    Path[] output = compiler.getOutputFileNames(Path.of("c:/foo/bar/hello.c"), null);
+    Path[] output2 = compiler.getOutputFileNames(Path.of("c:/foo/bar/fake/../hello.c"), null);
     assertEquals(output[0], output2[0]); // files in same location get mangled same way - full path
 
-    output = compiler.getOutputFileNames("hello.c", null);
+    output = compiler.getOutputFileNames(Path.of("hello.c"), null);
     assertNotSame(output[0], output2[0]); // files in different folders get mangled in different way
     
-    output2 = compiler.getOutputFileNames("fake/../hello.c", null);
+    output2 = compiler.getOutputFileNames(Path.of("fake/../hello.c"), null);
     assertEquals(output[0], output2[0]); // files in same location get mangled same way - relative path
     
-    output = compiler.getOutputFileNames("c:/foo/bar/hello.h", null);
+    output = compiler.getOutputFileNames(Path.of("c:/foo/bar/hello.h"), null);
     assertEquals(0, output.length);
-    output = compiler.getOutputFileNames("c:/foo/bar/fake/../hello.h", null);
+    output = compiler.getOutputFileNames(Path.of("c:/foo/bar/fake/../hello.h"), null);
     assertEquals(0, output.length);
   }
 }

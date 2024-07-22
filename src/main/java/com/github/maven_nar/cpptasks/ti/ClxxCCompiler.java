@@ -19,7 +19,8 @@
  */
 package com.github.maven_nar.cpptasks.ti;
 
-import java.io.File;
+import java.nio.file.Path;
+import java.util.List;
 import java.util.Vector;
 
 import org.apache.tools.ant.types.Environment;
@@ -103,23 +104,22 @@ public class ClxxCCompiler extends CommandLineCCompiler {
   }
 
   @Override
-  protected File[] getEnvironmentIncludePath() {
-    final File[] c_dir = CUtil.getPathFromEnvironment("C_DIR", ";");
-    final File[] cx_dir = CUtil.getPathFromEnvironment("C6X_C_DIR", ";");
-    if (c_dir.length == 0) {
+  protected List<Path> getEnvironmentIncludePath() {
+    final List<Path> c_dir = CUtil.getPathFromEnvironment("C_DIR", ";");
+    final List<Path> cx_dir = CUtil.getPathFromEnvironment("C6X_C_DIR", ";");
+    if (c_dir.size() == 0) {
       return cx_dir;
     }
-    if (cx_dir.length == 0) {
+    if (cx_dir.size() == 0) {
       return c_dir;
     }
-    final File[] combo = new File[c_dir.length + cx_dir.length];
-    System.arraycopy(cx_dir, 0, combo, 0, cx_dir.length);
-    System.arraycopy(c_dir, 0, combo, 0 + cx_dir.length, c_dir.length);
-    return combo;
+
+    cx_dir.addAll(c_dir);
+    return cx_dir;
   }
 
   @Override
-  protected String getIncludeDirSwitch(final String source) {
+  protected String getIncludeDirSwitch(final Path source) {
     return "-I" + source;
   }
 

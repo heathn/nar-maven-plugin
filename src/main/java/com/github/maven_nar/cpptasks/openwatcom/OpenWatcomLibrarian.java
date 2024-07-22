@@ -19,7 +19,10 @@
  */
 package com.github.maven_nar.cpptasks.openwatcom;
 
-import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.List;
 import java.util.Vector;
 
 import com.github.maven_nar.cpptasks.CCTask;
@@ -146,7 +149,7 @@ public final class OpenWatcomLibrarian extends CommandLineLinker {
    * @return String command file switch
    */
   @Override
-  protected String getCommandFileSwitch(final String cmdFile) {
+  protected String getCommandFileSwitch(final Path cmdFile) {
     return OpenWatcomProcessor.getCommandFileSwitch(cmdFile);
   }
 
@@ -156,7 +159,7 @@ public final class OpenWatcomLibrarian extends CommandLineLinker {
    * @return File[] library search path
    */
   @Override
-  public File[] getLibraryPath() {
+  public List<Path> getLibraryPath() {
     return CUtil.getPathFromEnvironment("LIB", ";");
   }
 
@@ -204,7 +207,7 @@ public final class OpenWatcomLibrarian extends CommandLineLinker {
    * @return String[] output file switch
    */
   @Override
-  public String[] getOutputFileSwitch(final String outFile) {
+  public String[] getOutputFileSwitch(final Path outFile) {
     return OpenWatcomProcessor.getOutputFileSwitch(outFile);
   }
 
@@ -231,11 +234,15 @@ public final class OpenWatcomLibrarian extends CommandLineLinker {
    *          linker configuration
    */
   @Override
-  public void link(final CCTask task, final File outputFile, final String[] sourceFiles,
+  public void link(final CCTask task, final Path outputFile, final List<Path> sourceFiles,
       final CommandLineLinkerConfiguration config) {
     //
     // delete any existing library
-    outputFile.delete();
+    try {
+      Files.deleteIfExists(outputFile);
+    } catch (IOException e) {
+      throw new RuntimeException(e);
+    }
     //
     // build a new library
     super.link(task, outputFile, sourceFiles, config);
@@ -257,16 +264,15 @@ public final class OpenWatcomLibrarian extends CommandLineLinker {
    * @return arguments for runTask
    */
   @Override
-  protected String[] prepareArguments(final CCTask task, final String outputDir, final String outputName,
-      final String[] sourceFiles, final CommandLineLinkerConfiguration config) {
+  protected String[] prepareArguments(final CCTask task, final Path outputDir, final Path outputName,
+      final List<Path> sourceFiles, final CommandLineLinkerConfiguration config) {
     final String[] preargs = config.getPreArguments();
     final String[] endargs = config.getEndArguments();
-    final StringBuffer buf = new StringBuffer();
-    final Vector<String> execArgs = new Vector<>(preargs.length + endargs.length + 10 + sourceFiles.length);
+    final Vector<String> execArgs = new Vector<>(preargs.length + endargs.length + 10 + sourceFiles.size());
 
     execArgs.addElement(this.getCommand());
-    final String outputFileName = new File(outputDir, outputName).toString();
-    execArgs.addElement(quoteFilename(buf, outputFileName));
+    final Path outputFileName = outputDir.resolve(outputName);
+    execArgs.addElement(quoteFilename(outputFileName));
 
     for (final String prearg : preargs) {
       execArgs.addElement(prearg);
@@ -274,11 +280,15 @@ public final class OpenWatcomLibrarian extends CommandLineLinker {
 
     int objBytes = 0;
 
-    for (final String sourceFile : sourceFiles) {
-      final String last4 = sourceFile.substring(sourceFile.length() - 4).toLowerCase();
+    for (final Path sourceFile : sourceFiles) {
+      final String last4 = sourceFile.toString().substring(sourceFile.toString().length() - 4).toLowerCase();
       if (!last4.equals(".def") && !last4.equals(".res") && !last4.equals(".lib")) {
-        execArgs.addElement("+" + quoteFilename(buf, sourceFile));
-        objBytes += new File(sourceFile).length();
+        execArgs.addElement("+" + quoteFilename(sourceFile));
+        try {
+          objBytes += Files.size(sourceFile);
+        } catch (IOException e) {
+          throw new RuntimeException(e);
+        }
       }
     }
 

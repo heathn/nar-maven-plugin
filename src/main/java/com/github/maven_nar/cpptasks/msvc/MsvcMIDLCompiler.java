@@ -19,7 +19,8 @@
  */
 package com.github.maven_nar.cpptasks.msvc;
 
-import java.io.File;
+import java.nio.file.Path;
+import java.util.List;
 import java.util.Vector;
 
 import org.apache.tools.ant.types.Environment;
@@ -88,7 +89,7 @@ public final class MsvcMIDLCompiler extends CommandLineCompiler {
    * inherit from CommandLineCCompiler
    */
   @Override
-  protected Parser createParser(final File source) {
+  protected Parser createParser(final Path source) {
     return new CParser();
   }
 
@@ -103,43 +104,43 @@ public final class MsvcMIDLCompiler extends CommandLineCompiler {
   }
 
   @Override
-  protected File[] getEnvironmentIncludePath() {
+  protected List<Path> getEnvironmentIncludePath() {
     return CUtil.getPathFromEnvironment("INCLUDE", ";");
   }
 
   @Override
-  protected String getIncludeDirSwitch(final String includeDir) {
+  protected String getIncludeDirSwitch(final Path includeDir) {
     return MsvcProcessor.getIncludeDirSwitch(includeDir);
   }
 
   @Override
-  public String[] getOutputFileNames(final String inputFile, final VersionInfo versionInfo) {
+  public Path[] getOutputFileNames(final Path inputFile, final VersionInfo versionInfo) {
     //
     // if a recognized input file
     //
     if (bid(inputFile) > 1) {
       final String baseName = getBaseOutputName(inputFile);
-      return new String[] {
-        baseName + getOutputSuffix()
+      return new Path[] {
+        Path.of(baseName + getOutputSuffix())
       };
     }
-    return new String[0];
+    return new Path[0];
   }
   
   @Override
-  protected String getInputFileArgument(final File outputDir, final String filename, final int index) {
+  protected String getInputFileArgument(final Path outputDir, final Path filename, final int index) {
     switch (index) {
       case 0:
         return "/tlb";
       case 1:
-        return new File(outputDir, getOutputFileNames(filename, null)[0]).getAbsolutePath();
+        return outputDir.resolve(getOutputFileNames(filename, null)[0]).toAbsolutePath().toString();
       case 2:
         return "/out";
       case 3:
-        return outputDir.getAbsolutePath();
+        return outputDir.toAbsolutePath().toString();
        
     }
-    return filename;
+    return filename.toString();
   }
 
   @Override

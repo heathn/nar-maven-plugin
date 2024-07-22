@@ -19,7 +19,8 @@
  */
 package com.github.maven_nar.cpptasks;
 
-import java.io.File;
+import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.Enumeration;
 import java.util.Vector;
 
@@ -41,7 +42,7 @@ public final class PrecompileDef extends DataType {
   /**
    * Directory of prototype file
    */
-  private File prototype = new File("stdafx.cpp");
+  private Path prototype = Path.of("stdafx.cpp");
   private String unlessCond;
 
   /**
@@ -73,30 +74,30 @@ public final class PrecompileDef extends DataType {
     throw new org.apache.tools.ant.BuildException("Not an actual task, but looks like one for documentation purposes");
   }
 
-  public String[] getExceptFiles() {
+  public Path[] getExceptFiles() {
     final PrecompileDef ref = getRef();
     if (ref != null) {
       return ref.getExceptFiles();
     }
     if (this.exceptSets.size() == 0) {
-      return new String[0];
+      return new Path[0];
     }
     final Project p = getProject();
-    String[] exceptFiles = null;
+    Path[] exceptFiles = null;
     final Enumeration setEnum = this.exceptSets.elements();
     while (setEnum.hasMoreElements()) {
       final ConditionalFileSet exceptSet = (ConditionalFileSet) setEnum.nextElement();
       if (exceptSet.isActive()) {
         final DirectoryScanner scanner = exceptSet.getDirectoryScanner(p);
-        final String[] scannerFiles = scanner.getIncludedFiles();
+        final Path[] scannerFiles = Arrays.stream(scanner.getIncludedFiles()).map(Path::of).toArray(Path[]::new);
         if (exceptFiles == null) {
           exceptFiles = scannerFiles;
         } else {
           if (scannerFiles.length > 0) {
-            final String[] newFiles = new String[exceptFiles.length + scannerFiles.length];
+            final Path[] newFiles = new Path[exceptFiles.length + scannerFiles.length];
             System.arraycopy(exceptFiles, 0, newFiles, 0, exceptFiles.length);
             int index = exceptFiles.length;
-            for (final String scannerFile : scannerFiles) {
+            for (final Path scannerFile : scannerFiles) {
               newFiles[index++] = scannerFile;
             }
             exceptFiles = newFiles;
@@ -105,7 +106,7 @@ public final class PrecompileDef extends DataType {
       }
     }
     if (exceptFiles == null) {
-      exceptFiles = new String[0];
+      exceptFiles = new Path[0];
     }
     return exceptFiles;
   }
@@ -114,7 +115,7 @@ public final class PrecompileDef extends DataType {
    * Gets prototype source file
    * 
    */
-  public File getPrototype() {
+  public Path getPrototype() {
     final PrecompileDef ref = getRef();
     if (ref != null) {
       return ref.getPrototype();
@@ -186,7 +187,7 @@ public final class PrecompileDef extends DataType {
    * @param prototype
    *          file path for prototype source file
    */
-  public void setPrototype(final File prototype) {
+  public void setPrototype(final Path prototype) {
     if (isReference()) {
       throw tooManyAttributes();
     }

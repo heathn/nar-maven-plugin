@@ -19,10 +19,11 @@
  */
 package com.github.maven_nar.cpptasks.msvc;
 
-import java.io.File;
-import java.io.FileOutputStream;
+
 import java.io.IOException;
 import java.io.OutputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
@@ -125,27 +126,27 @@ public final class VisualStudioNETProjectWriter implements ProjectWriter {
    * @return value of AdditionalDependencies property.
    */
   private String getAdditionalDependencies(final TargetInfo linkTarget, final List<DependencyDef> projectDependencies,
-      final Map<String, TargetInfo> targets, final String basePath) {
+      final Map<Path, TargetInfo> targets, final Path basePath) {
     String dependencies = null;
-    final File[] linkSources = linkTarget.getAllSources();
+    final List<Path> linkSources = linkTarget.getAllSources();
     final StringBuffer buf = new StringBuffer();
-    for (final File linkSource : linkSources) {
+    for (final Path linkSource : linkSources) {
       //
       // if file was not compiled or otherwise generated
       //
-      if (targets.get(linkSource.getName()) == null) {
+      if (targets.get(linkSource.getFileName()) == null) {
         //
         // if source appears to be a system library or object file
         // just output the name of the file (advapi.lib for example)
         // otherwise construct a relative path.
         //
-        String relPath = linkSource.getName();
+        Path relPath = linkSource.getFileName();
         //
         // check if file comes from a project dependency
         // if it does it should not be explicitly linked
         boolean fromDependency = false;
-        if (relPath.indexOf(".") > 0) {
-          final String baseName = relPath.substring(0, relPath.indexOf("."));
+        if (relPath.toString().indexOf(".") > 0) {
+          final String baseName = relPath.toString().substring(0, relPath.toString().indexOf("."));
           for (DependencyDef depend : projectDependencies) {
             if (baseName.compareToIgnoreCase(depend.getName()) == 0) {
               fromDependency = true;
@@ -155,14 +156,14 @@ public final class VisualStudioNETProjectWriter implements ProjectWriter {
 
         if (!fromDependency) {
           if (!CUtil.isSystemPath(linkSource)) {
-            relPath = CUtil.getRelativePath(basePath, linkSource);
+            relPath = basePath.relativize(linkSource);
           }
           //
           // if path has an embedded space then
           // must quote
-          if (relPath.indexOf(' ') > 0) {
+          if (relPath.toString().indexOf(' ') > 0) {
             buf.append('\"');
-            buf.append(CUtil.toWindowsPath(relPath));
+            buf.append(relPath);
             buf.append('\"');
           } else {
             buf.append(relPath);
@@ -188,9 +189,9 @@ public final class VisualStudioNETProjectWriter implements ProjectWriter {
    *          base for relative paths.
    * @return value of AdditionalIncludeDirectories property.
    */
-  private String getAdditionalIncludeDirectories(final String baseDir,
+  private String getAdditionalIncludeDirectories(final Path baseDir,
       final CommandLineCompilerConfiguration compilerConfig) {
-    final File[] includePath = compilerConfig.getIncludePath();
+    final List<Path> includePath = compilerConfig.getIncludePath();
     final StringBuffer includeDirs = new StringBuffer();
     // Darren Sargent Feb 10 2010 -- reverted to older code to ensure sys
     // includes get, erm, included
@@ -219,7 +220,7 @@ public final class VisualStudioNETProjectWriter implements ProjectWriter {
    *          compilation targets
    * @return representative (hopefully) compiler configuration
    */
-  private CommandLineCompilerConfiguration getBaseCompilerConfiguration(final Map<String, TargetInfo> targets) {
+  private CommandLineCompilerConfiguration getBaseCompilerConfiguration(final Map<Path, TargetInfo> targets) {
     //
     // get the first target and assume that it is representative
     //
@@ -583,8 +584,8 @@ public final class VisualStudioNETProjectWriter implements ProjectWriter {
    *          File file
    * @return boolean true if member of group
    */
-  private boolean isGroupMember(final String filter, final File candidate) {
-    final String fileName = candidate.getName();
+  private boolean isGroupMember(final String filter, final Path candidate) {
+    final String fileName = candidate.getFileName().toString();
     final int lastDot = fileName.lastIndexOf('.');
     if (lastDot >= 0 && lastDot < fileName.length() - 1) {
       final String extension = ";" + fileName.substring(lastDot + 1).toLowerCase() + ";";
@@ -608,7 +609,7 @@ public final class VisualStudioNETProjectWriter implements ProjectWriter {
    * @throws SAXException
    *           thrown if error during serialization.
    */
-  private void writeCompilerElement(final ContentHandler content, final boolean isDebug, final String basePath,
+  private void writeCompilerElement(final ContentHandler content, final boolean isDebug, final Path basePath,
       final CommandLineCompilerConfiguration compilerConfig) throws SAXException {
     final AttributesImpl attributes = new AttributesImpl();
     addAttribute(attributes, "Name", "VCCLCompilerTool");
@@ -689,8 +690,8 @@ public final class VisualStudioNETProjectWriter implements ProjectWriter {
    * @throws SAXException
    *           if invalid content
    */
-  private void writeFilteredSources(final String name, final String filter, final String basePath,
-      final File[] sortedSources, final ContentHandler content) throws SAXException {
+  private void writeFilteredSources(final String name, final String filter, final Path basePath,
+      final Path[] sortedSources, final ContentHandler content) throws SAXException {
     final AttributesImpl filterAttrs = new AttributesImpl();
     filterAttrs.addAttribute(null, "Name", "Name", "#PCDATA", name);
     filterAttrs.addAttribute(null, "Filter", "Filter", "#PCDATA", filter);
@@ -699,10 +700,10 @@ public final class VisualStudioNETProjectWriter implements ProjectWriter {
     final AttributesImpl fileAttrs = new AttributesImpl();
     fileAttrs.addAttribute(null, "RelativePath", "RelativePath", "#PCDATA", "");
 
-    for (final File sortedSource : sortedSources) {
+    for (final Path sortedSource : sortedSources) {
       if (isGroupMember(filter, sortedSource)) {
-        final String relativePath = CUtil.getRelativePath(basePath, sortedSource);
-        fileAttrs.setValue(0, relativePath);
+        final Path relativePath = basePath.relativize(sortedSource);
+        fileAttrs.setValue(0, relativePath.toString());
         content.startElement(null, "File", "File", fileAttrs);
         content.endElement(null, "File", "File");
       }
@@ -730,8 +731,8 @@ public final class VisualStudioNETProjectWriter implements ProjectWriter {
    *           thrown if error during serialization.
    */
   private void writeLinkerElement(final ContentHandler content, final boolean isDebug,
-      final List<DependencyDef> dependencies, final String basePath, final TargetInfo linkTarget,
-      final Map<String, TargetInfo> targets) throws SAXException {
+      final List<DependencyDef> dependencies, final Path basePath, final TargetInfo linkTarget,
+      final Map<Path, TargetInfo> targets) throws SAXException {
     final AttributesImpl attributes = new AttributesImpl();
     addAttribute(attributes, "Name", "VCLinkerTool");
 
@@ -776,21 +777,21 @@ public final class VisualStudioNETProjectWriter implements ProjectWriter {
    *           if XML serialization error
    */
   @Override
-  public void writeProject(final File fileName, final CCTask task, final ProjectDef projectDef,
-      final List<File> sources, final Map<String, TargetInfo> targets, final TargetInfo linkTarget)
+  public void writeProject(final Path fileName, final CCTask task, final ProjectDef projectDef,
+      final List<Path> sources, final Map<Path, TargetInfo> targets, final TargetInfo linkTarget)
       throws IOException, SAXException {
 
     String projectName = projectDef.getName();
     if (projectName == null) {
-      projectName = fileName.getName();
+      projectName = fileName.getFileName().toString();
     }
 
-    final File vcprojFile = new File(fileName + ".vcproj");
-    if (!projectDef.getOverwrite() && vcprojFile.exists()) {
+    final Path vcprojFile = Path.of(fileName + ".vcproj");
+    if (!projectDef.getOverwrite() && Files.exists(vcprojFile)) {
       throw new BuildException("Not allowed to overwrite project file " + vcprojFile.toString());
     }
-    final File slnFile = new File(fileName + ".sln");
-    if (!projectDef.getOverwrite() && slnFile.exists()) {
+    final Path slnFile = Path.of(fileName + ".sln");
+    if (!projectDef.getOverwrite() && Files.exists(slnFile)) {
       throw new BuildException("Not allowed to overwrite project file " + slnFile.toString());
     }
 
@@ -799,11 +800,11 @@ public final class VisualStudioNETProjectWriter implements ProjectWriter {
       throw new BuildException("Unable to generate Visual Studio.NET project " + "when Microsoft C++ is not used.");
     }
 
-    final OutputStream outStream = new FileOutputStream(fileName + ".vcproj");
+    final OutputStream outStream = Files.newOutputStream(vcprojFile);
     final OutputFormat format = new OutputFormat("xml", "UTF-8", true);
     final XMLSerializer serializer = new XMLSerializer(outStream, format);
     final ContentHandler content = serializer.asContentHandler();
-    final String basePath = fileName.getParentFile().getAbsolutePath();
+    final Path basePath = fileName.getParent();
     content.startDocument();
 
     for (final CommentDef commentDef : projectDef.getComments()) {
@@ -848,12 +849,12 @@ public final class VisualStudioNETProjectWriter implements ProjectWriter {
     content.endElement(null, "References", "References");
     content.startElement(null, "Files", "Files", emptyAttrs);
 
-    final File[] sortedSources = new File[sources.size()];
+    final Path[] sortedSources = new Path[sources.size()];
     sources.toArray(sortedSources);
-    Arrays.sort(sortedSources, new Comparator<File>() {
+    Arrays.sort(sortedSources, new Comparator<Path>() {
       @Override
-      public int compare(final File o1, final File o2) {
-        return o1.getName().compareTo(o2.getName());
+      public int compare(final Path o1, final Path o2) {
+        return o1.getFileName().compareTo(o2.getFileName());
       }
     });
 

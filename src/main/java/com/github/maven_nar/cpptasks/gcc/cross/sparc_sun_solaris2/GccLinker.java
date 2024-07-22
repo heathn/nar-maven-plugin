@@ -19,8 +19,9 @@
  */
 package com.github.maven_nar.cpptasks.gcc.cross.sparc_sun_solaris2;
 
-import java.io.File;
-import java.util.Vector;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 
 import com.github.maven_nar.cpptasks.CCTask;
 import com.github.maven_nar.cpptasks.CUtil;
@@ -59,7 +60,7 @@ public class GccLinker extends AbstractLdLinker {
     return instance;
   }
 
-  private File[] libDirs;
+  private List<Path> libDirs;
 
   protected GccLinker(final String command, final String[] extensions, final String[] ignoredExtensions,
       final String outputPrefix, final String outputSuffix, final boolean isLibtool, final GccLinker libtoolLinker) {
@@ -68,14 +69,14 @@ public class GccLinker extends AbstractLdLinker {
 
   @Override
   protected void addImpliedArgs(final CCTask task, final boolean debug, final LinkType linkType,
-      final Vector<String> args) {
+      final List<String> args) {
     super.addImpliedArgs(task, debug, linkType, args);
     if (getIdentifier().contains("mingw")) {
       if (linkType.isSubsystemConsole()) {
-        args.addElement("-mconsole");
+        args.add("-mconsole");
       }
       if (linkType.isSubsystemGUI()) {
-        args.addElement("-mwindows");
+        args.add("-mwindows");
       }
     }
   }
@@ -135,7 +136,7 @@ public class GccLinker extends AbstractLdLinker {
    * 
    */
   @Override
-  public File[] getLibraryPath() {
+  public List<Path> getLibraryPath() {
     if (this.libDirs == null) {
       //
       // construct gcc lib path from machine and version
@@ -157,27 +158,28 @@ public class GccLinker extends AbstractLdLinker {
       final String[][] libpaths = GccProcessor.parseSpecs(specs, "*link:", new String[] {
         "%q"
       });
-      String[] libpath;
+      Path[] libpath;
       if (libpaths[0].length > 0) {
-        libpath = new String[libpaths[0].length + 3];
+        libpath = new Path[libpaths[0].length + 3];
         int i = 0;
         for (; i < libpaths[0].length; i++) {
-          libpath[i] = libpaths[0][i];
+          libpath[i] = Path.of(libpaths[0][i]);
         }
-        libpath[i++] = buf.toString();
-        libpath[i++] = "/lib/w32api";
-        libpath[i++] = "/lib";
+        libpath[i++] = Path.of(buf.toString());
+        libpath[i++] = Path.of("/lib/w32api");
+        libpath[i++] = Path.of("/lib");
       } else {
         //
         // if a failure to find any matches then
         // use some default values for lib path entries
-        libpath = new String[] {
+        libpath = List.of(
             "/usr/local/lib/mingw", "/usr/local/lib", "/usr/lib/w32api", "/usr/lib/mingw", "/usr/lib", buf.toString(),
-            "/lib/w32api", "/lib"
-        };
+            "/lib/w32api", "/lib").stream()
+            .map(Path::of)
+            .toArray(Path[]::new);
       }
       for (int i = 0; i < libpath.length; i++) {
-        if (libpath[i].contains("mingw")) {
+        if (libpath[i].toString().contains("mingw")) {
           libpath[i] = null;
         }
       }
@@ -197,11 +199,10 @@ public class GccLinker extends AbstractLdLinker {
       //
       // populate return array with remaining entries
       //
-      this.libDirs = new File[count];
-      int index = 0;
-      for (final String element : libpath) {
+      this.libDirs = new ArrayList<>(count);
+      for (final Path element : libpath) {
         if (element != null) {
-          this.libDirs[index++] = new File(element);
+          this.libDirs.add(element);
         }
       }
     }

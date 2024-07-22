@@ -19,8 +19,9 @@
  */
 package com.github.maven_nar.cpptasks.openwatcom;
 
-import java.io.File;
 import java.io.IOException;
+import java.nio.file.Path;
+import java.util.List;
 import java.util.Vector;
 
 import com.github.maven_nar.cpptasks.CUtil;
@@ -171,8 +172,8 @@ public abstract class OpenWatcomLinker extends CommandLineLinker {
    *           if unable to write version resource
    */
   @Override
-  public final void addVersionFiles(final VersionInfo versionInfo, final LinkType linkType, final File outputFile,
-      final boolean isDebug, final File objDir, final TargetMatcher matcher) throws IOException {
+  public final void addVersionFiles(final VersionInfo versionInfo, final LinkType linkType, final Path outputFile,
+      final boolean isDebug, final Path objDir, final TargetMatcher matcher) throws IOException {
     WindowsPlatform.addVersionFiles(versionInfo, linkType, outputFile, isDebug, objDir, matcher);
   }
 
@@ -184,7 +185,7 @@ public abstract class OpenWatcomLinker extends CommandLineLinker {
    * @return String command line option
    */
   @Override
-  public final String getCommandFileSwitch(final String commandFile) {
+  public final String getCommandFileSwitch(final Path commandFile) {
     return "@" + commandFile;
   }
 
@@ -194,7 +195,7 @@ public abstract class OpenWatcomLinker extends CommandLineLinker {
    * @return File[] library path
    */
   @Override
-  public final File[] getLibraryPath() {
+  public final List<Path> getLibraryPath() {
     return CUtil.getPathFromEnvironment("LIB", ";");
   }
 
@@ -230,7 +231,7 @@ public abstract class OpenWatcomLinker extends CommandLineLinker {
    * @return String[] command line switches
    */
   @Override
-  public final String[] getOutputFileSwitch(final String outFile) {
+  public final String[] getOutputFileSwitch(final Path outFile) {
     return OpenWatcomProcessor.getOutputFileSwitch(outFile);
   }
 

@@ -19,11 +19,11 @@
  */
 package com.github.maven_nar.cpptasks.msvc;
 
-import java.io.File;
 import java.io.IOException;
+import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Vector;
+import java.util.Collections;
+import java.util.List;
 
 import com.github.maven_nar.cpptasks.CCTask;
 import com.github.maven_nar.cpptasks.CUtil;
@@ -50,94 +50,94 @@ public abstract class MsvcCompatibleLinker extends CommandLineLinker {
     }, outputSuffix, false, null);
   }
 
-  private ArrayList<File> libPaths = new ArrayList<>(Arrays.asList(CUtil.getPathFromEnvironment("LIB", ";")));
+  private List<Path> libPaths = new ArrayList<>(CUtil.getPathFromEnvironment("LIB", ";"));
   
   @Override
-  protected void addBase(final CCTask task, final long base, final Vector<String> args) {
+  protected void addBase(final CCTask task, final long base, final List<String> args) {
     if (base >= 0) {
       final String baseAddr = Long.toHexString(base);
-      args.addElement("/BASE:0x" + baseAddr);
+      args.add("/BASE:0x" + baseAddr);
     }
   }
 
   @Override
-  protected void addEntry(final CCTask task, final String entry, final Vector<String> args) {
+  protected void addEntry(final CCTask task, final String entry, final List<String> args) {
     if (entry != null) {
-      args.addElement("/ENTRY:" + entry);
+      args.add("/ENTRY:" + entry);
     }
   }
 
   @Override
-  protected void addFixed(final CCTask task, final Boolean fixed, final Vector<String> args) {
+  protected void addFixed(final CCTask task, final Boolean fixed, final List<String> args) {
     if (fixed != null) {
       if (fixed.booleanValue()) {
-        args.addElement("/FIXED");
+        args.add("/FIXED");
       } else {
-        args.addElement("/FIXED:NO");
+        args.add("/FIXED:NO");
       }
     }
   }
 
   @Override
   protected void addImpliedArgs(final CCTask task, final boolean debug, final LinkType linkType,
-      final Vector<String> args) {
-    args.addElement("/NOLOGO");
+      final List<String> args) {
+    args.add("/NOLOGO");
     if (debug) {
-      args.addElement("/DEBUG");
+      args.add("/DEBUG");
     }
     if (linkType.isSharedLibrary()) {
-      args.addElement("/DLL");
+      args.add("/DLL");
     }
     //
     // The following lines were commented out
     // from v 1.5 to v 1.12 with no explanation
     //
     if (linkType.isSubsystemGUI()) {
-      args.addElement("/SUBSYSTEM:WINDOWS");
+      args.add("/SUBSYSTEM:WINDOWS");
     } else {
       if (linkType.isSubsystemConsole()) {
-        args.addElement("/SUBSYSTEM:CONSOLE");
+        args.add("/SUBSYSTEM:CONSOLE");
       }
     }
   }
 
   @Override
-  protected void addIncremental(final CCTask task, final boolean incremental, final Vector<String> args) {
+  protected void addIncremental(final CCTask task, final boolean incremental, final List<String> args) {
     if (incremental) {
-      args.addElement("/INCREMENTAL:YES");
+      args.add("/INCREMENTAL:YES");
     } else {
-      args.addElement("/INCREMENTAL:NO");
+      args.add("/INCREMENTAL:NO");
     }
   }
 
   @Override
-  protected void addLibraryPath(final Vector<String> preargs, final String path) {
-    preargs.addElement("/LIBPATH:" + path);
-    libPaths.add(0,new File(path));
+  protected void addLibraryPath(final List<String> preargs, final Path path) {
+    preargs.add("/LIBPATH:" + path);
+    libPaths.add(0, path);
   }
 
   @Override
-  protected String[] addLibrarySets(final CCTask task, final LibrarySet[] libsets, final Vector<String> preargs,
-      final Vector<String> midargs, final Vector<String> endargs) {
+  protected String[] addLibrarySets(final CCTask task, final List<LibrarySet> libsets, final List<String> preargs,
+      final List<String> midargs, final List<String> endargs) {
     for (final LibrarySet set : libsets) {
-      final File libdir = set.getDir(null);
+      final Path libdir = set.getDir(null);
       addLibraryDirectory(libdir, preargs);
     }
     return null;
   }
 
   @Override
-  protected void addMap(final CCTask task, final boolean map, final Vector<String> args) {
+  protected void addMap(final CCTask task, final boolean map, final List<String> args) {
     if (map) {
-      args.addElement("/MAP");
+      args.add("/MAP");
     }
   }
 
   @Override
-  protected void addStack(final CCTask task, final int stack, final Vector<String> args) {
+  protected void addStack(final CCTask task, final int stack, final List<String> args) {
     if (stack >= 0) {
       final String stackStr = Integer.toHexString(stack);
-      args.addElement("/STACK:0x" + stackStr);
+      args.add("/STACK:0x" + stackStr);
     }
   }
 
@@ -159,19 +159,19 @@ public abstract class MsvcCompatibleLinker extends CommandLineLinker {
    *          bidded fileset
    */
   @Override
-  public void addVersionFiles(final VersionInfo versionInfo, final LinkType linkType, final File outputFile,
-      final boolean isDebug, final File objDir, final TargetMatcher matcher) throws IOException {
+  public void addVersionFiles(final VersionInfo versionInfo, final LinkType linkType, final Path outputFile,
+      final boolean isDebug, final Path objDir, final TargetMatcher matcher) throws IOException {
     WindowsPlatform.addVersionFiles(versionInfo, linkType, outputFile, isDebug, objDir, matcher);
   }
 
   @Override
-  public String getCommandFileSwitch(final String commandFile) {
+  public String getCommandFileSwitch(final Path commandFile) {
     return "@" + commandFile;
   }
 
   @Override
-  public File[] getLibraryPath() {
-    return libPaths.toArray(new File[libPaths.size()]);
+  public List<Path> getLibraryPath() {
+    return Collections.unmodifiableList(libPaths);
   }
 
   @Override
@@ -194,7 +194,7 @@ public abstract class MsvcCompatibleLinker extends CommandLineLinker {
   }
 
   @Override
-  public String[] getOutputFileSwitch(final String outputFile) {
+  public String[] getOutputFileSwitch(final Path outputFile) {
     return new String[] {
       "/OUT:" + outputFile
     };

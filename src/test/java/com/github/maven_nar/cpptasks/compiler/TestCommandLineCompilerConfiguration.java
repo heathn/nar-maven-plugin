@@ -19,9 +19,6 @@
  */
 package com.github.maven_nar.cpptasks.compiler;
 
-import java.io.File;
-
-import com.github.maven_nar.cpptasks.ProcessorParam;
 import com.github.maven_nar.cpptasks.gcc.GccCCompiler;
 
 /**
@@ -38,16 +35,16 @@ public class TestCommandLineCompilerConfiguration extends TestCompilerConfigurat
 
   @Override
   protected CompilerConfiguration create() {
-    return new CommandLineCompilerConfiguration(this.compiler, "dummy", new File[0], new File[0], new File[0], "",
+    return new CommandLineCompilerConfiguration(this.compiler, "dummy", null, null, null, "",
         new String[] {
           "/Id:/gcc"
-        }, new ProcessorParam[0], false, new String[0]);
+        }, null, false, new String[0]);
   }
 
   public void testConstructorNullCompiler() {
     try {
-      new CommandLineCompilerConfiguration(null, "dummy", new File[0], new File[0], new File[0], "", new String[0],
-          new ProcessorParam[0], false, new String[0]);
+      new CommandLineCompilerConfiguration(null, "dummy", null, null, null, "", new String[0],
+          null, false, new String[0]);
       fail("Should throw exception for null compiler");
     } catch (final NullPointerException ex) {
     }

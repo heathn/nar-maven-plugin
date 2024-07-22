@@ -19,9 +19,11 @@
  */
 package com.github.maven_nar.cpptasks;
 
-import java.io.File;
-import java.io.FileFilter;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Enumeration;
@@ -32,6 +34,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 import java.util.Vector;
+import java.util.function.Predicate;
 
 import org.apache.tools.ant.BuildException;
 import org.apache.tools.ant.Project;
@@ -76,14 +79,14 @@ public class CCTask extends Task {
   class Core extends Thread {
     private final CCTask task;
     private final CompilerConfiguration config;
-    private final File objDir;
-    private final List<String> sourceFiles;
+    private final Path objDir;
+    private final List<Path> sourceFiles;
     private final boolean relentless;
     private final CCTaskProgressMonitor monitor;
     private Exception compileException;
 
-    Core(final CCTask task, final int coreNo, final CompilerConfiguration config, final File objDir,
-        final List<String> set, final boolean relentless, final CCTaskProgressMonitor monitor) {
+    Core(final CCTask task, final int coreNo, final CompilerConfiguration config, final Path objDir,
+        final List<Path> set, final boolean relentless, final CCTaskProgressMonitor monitor) {
       super("Core " + coreNo);
       this.task = task;
       this.config = config;
@@ -101,7 +104,7 @@ public class CCTask extends Task {
     public void run() {
       super.run();
       try {
-        String[] sources = new String[this.sourceFiles.size()];
+        Path[] sources = new Path[this.sourceFiles.size()];
         sources = this.sourceFiles.toArray(sources);
 
         this.config.compile(this.task, this.objDir, sources, this.relentless, this.monitor);
@@ -117,10 +120,10 @@ public class CCTask extends Task {
   class Progress extends Thread {
 
     private boolean stop = false;
-    private final File objDir;
+    private final Path objDir;
     private final int rebuildCount;
 
-    public Progress(final File objDir, final int rebuildCount) {
+    public Progress(final Path objDir, final int rebuildCount) {
       this.objDir = objDir;
       this.rebuildCount = rebuildCount;
     }
@@ -135,16 +138,17 @@ public class CCTask extends Task {
         return;
       }
       try {
-        final FileFilter updatedFiles = new FileFilter() {
-          private final long startTime = System.currentTimeMillis();
-
-          @Override
-          public boolean accept(final File file) {
-            return file.lastModified() > this.startTime && !file.getName().endsWith(".xml");
+        final FileTime startTime = FileTime.from(Instant.now());
+        Predicate<Path> updatedFiles = p -> {
+          try {
+            return !p.getFileName().toString().endsWith(".xml") && 
+                Files.getLastModifiedTime(p).compareTo(startTime) > 0;
+          } catch (IOException e) {
+            return false;
           }
         };
         while (!this.stop) {
-          System.err.print("\r" + this.objDir.listFiles(updatedFiles).length + " / " + this.rebuildCount
+          System.err.print("\r" + Files.list(this.objDir).filter(updatedFiles).count() + " / " + this.rebuildCount
               + " files compiled...");
           System.err.print("\r");
           System.err.flush();
@@ -152,7 +156,7 @@ public class CCTask extends Task {
             Thread.sleep(5000);
           }
         }
-      } catch (final InterruptedException e) {
+      } catch (final InterruptedException | IOException e) {
       }
       System.err.print("\r                                                                    ");
       System.err.print("\r");
@@ -163,7 +167,7 @@ public class CCTask extends Task {
   }
 
   private static class ProjectFileCollector implements FileVisitor {
-    private final List<File> files;
+    private final List<Path> files;
 
     /**
      * Creates a new ProjectFileCollector.
@@ -171,7 +175,7 @@ public class CCTask extends Task {
      * @param files
      *          vector for collected files.
      */
-    public ProjectFileCollector(final List<File> files) {
+    public ProjectFileCollector(final List<Path> files) {
       this.files = files;
     }
 
@@ -184,38 +188,36 @@ public class CCTask extends Task {
      *          filename within directory
      */
     @Override
-    public void visit(final File parentDir, final String filename) {
-      this.files.add(new File(parentDir, filename));
+    public void visit(final Path parentDir, final Path filename) {
+      this.files.add(parentDir.resolve(filename));
     }
   }
 
   private static class SystemLibraryCollector implements FileVisitor {
-    private final Hashtable<String, File> libraries;
+    private final Hashtable<String, Path> libraries;
     private final Linker linker;
 
-    public SystemLibraryCollector(final Linker linker, final Hashtable<String, File> libraries) {
+    public SystemLibraryCollector(final Linker linker, final Hashtable<String, Path> libraries) {
       this.linker = linker;
       this.libraries = libraries;
     }
 
     @Override
-    public void visit(final File basedir, final String filename) {
+    public void visit(final Path basedir, final Path filename) {
       if (this.linker.bid(filename) > 0) {
-        final File libfile = new File(basedir, filename);
+        final Path libfile = basedir.resolve(filename);
         final String key = this.linker.getLibraryKey(libfile);
         this.libraries.put(key, libfile);
       }
     }
   }
 
-  private static final ProcessorConfiguration[] EMPTY_CONFIG_ARRAY = new ProcessorConfiguration[0];
-
   /**
    * Builds a Hashtable to targets needing to be rebuilt keyed by compiler
    * configuration
    */
   public static Map<CompilerConfiguration, Vector<TargetInfo>> getTargetsToBuildByConfiguration(
-      final Map<String, TargetInfo> targets) {
+      final Map<Path, TargetInfo> targets) {
     final Map<CompilerConfiguration, Vector<TargetInfo>> targetsByConfig = new HashMap<>();
     for (final TargetInfo target : targets.values()) {
       if (target.getRebuild()) {
@@ -240,14 +242,12 @@ public class CCTask extends Task {
   private final Vector<CompilerDef> _compilers = new Vector<>();
   /** The output file type. */
   // private LinkType _linkType = LinkType.EXECUTABLE;
-  /** The library sets. */
-  private final Vector _libsets = new Vector();
   /** The linker definitions. */
   private final Vector<LinkerDef> _linkers = new Vector<>();
   /** The object directory. */
-  private File _objDir;
+  private Path _objDir;
   /** The output file. */
-  private File _outfile;
+  private Path _outfile;
   /** The linker definitions. */
   private final Vector<TargetDef> targetPlatforms = new Vector<>();
   /** The distributer definitions. */
@@ -509,7 +509,7 @@ public class CCTask extends Task {
    * @return total number of targets to be rebuilt
    * 
    */
-  protected int checkForChangedIncludeFiles(final Map<String, TargetInfo> targets) {
+  protected int checkForChangedIncludeFiles(final Map<Path, TargetInfo> targets) {
     int potentialTargets = 0;
     int definiteTargets = 0;
     Iterator<TargetInfo> targetEnum = targets.values().iterator();
@@ -561,8 +561,8 @@ public class CCTask extends Task {
     return currentTargets;
   }
 
-  protected LinkerConfiguration collectExplicitObjectFiles(final Vector<File> objectFiles,
-      final Vector<File> sysObjectFiles, final VersionInfo versionInfo) {
+  protected LinkerConfiguration collectExplicitObjectFiles(final List<Path> objectFiles,
+      final List<Path> sysObjectFiles, final VersionInfo versionInfo) {
     //
     // find the first eligible linker
     //
@@ -570,7 +570,7 @@ public class CCTask extends Task {
     ProcessorConfiguration linkerConfig = null;
     LinkerDef selectedLinkerDef = null;
     Linker selectedLinker = null;
-    final Hashtable<String, File> sysLibraries = new Hashtable<>();
+    final Hashtable<String, Path> sysLibraries = new Hashtable<>();
     final TargetDef targetPlatform = getTargetPlatform();
     FileVisitor objCollector = null;
     FileVisitor sysLibraryCollector = null;
@@ -638,9 +638,9 @@ public class CCTask extends Task {
     // copy over any system libraries to the
     // object files vector
     //
-    final Enumeration<File> sysLibEnum = sysLibraries.elements();
+    final Enumeration<Path> sysLibEnum = sysLibraries.elements();
     while (sysLibEnum.hasMoreElements()) {
-      sysObjectFiles.addElement(sysLibEnum.nextElement());
+      sysObjectFiles.add(sysLibEnum.nextElement());
     }
     return (LinkerConfiguration) linkerConfig;
   }
@@ -695,16 +695,16 @@ public class CCTask extends Task {
     // provide it from outfile
     if (this._objDir == null) {
       if (this._outfile != null) {
-        this._objDir = new File(this._outfile.getParent());
+        this._objDir = this._outfile.getParent();
       } else {
-        this._objDir = new File(".");
+        this._objDir = Path.of(".");
       }
     }
 
     //
     // if the object directory does not exist
     //
-    if (!this._objDir.exists()) {
+    if (Files.notExists(_objDir)) {
       throw new BuildException("Object directory does not exist");
     }
     final TargetHistoryTable objHistory = new TargetHistoryTable(this, this._objDir);
@@ -728,15 +728,15 @@ public class CCTask extends Task {
     // determine the eventual linker configuration
     // (may be null) and collect any explicit
     // object files or libraries
-    final Vector<File> objectFiles = new Vector<>();
-    final Vector<File> sysObjectFiles = new Vector<>();
+    final List<Path> objectFiles = new ArrayList<>();
+    final List<Path> sysObjectFiles = new ArrayList<>();
     final LinkerConfiguration linkerConfig = collectExplicitObjectFiles(objectFiles, sysObjectFiles, versionInfo);
 
     //
     // Assemble hashtable of all files
     // that we know how to compile (keyed by output file name)
     //
-    final Map<String, TargetInfo> targets = getTargets(linkerConfig, objectFiles, versionInfo, this._outfile);
+    final Map<Path, TargetInfo> targets = getTargets(linkerConfig, objectFiles, versionInfo, this._outfile);
     TargetInfo linkTarget = null;
     //
     // if output file is not specified,
@@ -747,7 +747,7 @@ public class CCTask extends Task {
     }
 
     if (this.projects.size() > 0) {
-      final List<File> files = new ArrayList<>();
+      final List<Path> files = new ArrayList<>();
       final ProjectFileCollector matcher = new ProjectFileCollector(files);
       for (int i = 0; i < this._compilers.size(); i++) {
     	  final CompilerDef currentCompilerDef = this._compilers.elementAt(i);
@@ -790,10 +790,9 @@ public class CCTask extends Task {
       // build array containing Vectors with precompiled generation
       // steps going first
       //
-      final ArrayList<Vector<TargetInfo>> targetVectorsPreComp = new ArrayList<>();
-      final ArrayList<Vector<TargetInfo>> targetVectors = new ArrayList<>();
+      final List<List<TargetInfo>> targetVectorsPreComp = new ArrayList<>();
+      final List<List<TargetInfo>> targetVectors = new ArrayList<>();
 
-      int index = 0;
       for (final Map.Entry<CompilerConfiguration, Vector<TargetInfo>> targetsForConfig : targetsByConfig.entrySet()) {
         //
         // get the configuration from the first entry
@@ -876,7 +875,7 @@ public class CCTask extends Task {
       //
       // if it needs to be rebuilt, rebuild it
       //
-      final File output = linkTarget.getOutput();
+      final Path output = linkTarget.getOutput();
       if (linkTarget.getRebuild()) {
         final LinkerConfiguration linkConfig = (LinkerConfiguration) linkTarget.getConfiguration();
         // BEGINFREEHEP
@@ -894,7 +893,7 @@ public class CCTask extends Task {
           }
         }
         if (this.outputFileProperty != null) {
-          getProject().setProperty(this.outputFileProperty, output.getAbsolutePath());
+          getProject().setProperty(this.outputFileProperty, output.toAbsolutePath().toString());
         }
         linkHistory.update(linkTarget);
         try {
@@ -904,17 +903,17 @@ public class CCTask extends Task {
         }
       } else {
         if (this.outputFileProperty != null) {
-          getProject().setProperty(this.outputFileProperty, output.getAbsolutePath());
+          getProject().setProperty(this.outputFileProperty, output.toAbsolutePath().toString());
         }
       }
 
       // If sharedObjectName was specified, add the shared object to an archive, then delete the shared object.
       if (sharedObjectName != null && !sharedObjectName.isEmpty()) {
-        File workingDirectory = new File(this._outfile.getParent());
+        Path workingDirectory = this._outfile.getParent();
         String[] archiveCommand = new String[4];
         archiveCommand[0] = "ar";
         archiveCommand[1] = "r";
-        archiveCommand[2] = linkerConfig.getOutputFileNames(this._outfile.getName(), versionInfo)[0];
+        archiveCommand[2] = linkerConfig.getOutputFileNames(this._outfile.getFileName(), versionInfo)[0].toString();
         archiveCommand[3] = sharedObjectName;
         CUtil.runCommand(this, workingDirectory, archiveCommand, false, null);
 
@@ -927,13 +926,13 @@ public class CCTask extends Task {
   }
 
   private BuildException runTargetPool(final CCTaskProgressMonitor monitor, BuildException compileException,
-      final ArrayList<Vector<TargetInfo>> targetVectors) {
+      final List<List<TargetInfo>> targetVectors) {
     int index;
-    for (final Vector<TargetInfo> targetsForConfig : targetVectors) {
+    for (final List<TargetInfo> targetsForConfig : targetVectors) {
       //
       // get the configuration from the first entry
       //
-      final CompilerConfiguration config = (CompilerConfiguration) targetsForConfig.elementAt(0).getConfiguration();
+      final CompilerConfiguration config = (CompilerConfiguration) targetsForConfig.get(0).getConfiguration();
       //
       // prepare the list of source files
       //
@@ -955,23 +954,22 @@ public class CCTask extends Task {
         log("Limited processors to 1 due to ordering of source files");
       }
 
-      final List<String>[] sourceFiles = new List[noOfCores];
-      for (int j = 0; j < sourceFiles.length; j++) {
-        sourceFiles[j] = new ArrayList<>(noOfFiles / sourceFiles.length);
+      final List<List<Path>> sourceFiles = new ArrayList<>();
+      for (int j = 0; j < noOfCores; j++) {
+        sourceFiles.add(new ArrayList<>());
       }
-      final Enumeration<TargetInfo> targetsEnum = targetsForConfig.elements();
+
       index = 0;
-      while (targetsEnum.hasMoreElements()) {
-        final TargetInfo targetInfo = targetsEnum.nextElement();
-        sourceFiles[index++].add(targetInfo.getSources()[0].toString());
-        index %= sourceFiles.length;
+      for (final TargetInfo targetInfo : targetsForConfig) {
+        sourceFiles.get(index++).add(targetInfo.getSources().get(0));
+        index %= sourceFiles.size();
       }
 
       // setup cores/cpus
       final Core[] cores = new Core[noOfCores];
       for (int j = 0; j < cores.length; j++) {
-        cores[j] = new Core(this, j, config, this._objDir, sourceFiles[j], this.relentless, monitor);
-        log("\nStarting Core " + j + " with " + sourceFiles[j].size() + " source files...");
+        cores[j] = new Core(this, j, config, this._objDir, sourceFiles.get(j), this.relentless, monitor);
+        log("\nStarting Core " + j + " with " + sourceFiles.get(j).size() + " source files...");
       }
 
       // starting cores
@@ -1012,7 +1010,7 @@ public class CCTask extends Task {
           }
           if (alive) {
             // wait for a maximum of 5 seconds or #files*2 seconds.
-            Thread.sleep(Math.min(5000, sourceFiles[0].size() * 2000));
+            Thread.sleep(Math.min(5000, sourceFiles.get(0).size() * 2000));
           }
         } while (alive);
       } catch (final InterruptedException e) {
@@ -1097,7 +1095,7 @@ public class CCTask extends Task {
   }
 
   protected TargetHistoryTable getLinkHistory(final TargetHistoryTable objHistory) {
-    final File outputFileDir = new File(this._outfile.getParent());
+    final Path outputFileDir = this._outfile.getParent();
     //
     // if the output file is being produced in the link
     // directory, then we can use the same history file
@@ -1108,8 +1106,8 @@ public class CCTask extends Task {
     return new TargetHistoryTable(this, outputFileDir);
   }
 
-  protected TargetInfo getLinkTarget(final LinkerConfiguration linkerConfig, final Vector<File> objectFiles,
-      final Vector<File> sysObjectFiles, final Map<String, TargetInfo> compileTargets, final VersionInfo versionInfo) {
+  protected TargetInfo getLinkTarget(final LinkerConfiguration linkerConfig, final List<Path> objectFiles,
+      final List<Path> sysObjectFiles, final Map<Path, TargetInfo> compileTargets, final VersionInfo versionInfo) {
     //
     // walk the compile phase targets and
     // add those sources that have already been
@@ -1121,22 +1119,20 @@ public class CCTask extends Task {
       //
       // output of compile tasks
       //
-      final int bid = linkerConfig.bid(compileTarget.getOutput().toString());
+      final int bid = linkerConfig.bid(compileTarget.getOutput());
       if (bid > 0) {
-        objectFiles.addElement(compileTarget.getOutput());
+        objectFiles.add(compileTarget.getOutput());
       }
     }
-    final File[] objectFileArray = new File[objectFiles.size()];
-    objectFiles.copyInto(objectFileArray);
-    final File[] sysObjectFileArray = new File[sysObjectFiles.size()];
-    sysObjectFiles.copyInto(sysObjectFileArray);
-    File outputFile;
+    final List<Path> objectFileArray = new ArrayList<>(objectFiles);
+    final List<Path> sysObjectFileArray = new ArrayList<>(sysObjectFiles);
+    Path outputFile;
     if (sharedObjectName == null || sharedObjectName.isEmpty()) {
-        final String baseName = this._outfile.getName();
-        final String[] fullNames = linkerConfig.getOutputFileNames(baseName, versionInfo);
-        outputFile = new File(this._outfile.getParent(), fullNames[0]);
+        final Path baseName = this._outfile.getFileName();
+        final Path[] fullNames = linkerConfig.getOutputFileNames(baseName, versionInfo);
+        outputFile = this._outfile.resolveSibling(fullNames[0]);
     } else {
-        outputFile = new File(this._outfile.getParent(), sharedObjectName);
+        outputFile = this._outfile.resolveSibling(sharedObjectName);
     }
     return new TargetInfo(linkerConfig, objectFileArray, sysObjectFileArray, outputFile, linkerConfig.getRebuild());
   }
@@ -1145,11 +1141,11 @@ public class CCTask extends Task {
     return this.maxCores;
   }
 
-  public File getObjdir() {
+  public Path getObjdir() {
     return this._objDir;
   }
 
-  public File getOutfile() {
+  public Path getOutfile() {
     return this._outfile;
   }
 
@@ -1182,22 +1178,22 @@ public class CCTask extends Task {
    * appropriate compiler configurations for their possible compilation
    * 
    */
-  private Map<String, TargetInfo> getTargets(final LinkerConfiguration linkerConfig, final Vector<File> objectFiles,
-      final VersionInfo versionInfo, final File outputFile) {
+  private Map<Path, TargetInfo> getTargets(final LinkerConfiguration linkerConfig, final List<Path> objectFiles,
+      final VersionInfo versionInfo, final Path outputFile) {
     // FREEHEP
     final List<String> order = new ArrayList<>();
 
-    final Map<String, TargetInfo> targets = new TreeMap<>(new Comparator<String>() {
+    final Map<Path, TargetInfo> targets = new TreeMap<>(new Comparator<Path>() {
       // Order according to "order" List followed by alphabetical order
-      @Override public int compare(String f0, String f1) {
+      @Override public int compare(Path f0, Path f1) {
         if (order.isEmpty()) {
           return f0.compareTo(f1);
         }
 
         // Trimming the path and trailing file extension to allow for order
         // comparison
-        String compf0 = FilenameUtils.getBaseName(f0);
-        String compf1 = FilenameUtils.getBaseName(f1);
+        String compf0 = FilenameUtils.getBaseName(f0.toString());
+        String compf1 = FilenameUtils.getBaseName(f1.toString());
 
         // remove the hash
         // TODO: well we hope it's a hash
@@ -1251,76 +1247,76 @@ public class CCTask extends Task {
     // find active (specialized) compilers
     //
     final Vector<ProcessorConfiguration> biddingProcessors = new Vector<>(this._compilers.size());
-    for (int i = 0; i < this._compilers.size(); i++) {
-      final CompilerDef currentCompilerDef = this._compilers.elementAt(i);
-      if (currentCompilerDef.isActive()) {
-        final ProcessorConfiguration config = currentCompilerDef.createConfiguration(this, this.linkType,
-            this.compilerDef, targetPlatform, versionInfo);
-        //
-        // see if this processor had a precompile child element
-        //
-        final PrecompileDef precompileDef = currentCompilerDef.getActivePrecompile(this.compilerDef);
-        CommandLineCompilerConfiguration commandLineConfig = (CommandLineCompilerConfiguration) config;
-        AbstractCompiler compiler = (AbstractCompiler) commandLineConfig.getCompiler();
-        compiler.setWorkDir(currentCompilerDef.getWorkDir());
-        compiler.setGccFileAbsolutePath(currentCompilerDef.getGccFileAbsolutePath());
-        ProcessorConfiguration[] localConfigs = new ProcessorConfiguration[] {
-          config
-        };
-        //
-        // if it does then
-        //
-        if (precompileDef != null) {
-          final File prototype = precompileDef.getPrototype();
+    this._compilers.stream()
+        .filter(CompilerDef::isActive)
+        .forEach(currentCompilerDef -> {
+          final ProcessorConfiguration config = currentCompilerDef.createConfiguration(this, this.linkType,
+              this.compilerDef, targetPlatform, versionInfo);
           //
-          // will throw exceptions if prototype doesn't exist, etc
+          // see if this processor had a precompile child element
           //
-          if (!prototype.exists()) {
-            throw new BuildException("prototype (" + prototype.toString() + ") does not exist.");
-          }
-          if (prototype.isDirectory()) {
-            throw new BuildException("prototype (" + prototype.toString() + ") is a directory.");
-          }
-          final String[] exceptFiles = precompileDef.getExceptFiles();
+          final PrecompileDef precompileDef = currentCompilerDef.getActivePrecompile(this.compilerDef);
+          CommandLineCompilerConfiguration commandLineConfig = (CommandLineCompilerConfiguration) config;
+          AbstractCompiler compiler = (AbstractCompiler) commandLineConfig.getCompiler();
+          compiler.setWorkDir(currentCompilerDef.getWorkDir());
+          compiler.setGccFileAbsolutePath(currentCompilerDef.getGccFileAbsolutePath());
+          ProcessorConfiguration[] localConfigs = new ProcessorConfiguration[] {
+            config
+          };
           //
-          // create a precompile building and precompile using
-          // variants of the configuration
-          // or return null if compiler doesn't support
-          // precompilation
-          final CompilerConfiguration[] configs = ((CompilerConfiguration) config).createPrecompileConfigurations(
-              prototype, exceptFiles);
-          if (configs != null && configs.length == 2) {
+          // if it does then
+          //
+          if (precompileDef != null) {
+            final Path prototype = precompileDef.getPrototype();
             //
-            // visit the precompiled file to add it into the
-            // targets list (just like any other file if
-            // compiler doesn't support precompilation)
-            final TargetMatcher matcher = new TargetMatcher(this, this._objDir, new ProcessorConfiguration[] {
-              configs[0]
-            }, linkerConfig, objectFiles, targets, versionInfo);
-
-            matcher.visit(new File(prototype.getParent()), prototype.getName());
+            // will throw exceptions if prototype doesn't exist, etc
             //
-            // only the configuration that uses the
-            // precompiled header gets added to the bidding list
-            biddingProcessors.addElement(configs[1]);
-            localConfigs = new ProcessorConfiguration[2];
-            localConfigs[0] = configs[1];
-            localConfigs[1] = config;
-          }
-        }
+            if (Files.notExists(prototype)) {
+              throw new BuildException("prototype (" + prototype.toString() + ") does not exist.");
+            }
+            if (Files.isDirectory(prototype)) {
+              throw new BuildException("prototype (" + prototype.toString() + ") is a directory.");
+            }
+            final Path[] exceptFiles = precompileDef.getExceptFiles();
+            //
+            // create a precompile building and precompile using
+            // variants of the configuration
+            // or return null if compiler doesn't support
+            // precompilation
+            final CompilerConfiguration[] configs = ((CompilerConfiguration) config).createPrecompileConfigurations(
+                prototype, exceptFiles);
+            if (configs != null && configs.length == 2) {
+              //
+              // visit the precompiled file to add it into the
+              // targets list (just like any other file if
+              // compiler doesn't support precompilation)
+              final TargetMatcher matcher = new TargetMatcher(this, this._objDir, new ProcessorConfiguration[] {
+                configs[0]
+              }, linkerConfig, objectFiles, targets, versionInfo);
 
-        //
-        // if the compiler has a fileset
-        // then allow it to add its files
-        // to the set of potential targets
-        if (currentCompilerDef.hasFileSets()) {
-          final TargetMatcher matcher = new TargetMatcher(this, this._objDir, localConfigs, linkerConfig, objectFiles,
-              targets, versionInfo);
-          currentCompilerDef.visitFiles(matcher);
-        }
-        biddingProcessors.addElement(config);
-      }
-    }
+              matcher.visit(prototype.getParent(), prototype.getFileName());
+              //
+              // only the configuration that uses the
+              // precompiled header gets added to the bidding list
+              biddingProcessors.addElement(configs[1]);
+              localConfigs = new ProcessorConfiguration[2];
+              localConfigs[0] = configs[1];
+              localConfigs[1] = config;
+            }
+          }
+
+          //
+          // if the compiler has a fileset
+          // then allow it to add its files
+          // to the set of potential targets
+          if (currentCompilerDef.hasFileSets()) {
+            final TargetMatcher matcher = new TargetMatcher(this, this._objDir, localConfigs, linkerConfig, objectFiles,
+                targets, versionInfo);
+            currentCompilerDef.visitFiles(matcher);
+          }
+          biddingProcessors.addElement(config);
+        });
+
     //
     // add fallback compiler at the end
     //
@@ -1328,27 +1324,27 @@ public class CCTask extends Task {
       final ProcessorConfiguration config = this.compilerDef.createConfiguration(this, this.linkType, null,
           targetPlatform, versionInfo);
       biddingProcessors.addElement(config);
-	}
+	  }
 	
-      final ProcessorConfiguration[] bidders = new ProcessorConfiguration[biddingProcessors.size()];
-      biddingProcessors.copyInto(bidders);
-      //
-      // bid out the <fileset>'s in the cctask
-      //
-      final TargetMatcher matcher = new TargetMatcher(this, this._objDir, bidders, linkerConfig, objectFiles, targets,
-          versionInfo);
-      this.compilerDef.visitFiles(matcher);
+    final ProcessorConfiguration[] bidders = new ProcessorConfiguration[biddingProcessors.size()];
+    biddingProcessors.copyInto(bidders);
+    //
+    // bid out the <fileset>'s in the cctask
+    //
+    final TargetMatcher matcher = new TargetMatcher(this, this._objDir, bidders, linkerConfig, objectFiles, targets,
+        versionInfo);
+    this.compilerDef.visitFiles(matcher);
 		
-	    //Add the VersionInfo when relevant	
-      if (outputFile != null && versionInfo != null) {
-        final boolean isDebug = linkerConfig.isDebug();
-        try {
-          linkerConfig.getLinker()
-              .addVersionFiles(versionInfo, this.linkType, outputFile, isDebug, this._objDir, matcher);
-        } catch (final IOException ex) {
-          throw new BuildException(ex);
-        }
+    // Add the VersionInfo when relevant	
+    if (outputFile != null && versionInfo != null) {
+      final boolean isDebug = linkerConfig.isDebug();
+      try {
+        linkerConfig.getLinker()
+            .addVersionFiles(versionInfo, this.linkType, outputFile, isDebug, this._objDir, matcher);
+      } catch (final IOException ex) {
+        throw new BuildException(ex);
       }
+    }
     
     return targets;
   }
@@ -1649,7 +1645,7 @@ public class CCTask extends Task {
    * @param dir
    *          object directory
    */
-  public void setObjdir(final File dir) {
+  public void setObjdir(final Path dir) {
     if (dir == null) {
       throw new NullPointerException("dir");
     }
@@ -1674,7 +1670,7 @@ public class CCTask extends Task {
    * @param outfile
    *          output file name
    */
-  public void setOutfile(final File outfile) {
+  public void setOutfile(final Path outfile) {
     //
     // if file name was empty, skip link step
     //

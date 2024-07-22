@@ -19,14 +19,15 @@
  */
 package com.github.maven_nar.cpptasks.mozilla;
 
-import java.io.File;
+import java.nio.file.Path;
+import java.util.Collections;
+import java.util.List;
 import java.util.Vector;
 
 import org.apache.tools.ant.BuildException;
 import org.apache.tools.ant.types.Environment;
 
 import com.github.maven_nar.cpptasks.CCTask;
-import com.github.maven_nar.cpptasks.CUtil;
 import com.github.maven_nar.cpptasks.OptimizationEnum;
 import com.github.maven_nar.cpptasks.VersionInfo;
 import com.github.maven_nar.cpptasks.compiler.CommandLineCompiler;
@@ -110,18 +111,18 @@ public final class XpidlCompiler extends CommandLineCompiler {
    * @param includePathId
    *          StringBuffer buffer for configuration identification
    */
-  protected void addIncludes(final String baseDirPath, final File[] includeDirs, final Vector<String> args,
+  protected void addIncludes(final Path baseDirPath, final Path[] includeDirs, final Vector<String> args,
       final Vector<String> relativeArgs, final StringBuffer includePathId) {
     //
     // requires space between switch and path
     //
-    for (final File includeDir : includeDirs) {
+    for (final Path includeDir : includeDirs) {
       args.addElement("-I");
-      args.addElement(includeDir.getAbsolutePath());
+      args.addElement(includeDir.toAbsolutePath().toString());
       if (relativeArgs != null) {
-        final String relative = CUtil.getRelativePath(baseDirPath, includeDir);
+        final Path relative = baseDirPath.relativize(includeDir);
         relativeArgs.addElement("-I");
-        relativeArgs.addElement(relative);
+        relativeArgs.addElement(relative.toString());
         if (includePathId != null) {
           if (includePathId.length() == 0) {
             includePathId.append("-I ");
@@ -181,12 +182,12 @@ public final class XpidlCompiler extends CommandLineCompiler {
    *          progress monitor
    */
   @Override
-  public void compile(final CCTask task, final File outputDir, final String[] sourceFiles, final String[] args,
+  public void compile(final CCTask task, final Path outputDir, final Path[] sourceFiles, final String[] args,
       final String[] endArgs, final boolean relentless, final CommandLineCompilerConfiguration config,
       final ProgressMonitor monitor) {
 
     BuildException exc = null;
-    final String[] thisSource = new String[1];
+    final Path[] thisSource = new Path[1];
     final String[] tlbCommand = new String[args.length + endArgs.length + 6];
     tlbCommand[0] = "xpidl";
     tlbCommand[1] = "-m";
@@ -208,16 +209,16 @@ public final class XpidlCompiler extends CommandLineCompiler {
       tlbCommand[tlbIndex++] = endArg;
       headerCommand[headerIndex++] = endArg;
     }
-    for (final String sourceFile : sourceFiles) {
+    for (final Path sourceFile : sourceFiles) {
       tlbIndex = args.length + 4;
       headerIndex = args.length + 4;
-      final String[] outputFileNames = getOutputFileNames(sourceFile, null);
+      final Path[] outputFileNames = getOutputFileNames(sourceFile, null);
 
-      tlbCommand[tlbIndex++] = outputFileNames[0];
-      tlbCommand[tlbIndex++] = sourceFile;
+      tlbCommand[tlbIndex++] = outputFileNames[0].toString();
+      tlbCommand[tlbIndex++] = sourceFile.toString();
 
-      headerCommand[headerIndex++] = outputFileNames[1];
-      headerCommand[headerIndex++] = sourceFile;
+      headerCommand[headerIndex++] = outputFileNames[1].toString();
+      headerCommand[headerIndex++] = sourceFile.toString();
 
       int retval = runCommand(task, outputDir, tlbCommand);
       if (retval == 0) {
@@ -260,7 +261,7 @@ public final class XpidlCompiler extends CommandLineCompiler {
    * @return parser
    */
   @Override
-  protected Parser createParser(final File source) {
+  protected Parser createParser(final Path source) {
     return new CParser();
   }
 
@@ -294,8 +295,8 @@ public final class XpidlCompiler extends CommandLineCompiler {
    * @return File[] standard include paths
    */
   @Override
-  protected File[] getEnvironmentIncludePath() {
-    return new File[0];
+  protected List<Path> getEnvironmentIncludePath() {
+    return Collections.emptyList();
   }
 
   /**
@@ -316,7 +317,7 @@ public final class XpidlCompiler extends CommandLineCompiler {
    * @return String command switch to add specified directory to search path
    */
   @Override
-  protected String getIncludeDirSwitch(final String includeDir) {
+  protected String getIncludeDirSwitch(final Path includeDir) {
     return "-I" + includeDir;
   }
 
@@ -333,7 +334,7 @@ public final class XpidlCompiler extends CommandLineCompiler {
    * @return String input file argument
    */
   @Override
-  protected String getInputFileArgument(final File outputDir, final String filename, final int index) {
+  protected String getInputFileArgument(final Path outputDir, final Path filename, final int index) {
     return "";
   }
 
@@ -379,13 +380,14 @@ public final class XpidlCompiler extends CommandLineCompiler {
    * @return String[] output file names
    */
   @Override
-  public String[] getOutputFileNames(final String inputFile, final VersionInfo versionInfo) {
+  public Path[] getOutputFileNames(final Path inputFile, final VersionInfo versionInfo) {
     //
     // if a recognized input file
     //
     final String baseName = getBaseOutputName(inputFile);
-    return new String[] {
-        baseName + ".xpt", baseName + ".h"
+    return new Path[] {
+        Path.of(baseName + ".xpt"),
+        Path.of(baseName + ".h")
     };
   }
 
@@ -399,7 +401,7 @@ public final class XpidlCompiler extends CommandLineCompiler {
    * @return int characters added to command line for the input file.
    */
   @Override
-  protected int getTotalArgumentLengthForInputFile(final File outputDir, final String inputFile) {
+  protected int getTotalArgumentLengthForInputFile(final Path outputDir, final Path inputFile) {
     return 0;
   }
 

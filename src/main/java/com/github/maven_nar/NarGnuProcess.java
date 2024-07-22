@@ -19,7 +19,8 @@
  */
 package com.github.maven_nar;
 
-import java.io.File;
+import java.nio.file.Files;
+import java.nio.file.Path;
 
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
@@ -35,8 +36,8 @@ import org.apache.maven.plugins.annotations.Mojo;
 public class NarGnuProcess extends AbstractGnuMojo {
   @Override
   public final void narExecute() throws MojoExecutionException, MojoFailureException {
-    final File srcDir = getGnuAOLTargetDirectory();
-    if (srcDir.exists()) {
+    final Path srcDir = getGnuAOLTargetDirectory();
+    if (Files.exists(srcDir)) {
       getLog().info("Running GNU process");
 
       copyResources(srcDir, getAOL().toString());

@@ -25,7 +25,7 @@ import com.github.maven_nar.cpptasks.compiler.Linker;
 import com.github.maven_nar.cpptasks.gcc.AbstractLdLinker;
 import com.github.maven_nar.cpptasks.gcc.GccLibrarian;
 
-import java.util.Vector;
+import java.util.List;
 
 /**
  * Adapter for IBM(r) Visual Age(tm) Linker for AIX(tm)
@@ -54,12 +54,12 @@ public final class xlC_rLinker extends AbstractLdLinker {
 
   @Override
   public void
-      addImpliedArgs(final CCTask task, final boolean debug, final LinkType linkType, final Vector<String> args) {
+      addImpliedArgs(final CCTask task, final boolean debug, final LinkType linkType, final List<String> args) {
     if (debug) {
       // args.addElement("-g");
     }
     if (linkType.isSharedLibrary()) {
-      args.addElement("-qmkshrobj");
+      args.add("-qmkshrobj");
     }
   }
 

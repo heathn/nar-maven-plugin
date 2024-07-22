@@ -19,11 +19,12 @@
  */
 package com.github.maven_nar.cpptasks.gcc;
 
-import java.io.File;
+import java.nio.file.Path;
+import java.util.Collections;
+import java.util.List;
 import java.util.Vector;
 
 import org.apache.tools.ant.types.Environment;
-import org.apache.tools.ant.util.FileUtils;
 
 import com.github.maven_nar.cpptasks.OptimizationEnum;
 import com.github.maven_nar.cpptasks.compiler.CommandLineCompiler;
@@ -80,7 +81,7 @@ public final class WindresResourceCompiler extends CommandLineCompiler {
    * inherit from CommandLineCCompiler
    */
   @Override
-  protected Parser createParser(final File source) {
+  protected Parser createParser(final Path source) {
     return new CParser();
   }
 
@@ -100,8 +101,8 @@ public final class WindresResourceCompiler extends CommandLineCompiler {
   }
 
   @Override
-  protected File[] getEnvironmentIncludePath() {
-    return new File[0];
+  protected List<Path> getEnvironmentIncludePath() {
+    return Collections.emptyList();
   }
 
   @Override
@@ -110,26 +111,22 @@ public final class WindresResourceCompiler extends CommandLineCompiler {
   }
 
   @Override
-  protected String getIncludeDirSwitch(final String includeDir) {
+  protected String getIncludeDirSwitch(final Path includeDir) {
     return "-I" + includeDir;
   }
 
   @Override
-  protected String getInputFileArgument(final File outputDir, final String filename, final int index) {
+  protected String getInputFileArgument(final Path outputDir, final Path filename, final int index) {
     if (index == 0) {
-      final String outputFileName = getOutputFileNames(filename, null)[0];
-      final String objectName = new File(outputDir, outputFileName).toString();
+      final Path outputFileName = getOutputFileNames(filename, null)[0];
+      final String objectName = outputDir.resolve(outputFileName).toString();
       return "-o" + objectName;
     }
-    String relative="";
-    try {
-        relative = FileUtils.getRelativePath(workDir, new File(filename));
-    } catch (Exception ex) {
-    }
-    if (relative.isEmpty()) {
-        return filename;
+    Path relative = workDir.relativize(filename);
+    if (relative.getNameCount() == 0) {
+        return filename.toString();
     } else {
-        return relative;
+        return relative.toString();
     }
   }
 

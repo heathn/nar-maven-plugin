@@ -19,7 +19,11 @@
  */
 package com.github.maven_nar.cpptasks.gcc;
 
-import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Collections;
+import java.util.List;
 
 import org.apache.tools.ant.BuildException;
 
@@ -47,13 +51,13 @@ public abstract class AbstractArLibrarian extends CommandLineLinker {
   }
 
   @Override
-  public String getCommandFileSwitch(final String commandFile) {
+  public String getCommandFileSwitch(final Path commandFile) {
     return null;
   }
 
   @Override
-  public File[] getLibraryPath() {
-    return new File[0];
+  public List<Path> getLibraryPath() {
+    return Collections.emptyList();
   }
 
   @Override
@@ -67,18 +71,18 @@ public abstract class AbstractArLibrarian extends CommandLineLinker {
   }
 
   @Override
-  public String[] getOutputFileNames(final String baseName, final VersionInfo versionInfo) {
-    final String[] baseNames = super.getOutputFileNames(baseName, versionInfo);
+  public Path[] getOutputFileNames(final Path baseName, final VersionInfo versionInfo) {
+    final Path[] baseNames = super.getOutputFileNames(baseName, versionInfo);
     if (this.outputPrefix.length() > 0) {
       for (int i = 0; i < baseNames.length; i++) {
-        baseNames[i] = this.outputPrefix + baseNames[i];
+        baseNames[i] = Path.of(this.outputPrefix + baseNames[i]);
       }
     }
     return baseNames;
   }
 
   @Override
-  public String[] getOutputFileSwitch(final String outputFile) {
+  public String[] getOutputFileSwitch(final Path outputFile) {
     return GccProcessor.getOutputFileSwitch("rvs", outputFile);
   }
 
@@ -88,13 +92,15 @@ public abstract class AbstractArLibrarian extends CommandLineLinker {
   }
 
   @Override
-  public void link(final CCTask task, final File outputFile, final String[] sourceFiles,
+  public void link(final CCTask task, final Path outputFile, final List<Path> sourceFiles,
       final CommandLineLinkerConfiguration config) throws BuildException {
     //
     // if there is an existing library then
     // we must delete it before executing "ar"
-    if (outputFile.exists() && !outputFile.delete()) {
-        throw new BuildException("Unable to delete " + outputFile.getAbsolutePath());
+    try {
+      Files.deleteIfExists(outputFile);
+    } catch (IOException e) {
+        throw new BuildException("Unable to delete " + outputFile);
     }
     //
     // delegate to CommandLineLinker

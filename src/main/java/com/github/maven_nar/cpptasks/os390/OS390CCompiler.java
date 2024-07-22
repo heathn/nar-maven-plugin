@@ -19,7 +19,8 @@
  */
 package com.github.maven_nar.cpptasks.os390;
 
-import java.io.File;
+import java.nio.file.Path;
+import java.util.List;
 import java.util.Vector;
 
 import org.apache.tools.ant.types.Environment;
@@ -97,16 +98,16 @@ public class OS390CCompiler extends CommandLineCCompiler {
    * have to implement the getDefineSwitch() and the getUndefineSwitch().
    */
   @Override
-  protected void buildDefineArguments(final CompilerDef[] defs, final Vector<String> args) {
+  protected void buildDefineArguments(final List<CompilerDef> defs, final Vector<String> args) {
     //
     // assume that we aren't inheriting defines from containing <cc>
     //
-    UndefineArgument[] merged = defs[0].getActiveDefines();
-    for (int i = 1; i < defs.length; i++) {
+    List<UndefineArgument> merged = defs.get(0).getActiveDefines();
+    for (int i = 1; i < defs.size(); i++) {
       //
       // if we are inheriting, merge the specific defines with the
       // containing defines
-      merged = UndefineArgument.merge(defs[i].getActiveDefines(), merged);
+      merged = UndefineArgument.merge(defs.get(i).getActiveDefines(), merged);
     }
     final StringBuffer buf = new StringBuffer(30);
     for (final UndefineArgument current : merged) {
@@ -139,12 +140,12 @@ public class OS390CCompiler extends CommandLineCCompiler {
   }
 
   @Override
-  protected File[] getEnvironmentIncludePath() {
+  protected List<Path> getEnvironmentIncludePath() {
     return CUtil.getPathFromEnvironment("INCLUDE", ":");
   }
 
   @Override
-  protected String getIncludeDirSwitch(final String includeDir) {
+  protected String getIncludeDirSwitch(final Path includeDir) {
     return OS390Processor.getIncludeDirSwitch(includeDir);
   }
 

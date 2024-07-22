@@ -20,6 +20,7 @@
 package com.github.maven_nar;
 
 import java.io.IOException;
+import java.nio.file.Files;
 
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
@@ -36,7 +37,7 @@ public class NarCMakeResources extends AbstractCMakeMojo {
 
   @Override
   public final void narExecute() throws MojoExecutionException, MojoFailureException {
-    if (getCMakeSourceDirectory().exists()) {
+    if (Files.exists(getCMakeSourceDirectory())) {
       int copied = 0;
 
       try {

@@ -21,6 +21,8 @@ package com.github.maven_nar;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
@@ -31,12 +33,12 @@ import java.util.List;
 import java.util.ListIterator;
 import java.util.Objects;
 import java.util.Set;
-import java.util.Vector;
 
 import org.apache.maven.artifact.Artifact;
 import org.apache.maven.execution.MavenSession;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
+import org.apache.maven.plugins.annotations.Component;
 import org.apache.maven.plugins.annotations.LifecyclePhase;
 import org.apache.maven.plugins.annotations.Mojo;
 import org.apache.maven.plugins.annotations.Parameter;
@@ -77,7 +79,7 @@ public class NarCompileMojo extends AbstractCompileMojo {
   /**
    * The current build session instance.
    */
-  @Parameter(defaultValue = "${session}", readonly = true)
+  @Component
   protected MavenSession session;
 
   private void copyInclude(final Compiler c) throws IOException, MojoExecutionException, MojoFailureException {
@@ -122,7 +124,7 @@ public class NarCompileMojo extends AbstractCompileMojo {
     task.setLinkFortranMain(library.linkFortranMain());
 
     // outDir
-    File outDir;
+    Path outDir;
     if (type.equals(Library.EXECUTABLE)) {
       outDir = getLayout().getBinDirectory(getTargetDirectory(), getMavenProject().getArtifactId(),
           getMavenProject().getVersion(), getAOL().toString());
@@ -130,11 +132,16 @@ public class NarCompileMojo extends AbstractCompileMojo {
       outDir = getLayout().getLibDirectory(getTargetDirectory(), getMavenProject().getArtifactId(),
           getMavenProject().getVersion(), getAOL().toString(), type);
     }
-    outDir.mkdirs();
+    try {
+      Files.createDirectories(outDir);
+    } catch (IOException e) {
+      getLog().error("Unable to create outDirs", e);
+      throw new MojoExecutionException(e);
+    }
 
     // outFile
     // FIXME NAR-90 we could get the final name from layout
-    final File outFile = new File(outDir, getOutput(getAOL(), type));
+    final Path outFile = outDir.resolve(getOutput(getAOL(), type));
     getLog().debug("NAR - output: '" + outFile + "'");
     task.setOutfile(outFile);
 
@@ -144,9 +151,14 @@ public class NarCompileMojo extends AbstractCompileMojo {
     }
 
     // object directory
-    File objDir = new File(getTargetDirectory(), "obj");
-    objDir = new File(objDir, getAOL().toString() + "-" + library.getType());
-    objDir.mkdirs();
+    Path objDir = getTargetDirectory().resolve("obj")
+      .resolve(getAOL().toString() + "-" + library.getType());
+    try {
+      Files.createDirectories(objDir);
+    } catch (IOException e) {
+      getLog().error("Unable to create objDir", e);
+      throw new MojoExecutionException(e);
+    }
     task.setObjdir(objDir);
 
     // failOnError, libtool
@@ -167,7 +179,7 @@ public class NarCompileMojo extends AbstractCompileMojo {
       final CompilerDef idl = getIdl().getCompiler(Compiler.MAIN, null);
       if (idl != null) {
         task.addConfiguredCompiler(idl);
-        task.createIncludePath().setPath(objDir.getPath()); // generated
+        task.createIncludePath().setPath(objDir.toString()); // generated
                                                             // 'sources'
       }
     }
@@ -175,7 +187,7 @@ public class NarCompileMojo extends AbstractCompileMojo {
       final CompilerDef mc = getMessage().getCompiler(Compiler.MAIN, null);
       if (mc != null) {
         task.addConfiguredCompiler(mc);
-        task.createIncludePath().setPath(objDir.getPath()); // generated
+        task.createIncludePath().setPath(objDir.toString()); // generated
                                                             // 'sources'
       }
     }
@@ -260,9 +272,9 @@ public class NarCompileMojo extends AbstractCompileMojo {
     // end Darren
 
     // add javah include path
-    final File jniDirectory = getJavah().getJniDirectory();
-    if (jniDirectory.exists()) {
-      task.createIncludePath().setPath(jniDirectory.getPath());
+    final Path jniDirectory = getJavah().getJniDirectory();
+    if (Files.exists(jniDirectory)) {
+      task.createIncludePath().setPath(jniDirectory.toString());
     }
 
     // add java include paths
@@ -270,27 +282,27 @@ public class NarCompileMojo extends AbstractCompileMojo {
 
     getMsvc().configureCCTask(task);
 
-    final List<NarArtifact> dependencies = getNarArtifacts();
+    List<NarArtifact> dependencies = getNarArtifacts();
     List<String> linkPaths = new ArrayList<String>();
 
     // If we're restricting deps to direct deps ONLY then trim transitive deps
-    if (directDepsOnly){
+    if (directDepsOnly) {
       HashSet<String> directDepsSet = getDirectDepsSet(getVerboseDependencyTree());
-      ListIterator <NarArtifact> depsIt = dependencies.listIterator();
+      ListIterator<NarArtifact> depsIt = dependencies.listIterator();
 
       // Trim all deps from dependencies that are not in the directDepsSet, warn if they are found.
-      while(depsIt.hasNext()){
+      while (depsIt.hasNext()) {
         NarInfo dep = depsIt.next().getNarInfo();
-        if(!directDepsSet.contains(dep.getGroupId() + ":" + dep.getArtifactId())){
+        if (!directDepsSet.contains(dep.getGroupId() + ":" + dep.getArtifactId())) {
           this.getLog().debug("Stray dependency: " + dep + " found. This may cause build failures.");
           depsIt.remove();
+
           // If this transitive dependency was a shared object, add it to the linkPaths list.
           String depType = dep.getBinding(null, null);
-          if (Objects.equals(depType, Library.SHARED))
-          {
-            File soDir = getLayout().getLibDirectory(getTargetDirectory(), dep.getArtifactId(), dep.getVersion(), getAOL().toString(), depType);
-            if (soDir.exists()){
-              linkPaths.add(soDir.getAbsolutePath());
+          if (Objects.equals(depType, Library.SHARED)) {
+            Path soDir = getLayout().getLibDirectory(getTargetDirectory(), dep.getArtifactId(), dep.getVersion(), getAOL().toString(), depType);
+            if (Files.exists(soDir)) {
+              linkPaths.add(soDir.toAbsolutePath().toString());
             }
           }
         }
@@ -298,23 +310,23 @@ public class NarCompileMojo extends AbstractCompileMojo {
     }
 
     // add dependency include paths
-    for (final Object element : dependencies) {
+    for (final NarArtifact narDependency : dependencies) {
       // FIXME, handle multiple includes from one NAR
-      final NarArtifact narDependency = (NarArtifact) element;
       final String binding = getBinding(library, narDependency);
       getLog().debug("Looking for " + narDependency + " found binding " + binding);
       if (!binding.equals(Library.JNI)) {
-        final File unpackDirectory = getUnpackDirectory();
-        final File include = getLayout().getIncludeDirectory(unpackDirectory, narDependency.getArtifactId(),
+        final Path include = getLayout().getIncludeDirectory(
+            getUnpackDirectory(),
+            narDependency.getArtifactId(),
             narDependency.getBaseVersion());
         getLog().debug("Looking for include directory: " + include);
-        if (include.exists()) {
+        if (Files.exists(include)) {
           String includesType = narDependency.getNarInfo().getIncludesType(null);
           if (includesType.equals("system")) {
-            task.createSysIncludePath().setPath(include.getPath());
+            task.createSysIncludePath().setPath(include.toString());
           }
           else {
-            task.createIncludePath().setPath(include.getPath());
+            task.createIncludePath().setPath(include.toString());
           }
         } else {
           // Ideally includes are used from lib (static or shared)
@@ -340,19 +352,17 @@ public class NarCompileMojo extends AbstractCompileMojo {
     final boolean skipDepLink = linkerDefinition.isSkipDepLink();
     if (((type.equals(Library.SHARED) || type.equals(Library.JNI) || type.equals(Library.EXECUTABLE))) && !skipDepLink) {
 
-      final List depLibOrder = getDependencyLibOrder();
-      List depLibs = dependencies;
+      final List<String> depLibOrder = getDependencyLibOrder();
 
       // reorder the libraries that come from the nar dependencies
       // to comply with the order specified by the user
       if (depLibOrder != null && !depLibOrder.isEmpty()) {
-        final List tmp = new LinkedList();
+        final List<NarArtifact> tmp = new LinkedList<>();
 
-        for (final Object aDepLibOrder : depLibOrder) {
-          final String depToOrderName = (String) aDepLibOrder;
+        for (final String depToOrderName : depLibOrder) {
 
-          for (final Iterator j = depLibs.iterator(); j.hasNext(); ) {
-            final NarArtifact dep = (NarArtifact) j.next();
+          for (final Iterator<NarArtifact> j = dependencies.iterator(); j.hasNext(); ) {
+            final NarArtifact dep = j.next();
             final String depName = dep.getGroupId() + ":" + dep.getArtifactId();
 
             if (depName.equals(depToOrderName)) {
@@ -362,12 +372,11 @@ public class NarCompileMojo extends AbstractCompileMojo {
           }
         }
 
-        tmp.addAll(depLibs);
-        depLibs = tmp;
+        tmp.addAll(dependencies);
+        dependencies = tmp;
       }
 
-      for (final Object depLib : depLibs) {
-        final NarArtifact dependency = (NarArtifact) depLib;
+      for (final NarArtifact dependency : dependencies) {
 
         // FIXME no handling of "local"
 
@@ -380,15 +389,15 @@ public class NarCompileMojo extends AbstractCompileMojo {
         getLog().debug("Using Library AOL: " + aol.toString());
 
         if (!binding.equals(Library.JNI) && !binding.equals(Library.NONE) && !binding.equals(Library.EXECUTABLE)) {
-          final File unpackDirectory = getUnpackDirectory();
-          final File dir = getLayout()
+          final Path unpackDirectory = getUnpackDirectory();
+          final Path dir = getLayout()
               .getLibDirectory(unpackDirectory, dependency.getArtifactId(), dependency.getBaseVersion(), aol.toString(),
                   binding);
 
           getLog().debug("Looking for Library Directory: " + dir);
-          if (dir.exists()) {
+          if (Files.exists(dir)) {
             // Load nar properties file from aol specific directory
-            final File aolNarInfoFile = getLayout()
+            final Path aolNarInfoFile = getLayout()
                     .getNarInfoDirectory(unpackDirectory, dependency.getGroupId(), dependency.getArtifactId(),
                             dependency.getBaseVersion(), aol.toString(), binding);
 
@@ -468,20 +477,17 @@ public class NarCompileMojo extends AbstractCompileMojo {
     // getRuntime(getAOL()).equals("dynamic") &&
     if ((isEmbedManifest() || getLinker().isGenerateManifest()) && getOS().equals(OS.WINDOWS)
         && getLinker().getName().equals("msvc") && !getLinker().getVersion(this).startsWith("6.")) {
-      final String[] env = new String[] {
-        "PATH=" + getMsvc().getPathVariable().getValue()
-      };
       final String libType = library.getType();
       if (Library.JNI.equals(libType) || Library.SHARED.equals(libType) || Library.EXECUTABLE.equals(libType)) {
-        Vector<String> commandlineArgs = new Vector<>();
+        List<String> commandlineArgs = new ArrayList<>();
         commandlineArgs.add("/manifest");
-        getManifests(outFile.getPath(), commandlineArgs);
+        getManifests(outFile.toString(), commandlineArgs);
         if (commandlineArgs.size() == 1) {
           if (isEmbedManifest())
             getLog().warn("Embed manifest requested, no source manifests to embed, no manifest generated");
         } else {
           if (Library.JNI.equals(libType) || Library.SHARED.equals(libType)) {
-            String dll = outFile.getPath() + ".dll";
+            String dll = outFile.toString() + ".dll";
             if (isEmbedManifest()) {
               commandlineArgs.add("/outputresource:" + dll + ";#2");
             } else {
@@ -489,25 +495,24 @@ public class NarCompileMojo extends AbstractCompileMojo {
             }
           } else // if (Library.EXECUTABLE.equals( libType ))
           {
-            String exe = outFile.getPath() + ".exe";
+            String exe = outFile.toString() + ".exe";
             if (isEmbedManifest()) {
               commandlineArgs.add("/outputresource:" + exe + ";#1");
             } else {
               commandlineArgs.add("/out:" + exe + ".manifest");
             }
           }
-          String[] commandlineArgsArray = commandlineArgs.toArray(new String[0]);
-          String mtexe = "mt.exe";
+          Path mtexe = Path.of("mt.exe");
           if (getMsvc().compareVersion( getMsvc().getWindowsSdkVersion(),"7.0")<0 && getLinker().getVersion(this).startsWith("8.")) { // VS2005 VC8 only one that includes mt.exe
-            File mtexeFile = new File(getMsvc().getToolPath(), mtexe);
-            if (mtexeFile.exists())
-              mtexe = mtexeFile.getAbsolutePath();
+            Path path = getMsvc().getToolPath().resolve(mtexe);
+            if (Files.exists(path))
+              mtexe = path;
           } else {
-            File mtexeFile = new File(getMsvc().getSDKToolPath(), mtexe);
-            if (mtexeFile.exists())
-              mtexe = mtexeFile.getAbsolutePath();
+            Path path = getMsvc().getSDKToolPath().resolve(mtexe);
+            if (Files.exists(path))
+              mtexe = path;
           }
-          int result = NarUtil.runCommand(mtexe, commandlineArgsArray, null, null, getLog());
+          int result = NarUtil.runCommand(mtexe.toAbsolutePath().toString(), commandlineArgs, null, null, getLog());
           if (result != 0) {
             throw new MojoFailureException("MT.EXE failed with exit code: " + result);
           }
@@ -515,9 +520,9 @@ public class NarCompileMojo extends AbstractCompileMojo {
       }
     }
     if( getOS().equals(OS.WINDOWS) && Library.STATIC.equals(library.getType()) ){  // option? should debug symbols always be provided.
-      getLog().debug( "Copy static pdbs from intermediat dir to " + task.getOutfile().getParentFile() );
+      getLog().debug( "Copy static pdbs from intermediate dir to " + task.getOutfile().getParent() );
       try {
-        NarUtil.copyDirectoryStructure(task.getObjdir(), task.getOutfile().getParentFile(), "**/*.pdb", NarUtil.DEFAULT_EXCLUDES );
+        NarUtil.copyDirectoryStructure(task.getObjdir(), task.getOutfile().getParent(), "**/*.pdb", NarUtil.DEFAULT_EXCLUDES );
       } catch (IOException e) {
         getLog().info( "Failed to copy pdbs from " + task.getObjdir() + "\nexception" + e.getMessage() );
       }
@@ -534,18 +539,17 @@ public class NarCompileMojo extends AbstractCompileMojo {
     return new ScopeFilter(Artifact.SCOPE_COMPILE, null);
   }
 
-  private List getSourcesFor(final Compiler compiler) throws MojoFailureException, MojoExecutionException {
+  private List<File> getSourcesFor(final Compiler compiler) throws MojoFailureException, MojoExecutionException {
     if (compiler == null) {
       return Collections.emptyList();
     }
 
     try {
-      final List files = new ArrayList();
-      final List srcDirs = compiler.getSourceDirectories();
-      for (final Object srcDir : srcDirs) {
-        final File dir = (File) srcDir;
-        if (dir.exists()) {
-          files.addAll(FileUtils.getFiles(dir,
+      final List<File> files = new ArrayList<>();
+      final List<Path> srcDirs = compiler.getSourceDirectories();
+      for (final Path srcDir : srcDirs) {
+        if (Files.exists(srcDir)) {
+          files.addAll(FileUtils.getFiles(srcDir.toFile(),
               StringUtils.join(compiler.getIncludes().iterator(), ","),
               StringUtils.join(compiler.getExcludes().iterator(), ",")));
         }
@@ -560,7 +564,12 @@ public class NarCompileMojo extends AbstractCompileMojo {
   public final void narExecute() throws MojoExecutionException, MojoFailureException {
 
     // make sure destination is there
-    getTargetDirectory().mkdirs();
+    try {
+      Files.createDirectories(getTargetDirectory());
+    } catch (IOException e) {
+      getLog().error("Unalbe to create target directories", e);
+      throw new MojoExecutionException(e);
+    }
 
     // check for source files
     int noOfSources = 0;
@@ -575,6 +584,7 @@ public class NarCompileMojo extends AbstractCompileMojo {
     if (noOfSources > 0) {
       getLog().info("Compiling " + noOfSources + " native files");
       for (final Library library : getLibraries()) {
+        getLog().info("Building " + library);
         createLibrary(getAntProject(), library);
       }
     } else {
@@ -590,13 +600,13 @@ public class NarCompileMojo extends AbstractCompileMojo {
       throw new MojoExecutionException("NAR: could not copy include files", e);
     }
 
-    getNarInfo().writeToDirectory(this.classesDirectory);
+    getNarInfo().writeToDirectory(getClassesDirectory());
     
     if (replay != null) {
-      File compileCommandFile = new File(replay.getOutputDirectory(), NarConstants.REPLAY_COMPILE_NAME);
+      Path compileCommandFile = replay.getOutputDirectory().resolve(NarConstants.REPLAY_COMPILE_NAME);
       NarUtil.writeCommandFile(compileCommandFile, compileCommands);
       
-      File linkCommandFile = new File(replay.getOutputDirectory(), NarConstants.REPLAY_LINK_NAME);
+      Path linkCommandFile = replay.getOutputDirectory().resolve(NarConstants.REPLAY_LINK_NAME);
       NarUtil.writeCommandFile(linkCommandFile, linkCommands);
     }
   }
@@ -605,7 +615,7 @@ public class NarCompileMojo extends AbstractCompileMojo {
     return embedManifest;
   }
 
-  private void getManifests(String generated, Vector<String> manifests) {
+  private void getManifests(String generated, List<String> manifests) {
     // TODO: /manifest should be followed by the list of manifest files
     // - the one generated by link, any others provided in source.
     // search the source for .manifest files.

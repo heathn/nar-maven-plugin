@@ -19,6 +19,7 @@
  */
 package com.github.maven_nar.cpptasks.os400;
 
+import java.nio.file.Path;
 import java.util.Vector;
 
 /**
@@ -55,13 +56,13 @@ public class IccProcessor {
     return buf.toString();
   }
 
-  public static String getIncludeDirSwitch(final String includeDir) {
+  public static String getIncludeDirSwitch(final Path includeDir) {
     return "-I" + includeDir;
   }
 
-  public static String[] getOutputFileSwitch(final String outPath) {
+  public static String[] getOutputFileSwitch(final Path outPath) {
     final StringBuffer buf = new StringBuffer("-o ");
-    if (outPath.indexOf(' ') >= 0) {
+    if (outPath.toString().indexOf(' ') >= 0) {
       buf.append('\"');
       buf.append(outPath);
       buf.append('\"');

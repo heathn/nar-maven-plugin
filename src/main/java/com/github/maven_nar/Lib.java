@@ -20,9 +20,9 @@
 package com.github.maven_nar;
 
 import java.io.File;
+import java.nio.file.Path;
 import java.util.List;
 
-import org.apache.maven.artifact.Artifact;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
 import org.apache.maven.plugins.annotations.Parameter;
@@ -63,18 +63,18 @@ public class Lib {
    * Sub libraries for this library
    */
   @Parameter
-  private List/* <Lib> */libs;
+  private List<Lib> libs;
 
   public final void addLibSet(final AbstractDependencyMojo mojo, final LinkerDef linker, final Project antProject)
       throws MojoFailureException, MojoExecutionException {
     if (this.name == null) {
       throw new MojoFailureException("NAR: Please specify <Name> as part of <Lib> for library \"" + this.name + "\"");
     }
-    addLibSet(mojo, linker, antProject, this.name, this.directory);
+    addLibSet(mojo, linker, antProject, this.name, this.directory.toPath());
   }
 
   private void addLibSet(final AbstractDependencyMojo mojo, final LinkerDef linker, final Project antProject,
-      final String name, final File dir) throws MojoFailureException, MojoExecutionException {
+      final String name, final Path dir) throws MojoFailureException, MojoExecutionException {
     if (this.libs == null) {
       addSingleLibSet(linker, antProject, name, dir);
     } else {
@@ -84,19 +84,16 @@ public class Lib {
 
   private void addMultipleLibSets(final AbstractDependencyMojo mojo, final LinkerDef linker, final Project antProject,
       final String name) throws MojoFailureException, MojoExecutionException {
-    final List dependencies = mojo.getNarArtifacts();
-    for (final Object lib1 : this.libs) {
-      final Lib lib = (Lib) lib1;
+    final List<NarArtifact> dependencies = mojo.getNarArtifacts();
+    for (final Lib lib : this.libs) {
       final String[] ids = name.split(":", 2);
       if (ids.length != 2) {
         throw new MojoFailureException("NAR: Please specify <Name> as part of <Lib> in format 'groupId:artifactId'");
       }
-      for (final Object dependency1 : dependencies) {
-        final Artifact dependency = (Artifact) dependency1;
+      for (final NarArtifact dependency : dependencies) {
         if (dependency.getGroupId().equals(ids[0]) && dependency.getArtifactId().equals(ids[1])) {
           // FIXME NAR-90
-          final File narDir = new File(dependency.getFile().getParentFile(),
-              "nar/lib/" + mojo.getAOL() + "/" + lib.type);
+          final Path narDir = Path.of(dependency.getFile().getParent(), "nar/lib", mojo.getAOL().toString(), lib.type);
           final String narName = dependency.getArtifactId() + "-" + lib.name + "-" + dependency.getBaseVersion();
           lib.addLibSet(mojo, linker, antProject, narName, narDir);
         }
@@ -104,7 +101,7 @@ public class Lib {
     }
   }
 
-  private void addSingleLibSet(final LinkerDef linker, final Project antProject, final String name, final File dir)
+  private void addSingleLibSet(final LinkerDef linker, final Project antProject, final String name, final Path dir)
       throws MojoFailureException, MojoExecutionException {
     if (!this.type.equals("framework") && dir == null) {
       throw new MojoFailureException("NAR: Please specify <Directory> as part of <Lib> for library \"" + name + "\"");

@@ -19,10 +19,11 @@
  */
 package com.github.maven_nar.cpptasks;
 
-import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.file.Path;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Vector;
 
@@ -79,10 +80,9 @@ public final class TestCCTask extends TestCase {
    */
   public void testGetTargetsToBuildByConfiguration1() {
     final CompilerConfiguration config1 = new CommandLineCompilerConfiguration(GccCCompiler.getInstance(), "dummy",
-        new File[0], new File[0], new File[0], "", new String[0], new ProcessorParam[0], true, new String[0]);
-    final TargetInfo target1 = new TargetInfo(config1, new File[] {
-      new File("src/foo.bar")
-    }, null, new File("foo.obj"), true);
+        null, null, null, "", new String[0], null, true, new String[0]);
+    final TargetInfo target1 = new TargetInfo(config1,
+        List.of(Path.of("src/foo.bar")), null, Path.of("foo.obj"), true);
     final Map targets = new HashMap();
     targets.put(target1.getOutput(), target1);
     final Map targetsByConfig = CCTask.getTargetsToBuildByConfiguration(targets);
@@ -100,13 +100,12 @@ public final class TestCCTask extends TestCase {
    */
   public void testGetTargetsToBuildByConfiguration2() {
     final CompilerConfiguration config1 = new CommandLineCompilerConfiguration(GccCCompiler.getInstance(), "dummy",
-        new File[0], new File[0], new File[0], "", new String[0], new ProcessorParam[0], false, new String[0]);
+        null, null, null, "", new String[0], null, false, new String[0]);
     //
     // target doesn't need to be rebuilt
     //
-    final TargetInfo target1 = new TargetInfo(config1, new File[] {
-      new File("src/foo.bar")
-    }, null, new File("foo.obj"), false);
+    final TargetInfo target1 = new TargetInfo(config1,
+        List.of(Path.of("src/foo.bar")), null, Path.of("foo.obj"), false);
     final Map targets = new HashMap();
     targets.put(target1.getOutput(), target1);
     //

@@ -19,9 +19,10 @@
  */
 package com.github.maven_nar.cpptasks.borland;
 
-import java.io.File;
 import java.io.IOException;
-import java.util.Enumeration;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Vector;
 
 import com.github.maven_nar.cpptasks.CCTask;
@@ -121,13 +122,13 @@ public final class BorlandLinker extends CommandLineLinker {
    *          bidded fileset
    */
   @Override
-  public void addVersionFiles(final VersionInfo versionInfo, final LinkType linkType, final File outputFile,
-      final boolean isDebug, final File objDir, final TargetMatcher matcher) throws IOException {
+  public void addVersionFiles(final VersionInfo versionInfo, final LinkType linkType, final Path outputFile,
+      final boolean isDebug, final Path objDir, final TargetMatcher matcher) throws IOException {
     WindowsPlatform.addVersionFiles(versionInfo, linkType, outputFile, isDebug, objDir, matcher);
   }
 
   @Override
-  public String getCommandFileSwitch(final String commandFile) {
+  public String getCommandFileSwitch(final Path commandFile) {
     return "@" + commandFile;
   }
 
@@ -137,7 +138,7 @@ public final class BorlandLinker extends CommandLineLinker {
   }
 
   @Override
-  public File[] getLibraryPath() {
+  public List<Path> getLibraryPath() {
     return BorlandProcessor.getEnvironmentPath("ilink32", 'L', new String[] {
       "..\\lib"
     });
@@ -165,20 +166,20 @@ public final class BorlandLinker extends CommandLineLinker {
   }
 
   @Override
-  public String[] getOutputFileSwitch(final String outFile) {
+  public String[] getOutputFileSwitch(final Path outFile) {
     return BorlandProcessor.getOutputFileSwitch(outFile);
   }
 
   @Override
-  protected String getStartupObject(final LinkType linkType) {
+  protected Path getStartupObject(final LinkType linkType) {
     if (linkType.isSharedLibrary()) {
-      return "c0d32.obj";
+      return Path.of("c0d32.obj");
     }
     if (linkType.isSubsystemGUI()) {
-      return "c0w32.obj";
+      return Path.of("c0w32.obj");
     }
     if (linkType.isSubsystemConsole()) {
-      return "c0x32.obj";
+      return Path.of("c0x32.obj");
     }
     return null;
   }
@@ -202,24 +203,25 @@ public final class BorlandLinker extends CommandLineLinker {
    * @return arguments for runTask
    */
   @Override
-  protected String[] prepareArguments(final CCTask task, final String outputDir, final String outputName,
-      final String[] sourceFiles, final CommandLineLinkerConfiguration config) {
+  protected String[] prepareArguments(final CCTask task, final Path outputDir, final Path outputName,
+      final List<Path> sourceFiles, final CommandLineLinkerConfiguration config) {
     final String[] preargs = config.getPreArguments();
     final String[] endargs = config.getEndArguments();
-    final Vector<String> execArgs = new Vector<>(preargs.length + endargs.length + 10 + sourceFiles.length);
-    execArgs.addElement(this.getCommand());
+    final List<String> execArgs = new ArrayList<>();
+
+    execArgs.add(this.getCommand().toString());
     for (final String prearg : preargs) {
-      execArgs.addElement(prearg);
+      execArgs.add(prearg);
     }
     for (final String endarg : endargs) {
-      execArgs.addElement(endarg);
+      execArgs.add(endarg);
     }
     //
     // see if the input files have any known startup obj files
     //
-    String startup = null;
-    for (final String sourceFile : sourceFiles) {
-      final String filename = new File(sourceFile).getName().toLowerCase();
+    Path startup = null;
+    for (final Path sourceFile : sourceFiles) {
+      final String filename = sourceFile.getFileName().toString().toLowerCase();
       if (startup != null && filename.substring(0, 2).equals("c0") && filename.substring(3, 5).equals("32")
           && filename.substring(filename.length() - 4).equals(".obj")) {
         startup = sourceFile;
@@ -231,23 +233,22 @@ public final class BorlandLinker extends CommandLineLinker {
     if (startup == null) {
       startup = config.getStartupObject();
     }
-    execArgs.addElement(startup);
-    final Vector<String> resFiles = new Vector<>();
-    final Vector<String> libFiles = new Vector<>();
-    String defFile = null;
-    final StringBuffer buf = new StringBuffer();
-    for (final String sourceFile : sourceFiles) {
-      final String last4 = sourceFile.substring(sourceFile.length() - 4).toLowerCase();
+    execArgs.add(startup.toString());
+    final List<Path> resFiles = new ArrayList<>();
+    final List<String> libFiles = new ArrayList<>();
+    Path defFile = null;
+    for (final Path sourceFile : sourceFiles) {
+      final String last4 = sourceFile.toString().substring(sourceFile.toString().length() - 4).toLowerCase();
       if (last4.equals(".def")) {
-        defFile = quoteFilename(buf, sourceFile);
+        defFile = sourceFile;
       } else {
         if (last4.equals(".res")) {
-          resFiles.addElement(quoteFilename(buf, sourceFile));
+          resFiles.add(sourceFile);
         } else {
           if (last4.equals(".lib")) {
-            libFiles.addElement(quoteFilename(buf, sourceFile));
+            libFiles.add(quoteFilename(sourceFile));
           } else {
-            execArgs.addElement(quoteFilename(buf, sourceFile));
+            execArgs.add(quoteFilename(sourceFile));
           }
         }
       }
@@ -255,55 +256,50 @@ public final class BorlandLinker extends CommandLineLinker {
     //
     // output file name
     //
-    final String outputFileName = new File(outputDir, outputName).toString();
-    execArgs.addElement("," + quoteFilename(buf, outputFileName));
+    final Path outputFileName = outputDir.resolve(outputName);
+    execArgs.add("," + quoteFilename(outputFileName));
     if (config.getMap()) {
-      final int lastPeriod = outputFileName.lastIndexOf('.');
-      String mapName;
-      if (lastPeriod < outputFileName.length() - 4) {
-        mapName = outputFileName + ".map";
+      final int lastPeriod = outputFileName.toString().lastIndexOf('.');
+      Path mapName;
+      if (lastPeriod < outputFileName.toString().length() - 4) {
+        mapName = Path.of(outputFileName.getFileName() + ".map");
       } else {
-        mapName = outputFileName.substring(0, lastPeriod) + ".map";
+        mapName = Path.of(outputFileName.toString().substring(0, lastPeriod) + ".map");
       }
-      execArgs.addElement("," + quoteFilename(buf, mapName) + ",");
+      execArgs.add("," + quoteFilename(mapName) + ",");
     } else {
-      execArgs.addElement(",,");
+      execArgs.add(",,");
     }
     //
     // add all the libraries
     //
-    final Enumeration<String> libEnum = libFiles.elements();
     boolean hasImport32 = false;
     final boolean hasCw32 = false;
-    while (libEnum.hasMoreElements()) {
-      final String libName = libEnum.nextElement();
+    for (String libName : libFiles) {
       if (libName.equalsIgnoreCase("import32.lib")) {
         hasImport32 = true;
       }
       if (libName.equalsIgnoreCase("cw32.lib")) {
         hasImport32 = true;
       }
-      execArgs.addElement(quoteFilename(buf, libName));
+      execArgs.add(libName);
     }
     if (!hasCw32) {
-      execArgs.addElement(quoteFilename(buf, "cw32.lib"));
+      execArgs.add("cw32.lib");
     }
     if (!hasImport32) {
-      execArgs.addElement(quoteFilename(buf, "import32.lib"));
+      execArgs.add("import32.lib");
     }
     if (defFile == null) {
-      execArgs.addElement(",,");
+      execArgs.add(",,");
     } else {
-      execArgs.addElement("," + quoteFilename(buf, defFile) + ",");
+      execArgs.add("," + quoteFilename(defFile) + ",");
     }
-    final Enumeration<String> resEnum = resFiles.elements();
-    while (resEnum.hasMoreElements()) {
-      final String resName = resEnum.nextElement();
-      execArgs.addElement(quoteFilename(buf, resName));
+    for (Path resName : resFiles) {
+      execArgs.add(quoteFilename(resName));
     }
-    final String[] execArguments = new String[execArgs.size()];
-    execArgs.copyInto(execArguments);
-    return execArguments;
+
+    return execArgs.toArray(String[]::new);
   }
 
   /**
@@ -316,9 +312,9 @@ public final class BorlandLinker extends CommandLineLinker {
    * @return arguments for runTask
    */
   @Override
-  protected String[] prepareResponseFile(final File outputFile, final String[] args) throws IOException {
-    final String cmdargs[] = BorlandProcessor.prepareResponseFile(outputFile, args, " + \n");
-    cmdargs[cmdargs.length - 1] = getCommandFileSwitch(cmdargs[cmdargs.length - 1]);
+  protected String[] prepareResponseFile(final Path outputFile, final String[] args) throws IOException {
+    final String[] cmdargs = BorlandProcessor.prepareResponseFile(outputFile, args, " + \n");
+    cmdargs[cmdargs.length - 1] = getCommandFileSwitch(Path.of(cmdargs[cmdargs.length - 1]));
     return cmdargs;
   }
 

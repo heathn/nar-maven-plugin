@@ -19,7 +19,10 @@
  */
 package com.github.maven_nar.cpptasks.hp;
 
-import java.io.File;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Vector;
 
 import org.apache.tools.ant.types.Environment;
@@ -52,8 +55,7 @@ public final class aCCCompiler extends GccCompatibleCCompiler {
     return instance;
   }
 
-  private String identifier;
-  private File[] includePath;
+  private List<Path> includePath;
 
   /**
    * Private constructor. Use GccCCompiler.getInstance() to get singleton
@@ -100,20 +102,17 @@ public final class aCCCompiler extends GccCompatibleCCompiler {
   }
 
   @Override
-  public File[] getEnvironmentIncludePath() {
+  public List<Path> getEnvironmentIncludePath() {
     if (this.includePath == null) {
-      final File ccLoc = CUtil.getExecutableLocation("aCC");
+      this.includePath = new ArrayList<>();
+      final Path ccLoc = CUtil.getExecutableLocation("aCC");
       if (ccLoc != null) {
-        final File compilerIncludeDir = new File(new File(ccLoc, "../include").getAbsolutePath());
-        if (compilerIncludeDir.exists()) {
-          this.includePath = new File[2];
-          this.includePath[0] = compilerIncludeDir;
+        final Path compilerIncludeDir = ccLoc.resolveSibling("include").toAbsolutePath();
+        if (Files.exists(compilerIncludeDir)) {
+          this.includePath.add(compilerIncludeDir);
         }
       }
-      if (this.includePath == null) {
-        this.includePath = new File[1];
-      }
-      this.includePath[this.includePath.length - 1] = new File("/usr/include");
+      this.includePath.add(Path.of("/usr/include"));
     }
     return this.includePath;
   }

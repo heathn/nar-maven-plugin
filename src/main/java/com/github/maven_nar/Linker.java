@@ -21,15 +21,16 @@ package com.github.maven_nar;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
-import java.util.Properties;
 import java.util.Set;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
@@ -37,6 +38,7 @@ import org.apache.maven.plugin.logging.Log;
 import org.apache.maven.plugins.annotations.Parameter;
 import org.apache.tools.ant.Project;
 import org.codehaus.plexus.util.FileUtils;
+import org.eclipse.aether.graph.DependencyNode;
 
 import com.github.maven_nar.cpptasks.CCTask;
 import com.github.maven_nar.cpptasks.CUtil;
@@ -94,7 +96,7 @@ public class Linker {
    * FIXME table missing
    */
   @Parameter
-  private List options;
+  private List<String> options;
 
   /**
    * Additional options for the linker when running in the nar-testCompile
@@ -102,7 +104,7 @@ public class Linker {
    * 
    */
   @Parameter
-  private List testOptions;
+  private List<String> testOptions;
 
   /**
    * Options for the linker as a whitespace separated list. Defaults to
@@ -122,7 +124,7 @@ public class Linker {
    * Adds libraries to the linker.
    */
   @Parameter
-  private List/* <Lib> */ libs;
+  private List<Lib> libs;
 
   /**
    * Adds libraries to the linker. Will work in combination with &lt;libs&gt;.
@@ -137,7 +139,7 @@ public class Linker {
    * Adds system libraries to the linker.
    */
   @Parameter
-  private List/* <SysLib> */ sysLibs;
+  private List<SysLib> sysLibs;
 
   /**
    * Adds system libraries to the linker. Will work in combination with
@@ -241,7 +243,7 @@ public class Linker {
         librarySet.setType(libType);
 
         if (!isSystem && libInfo.length > 2) {
-          librarySet.setDir(new File(libInfo[2]));
+          librarySet.setDir(Path.of(libInfo[2]));
         }
       }
 
@@ -281,7 +283,7 @@ public class Linker {
     if (this.toolPath != null) {
       linker.setToolPath(this.toolPath);
     } else if (Msvc.isMSVC(name)) {
-      linker.setToolPath(mojo.getMsvc().getToolPath());
+      linker.setToolPath(mojo.getMsvc().getToolPath().toString());
     }
 
     linker.setSkipDepLink(this.skipDepLink);
@@ -307,14 +309,13 @@ public class Linker {
     // Add definitions (Window only)
     if (os.equals(OS.WINDOWS) && getName(null, null).equals("msvc")
         && (type.equals(Library.SHARED) || type.equals(Library.JNI))) {
-      final Set defs = new HashSet();
+      final Set<File> defs = new HashSet<>();
       try {
         if (mojo.getC() != null) {
-          final List cSrcDirs = mojo.getC().getSourceDirectories();
-          for (final Object cSrcDir : cSrcDirs) {
-            final File dir = (File) cSrcDir;
-            if (dir.exists()) {
-              defs.addAll(FileUtils.getFiles(dir, "**/*.def", null));
+          final List<Path> cSrcDirs = mojo.getC().getSourceDirectories();
+          for (final Path cSrcDir : cSrcDirs) {
+            if (Files.exists(cSrcDir)) {
+              defs.addAll(FileUtils.getFiles(cSrcDir.toFile(), "**/*.def", null));
             }
           }
         }
@@ -322,11 +323,10 @@ public class Linker {
       }
       try {
         if (mojo.getCpp() != null) {
-          final List cppSrcDirs = mojo.getCpp().getSourceDirectories();
-          for (final Object cppSrcDir : cppSrcDirs) {
-            final File dir = (File) cppSrcDir;
-            if (dir.exists()) {
-              defs.addAll(FileUtils.getFiles(dir, "**/*.def", null));
+          final List<Path> cppSrcDirs = mojo.getCpp().getSourceDirectories();
+          for (final Path cppSrcDir : cppSrcDirs) {
+            if (Files.exists(cppSrcDir)) {
+              defs.addAll(FileUtils.getFiles(cppSrcDir.toFile(), "**/*.def", null));
             }
           }
         }
@@ -334,11 +334,10 @@ public class Linker {
       }
       try {
         if (mojo.getFortran() != null) {
-          final List fortranSrcDirs = mojo.getFortran().getSourceDirectories();
-          for (final Object fortranSrcDir : fortranSrcDirs) {
-            final File dir = (File) fortranSrcDir;
-            if (dir.exists()) {
-              defs.addAll(FileUtils.getFiles(dir, "**/*.def", null));
+          final List<Path> fortranSrcDirs = mojo.getFortran().getSourceDirectories();
+          for (final Path fortranSrcDir : fortranSrcDirs) {
+            if (Files.exists(fortranSrcDir)) {
+              defs.addAll(FileUtils.getFiles(fortranSrcDir.toFile(), "**/*.def", null));
             }
           }
         }
@@ -373,9 +372,9 @@ public class Linker {
 
     // Add options to linker
     if (this.options != null) {
-      for (final Object option : this.options) {
+      for (final String option : this.options) {
         final LinkerArgument arg = new LinkerArgument();
-        arg.setValue((String) option);
+        arg.setValue(option);
         linker.addConfiguredLinkerArg(arg);
       }
     }
@@ -407,21 +406,13 @@ public class Linker {
 
     //if No user preference of dependency library link order is specified then use the Default one nar generate.
     if ((this.narDependencyLibOrder == null) && (narDefaultDependencyLibOrder)) {
-         if (os.equals(OS.AIX) && (getName(null, null).equals("xlC_r") || getName(null, null).equals("xlC") || getName(null, null).equals("xlc"))){
-            String dependencies = new StringBuilder(mojo.dependencyTreeOrderStr(pushDepsToLowestOrder, mojo.getDirectDepsOnly())).toString();
-            List<String> dependency_list = Arrays.asList(dependencies.split("\\s*,\\s*"));
-            Collections.reverse(dependency_list); 
-            StringBuilder libOrder = new StringBuilder();
-            boolean first = true;
-            for (String dependency : dependency_list) {
-                if (first) first = false;
-                else libOrder.append(",");
-                libOrder.append(dependency);
-            }
-            this.narDependencyLibOrder = libOrder.toString();
-         } else {
-            this.narDependencyLibOrder = mojo.dependencyTreeOrderStr(pushDepsToLowestOrder, mojo.getDirectDepsOnly());
-         }
+      List<DependencyNode> dependencies = mojo.dependencyTreeOrderStr(pushDepsToLowestOrder, mojo.getDirectDepsOnly());
+      if (os.equals(OS.AIX) && (getName(null, null).equals("xlC_r") || getName(null, null).equals("xlC") || getName(null, null).equals("xlc"))) {
+            Collections.reverse(dependencies);
+      }
+      dependencies.stream()
+        .map(d -> d.getArtifact().getGroupId() + ":" + d.getArtifact().getArtifactId())
+        .collect(Collectors.joining(","));
     } else if (pushDepsToLowestOrder && !narDefaultDependencyLibOrder) {
         mojo.getLog().warn("pushDepsToLowestOrder will have no effect since narDefaultDependencyLibOrder is disabled");
     } else if (mojo.getDirectDepsOnly() && !narDefaultDependencyLibOrder) {
@@ -452,7 +443,7 @@ public class Linker {
     // record the preference for nar dependency library link order
     if (this.narDependencyLibOrder != null) {
 
-      final List libOrder = new LinkedList();
+      final List<String> libOrder = new LinkedList<>();
 
       final String[] lib = this.narDependencyLibOrder.split(",");
 
@@ -468,9 +459,7 @@ public class Linker {
 
       if (this.libs != null) {
 
-        for (final Object lib1 : this.libs) {
-
-          final Lib lib = (Lib) lib1;
+        for (final Lib lib : this.libs) {
           lib.addLibSet(mojo, linker, antProject);
         }
       }
@@ -537,9 +526,9 @@ public class Linker {
       final String prefix, final String type, final List<String> linkPaths) throws MojoFailureException, MojoExecutionException {
     final LinkerDef linker = getLinker(mojo, task, os, prefix, type, linkPaths);
     if (this.testOptions != null) {
-      for (final Object testOption : this.testOptions) {
+      for (final String testOption : this.testOptions) {
         final LinkerArgument arg = new LinkerArgument();
-        arg.setValue((String) testOption);
+        arg.setValue(testOption);
         linker.addConfiguredLinkerArg(arg);
       }
     }
@@ -567,9 +556,8 @@ public class Linker {
     final TextStream dbg = new StringTextStream();
 
     if (this.name.equals("g++") || this.name.equals("gcc")) {
-      NarUtil.runCommand(linkerPrefix+"gcc", new String[] {
-        "--version"
-      }, null, null, out, err, dbg, this.log);
+      NarUtil.runCommand(linkerPrefix+"gcc", List.of("--version"), null, null,
+          out, err, dbg, this.log);
       final Pattern p = Pattern.compile("\\d+\\.\\d+\\.\\d+");
       final Matcher m = p.matcher(out.toString());
       if (m.find()) {
@@ -578,54 +566,48 @@ public class Linker {
     } else if (this.name.equals("msvc")) {
       version = mojo.getMsvc().getVersion();
     } else if (this.name.equals("icc") || this.name.equals("icpc")) {
-      NarUtil.runCommand("icc", new String[] {
-          "--version"
-      }, null, null, out, err, dbg, this.log);
+      NarUtil.runCommand("icc", List.of("--version"), null, null, out, err,
+          dbg, this.log);
       final Pattern p = Pattern.compile("\\d+\\.\\d+");
       final Matcher m = p.matcher(out.toString());
       if (m.find()) {
         version = m.group(0);
       }
     } else if (this.name.equals("icl")) {
-      NarUtil.runCommand("icl", new String[] {
-          "/QV"
-      }, null, null, out, err, dbg, this.log);
+      NarUtil.runCommand("icl", List.of("/QV"), null, null, out, err,
+          dbg, this.log);
       final Pattern p = Pattern.compile("\\d+\\.\\d+");
       final Matcher m = p.matcher(err.toString());
       if (m.find()) {
         version = m.group(0);
       }
     } else if (this.name.equals("CC")) {
-      NarUtil.runCommand("CC", new String[] {
-          "-V"
-      }, null, null, out, err, dbg, this.log);
+      NarUtil.runCommand("CC", List.of("-V"), null, null, out, err,
+          dbg, this.log);
       final Pattern p = Pattern.compile("\\d+\\.\\d+");
       final Matcher m = p.matcher(err.toString());
       if (m.find()) {
         version = m.group(0);
       }
     } else if (this.name.equals("xlC")) {
-      NarUtil.runCommand("/usr/vacpp/bin/xlC", new String[] {
-          "-qversion"
-      }, null, null, out, err, dbg, this.log);
+      NarUtil.runCommand("/usr/vacpp/bin/xlC", List.of("-qversion"), null,
+          null, out, err, dbg, this.log);
       final Pattern p = Pattern.compile("\\d+\\.\\d+");
       final Matcher m = p.matcher(out.toString());
       if (m.find()) {
         version = m.group(0);
       }
     } else if (this.name.equals("xlC_r")) {
-      NarUtil.runCommand("xlC_r", new String[] {
-              "-qversion"
-      }, null, null, out, err, dbg, this.log);
+      NarUtil.runCommand("xlC_r", List.of("-qversion"), null, null, out, err,
+          dbg, this.log);
       final Pattern p = Pattern.compile("\\d+\\.\\d+");
       final Matcher m = p.matcher(out.toString());
       if (m.find()) {
         version = m.group(0);
       }
     } else if (name.equals("clang") || name.equals("clang++")) {
-      NarUtil.runCommand("clang", new String[] {
-          "--version"
-      }, null, null, out, err, dbg, log);
+      NarUtil.runCommand("clang", List.of("--version"), null, null, out, err,
+          dbg, log);
       final Pattern p = Pattern.compile("\\d+\\.\\d+\\.\\d+");
       final Matcher m = p.matcher(out.toString());
       if (m.find()) {
@@ -633,9 +615,8 @@ public class Linker {
       }
     } else {
       if (!this.prefix.isEmpty()) {
-        NarUtil.runCommand(linkerPrefix+this.name, new String[] {
-          "--version"
-        }, null, null, out, err, dbg, this.log);
+        NarUtil.runCommand(linkerPrefix+this.name, List.of("--version"), null,
+            null, out, err, dbg, this.log);
         final Pattern p = Pattern.compile("\\d+\\.\\d+\\.\\d+");
         final Matcher m = p.matcher(out.toString());
         if (m.find()) {
@@ -654,7 +635,7 @@ public class Linker {
     return version;
   }
 
-  public List getSysLibs() {
+  public List<SysLib> getSysLibs() {
     return sysLibs;
   }
 

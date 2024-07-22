@@ -19,7 +19,8 @@
  */
 package com.github.maven_nar.cpptasks.msvc;
 
-import java.io.File;
+import java.nio.file.Path;
+import java.util.List;
 import java.util.Vector;
 
 import org.apache.tools.ant.types.Environment;
@@ -71,7 +72,7 @@ public final class MsvcMessageCompiler extends CommandLineCompiler {
   }
 
   @Override
-  protected void addIncludes(final String baseDirPath, final File[] includeDirs, final Vector<String> args,
+  protected void addIncludes(final Path baseDirPath, final List<Path> includeDirs, final Vector<String> args,
       final Vector<String> relativeArgs, final StringBuffer includePathId, final boolean isSystem) {
     // no include switch
     // for some reason we are still getting args in the output??
@@ -82,7 +83,7 @@ public final class MsvcMessageCompiler extends CommandLineCompiler {
   }
 
   @Override
-  protected boolean canParse(final File sourceFile) {
+  protected boolean canParse(final Path sourceFile) {
     return false;
   }
 
@@ -95,7 +96,7 @@ public final class MsvcMessageCompiler extends CommandLineCompiler {
   }
 
   @Override
-  protected Parser createParser(final File source) {
+  protected Parser createParser(final Path source) {
     // neither file type has references to other elements that need to be found
     // through parsing.
     return null;
@@ -119,7 +120,7 @@ public final class MsvcMessageCompiler extends CommandLineCompiler {
   }
 
   @Override
-  protected File[] getEnvironmentIncludePath() {
+  protected List<Path> getEnvironmentIncludePath() {
     return CUtil.getPathFromEnvironment("INCLUDE", ";");
   }
 
@@ -129,23 +130,23 @@ public final class MsvcMessageCompiler extends CommandLineCompiler {
   }
 
   @Override
-  protected String getIncludeDirSwitch(final String includeDir) {
+  protected String getIncludeDirSwitch(final Path includeDir) {
     return null; // no include switch
   }
 
   @Override
-  protected String getInputFileArgument(final File outputDir, final String filename, final int index) {
+  protected String getInputFileArgument(final Path outputDir, final Path filename, final int index) {
     switch (index) {
       case 0:
         return "-r";
       case 1:
-        return outputDir.getAbsolutePath();
+        return outputDir.toAbsolutePath().toString();
       case 2:
         return "-h";
       case 3:
-        return outputDir.getAbsolutePath();
+        return outputDir.toAbsolutePath().toString();
     }
-    return filename;
+    return filename.toString();
   }
 
   @Override

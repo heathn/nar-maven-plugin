@@ -20,6 +20,7 @@
 package com.github.maven_nar.cpptasks.msvc;
 
 import java.io.File;
+import java.nio.file.Path;
 import java.util.Vector;
 
 import junit.framework.TestCase;
@@ -36,7 +37,7 @@ public class TestMsvc2005CCompiler extends TestCase {
   public void testDebug() {
     final Msvc2005CCompiler compiler = Msvc2005CCompiler.getInstance();
     final Vector args = new Vector();
-    final File objDir = new File("dummy");
+    final Path objDir = Path.of("dummy");
     compiler.setObjDir(objDir);
     compiler.addDebugSwitch(args);
     compiler.addPathSwitch(args);
@@ -45,6 +46,6 @@ public class TestMsvc2005CCompiler extends TestCase {
     assertEquals("/Od", args.elementAt(1));
     assertEquals("/RTC1", args.elementAt(2));
     assertEquals("/D_DEBUG", args.elementAt(3));
-    assertEquals("/Fd" + objDir.getAbsolutePath() + File.separator, args.elementAt(4));
+    assertEquals("/Fd" + objDir.toAbsolutePath() + File.separator, args.elementAt(4));
   }
 }

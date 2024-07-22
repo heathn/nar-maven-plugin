@@ -19,7 +19,7 @@
  */
 package com.github.maven_nar.cpptasks.gcc;
 
-import java.io.File;
+import java.nio.file.Path;
 
 import com.github.maven_nar.cpptasks.compiler.AbstractProcessor;
 import com.github.maven_nar.cpptasks.parser.CParser;
@@ -42,51 +42,51 @@ public class TestGccCCompiler extends TestGccCompatibleCCompiler {
 
   public void testBidObjectiveAssembly() {
     final GccCCompiler compiler = GccCCompiler.getInstance();
-    assertEquals(AbstractProcessor.DEFAULT_PROCESS_BID, compiler.bid("foo.s"));
+    assertEquals(AbstractProcessor.DEFAULT_PROCESS_BID, compiler.bid(Path.of("foo.s")));
   }
 
   public void testBidObjectiveC() {
     final GccCCompiler compiler = GccCCompiler.getInstance();
-    assertEquals(AbstractProcessor.DEFAULT_PROCESS_BID, compiler.bid("foo.m"));
+    assertEquals(AbstractProcessor.DEFAULT_PROCESS_BID, compiler.bid(Path.of("foo.m")));
   }
 
   public void testBidObjectiveCpp() {
     final GccCCompiler compiler = GccCCompiler.getInstance();
-    assertEquals(AbstractProcessor.DEFAULT_PROCESS_BID, compiler.bid("foo.mm"));
+    assertEquals(AbstractProcessor.DEFAULT_PROCESS_BID, compiler.bid(Path.of("foo.mm")));
   }
 
   public void testBidPreprocessedCpp() {
     final GccCCompiler compiler = GccCCompiler.getInstance();
-    assertEquals(AbstractProcessor.DEFAULT_PROCESS_BID, compiler.bid("foo.ii"));
+    assertEquals(AbstractProcessor.DEFAULT_PROCESS_BID, compiler.bid(Path.of("foo.ii")));
   }
 
   public void testCreateCParser1() {
-    final Parser parser = GccCCompiler.getInstance().createParser(new File("foo.c"));
+    final Parser parser = GccCCompiler.getInstance().createParser(Path.of("foo.c"));
     assertTrue(parser instanceof CParser);
   }
 
   public void testCreateCParser2() {
-    final Parser parser = GccCCompiler.getInstance().createParser(new File("foo."));
+    final Parser parser = GccCCompiler.getInstance().createParser(Path.of("foo."));
     assertTrue(parser instanceof CParser);
   }
 
   public void testCreateCParser3() {
-    final Parser parser = GccCCompiler.getInstance().createParser(new File("foo"));
+    final Parser parser = GccCCompiler.getInstance().createParser(Path.of("foo"));
     assertTrue(parser instanceof CParser);
   }
 
   public void testCreateFortranParser1() {
-    final Parser parser = GccCCompiler.getInstance().createParser(new File("foo.f"));
+    final Parser parser = GccCCompiler.getInstance().createParser(Path.of("foo.f"));
     assertTrue(parser instanceof FortranParser);
   }
 
   public void testCreateFortranParser2() {
-    final Parser parser = GccCCompiler.getInstance().createParser(new File("foo.FoR"));
+    final Parser parser = GccCCompiler.getInstance().createParser(Path.of("foo.FoR"));
     assertTrue(parser instanceof FortranParser);
   }
 
   public void testCreateFortranParser3() {
-    final Parser parser = GccCCompiler.getInstance().createParser(new File("foo.f90"));
+    final Parser parser = GccCCompiler.getInstance().createParser(Path.of("foo.f90"));
     assertTrue(parser instanceof FortranParser);
   }
 

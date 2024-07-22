@@ -19,7 +19,7 @@
  */
 package com.github.maven_nar.cpptasks;
 
-import java.io.File;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -35,12 +35,12 @@ public final class MockFileCollector implements FileVisitor {
   /**
    * list of fileName parameter values.
    */
-  private final List fileNames = new ArrayList();
+  private final List<Path> fileNames = new ArrayList<>();
 
   /**
    * list of baseDir parameter values.
    */
-  private final List baseDirs = new ArrayList();
+  private final List<Path> baseDirs = new ArrayList<>();
 
   /**
    * Constructor.
@@ -56,8 +56,8 @@ public final class MockFileCollector implements FileVisitor {
    *          index
    * @return value of baseDir parameter
    */
-  public File getBaseDir(final int index) {
-    return (File) this.baseDirs.get(index);
+  public Path getBaseDir(final int index) {
+    return this.baseDirs.get(index);
   }
 
   /**
@@ -68,7 +68,7 @@ public final class MockFileCollector implements FileVisitor {
    * @return value of failName parameter
    */
   public String getFileName(final int index) {
-    return (String) this.fileNames.get(index);
+    return this.fileNames.get(index).getFileName().toString();
   }
 
   /**
@@ -89,7 +89,7 @@ public final class MockFileCollector implements FileVisitor {
    *          file name
    */
   @Override
-  public void visit(final File baseDir, final String fileName) {
+  public void visit(final Path baseDir, final Path fileName) {
     this.fileNames.add(fileName);
     this.baseDirs.add(baseDir);
   }

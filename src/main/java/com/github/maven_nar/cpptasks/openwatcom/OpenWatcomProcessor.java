@@ -19,6 +19,7 @@
  */
 package com.github.maven_nar.cpptasks.openwatcom;
 
+import java.nio.file.Path;
 import java.util.Vector;
 
 import com.github.maven_nar.cpptasks.types.LibraryTypeEnum;
@@ -69,11 +70,11 @@ public final class OpenWatcomProcessor {
    *          String file name for option file
    * @return String Command line option
    */
-  public static String getCommandFileSwitch(final String cmdFile) {
+  public static String getCommandFileSwitch(final Path cmdFile) {
     final StringBuffer buf = new StringBuffer("@");
-    if (cmdFile.indexOf(' ') >= 0) {
+    if (cmdFile.toString().indexOf(' ') >= 0) {
       buf.append('\"');
-      buf.append(cmdFile.replace('/', '\\'));
+      buf.append(cmdFile.toString().replace('/', '\\'));
       buf.append('\"');
     } else {
       buf.append(cmdFile);
@@ -107,8 +108,8 @@ public final class OpenWatcomProcessor {
    *          String directory
    * @return String command line option
    */
-  public static String getIncludeDirSwitch(final String includeDir) {
-    return "/i=" + includeDir.replace('/', '\\');
+  public static String getIncludeDirSwitch(final Path includeDir) {
+    return "/i=" + includeDir;
   }
 
   /**
@@ -139,9 +140,9 @@ public final class OpenWatcomProcessor {
    *          String path to output file
    * @return String[] command line options
    */
-  public static String[] getOutputFileSwitch(final String outPath) {
+  public static String[] getOutputFileSwitch(final Path outPath) {
     final StringBuffer buf = new StringBuffer("/fo=");
-    if (outPath.indexOf(' ') >= 0) {
+    if (outPath.toString().indexOf(' ') >= 0) {
       buf.append('\"');
       buf.append(outPath);
       buf.append('\"');

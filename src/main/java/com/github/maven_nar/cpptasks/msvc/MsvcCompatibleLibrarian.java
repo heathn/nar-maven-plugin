@@ -19,8 +19,9 @@
  */
 package com.github.maven_nar.cpptasks.msvc;
 
-import java.io.File;
-import java.util.Vector;
+import java.nio.file.Path;
+import java.util.Collections;
+import java.util.List;
 
 import com.github.maven_nar.cpptasks.CCTask;
 import com.github.maven_nar.cpptasks.compiler.CommandLineLinker;
@@ -44,18 +45,18 @@ public abstract class MsvcCompatibleLibrarian extends CommandLineLinker {
 
   @Override
   protected void addImpliedArgs(final CCTask task, final boolean debug, final LinkType linkType,
-      final Vector<String> args) {
-    args.addElement("/nologo");
+      final List<String> args) {
+    args.add("/nologo");
   }
 
   @Override
-  protected String getCommandFileSwitch(final String cmdFile) {
+  protected String getCommandFileSwitch(final Path cmdFile) {
     return "@" + cmdFile;
   }
 
   @Override
-  public File[] getLibraryPath() {
-    return new File[0];
+  public List<Path> getLibraryPath() {
+    return Collections.emptyList();
   }
 
   @Override
@@ -70,9 +71,10 @@ public abstract class MsvcCompatibleLibrarian extends CommandLineLinker {
   }
 
   @Override
-  public String[] getOutputFileSwitch(final String outFile) {
+  public String[] getOutputFileSwitch(final Path outFile) {
     final StringBuffer buf = new StringBuffer("/OUT:");
-    if (outFile.indexOf(' ') >= 0) {
+    // Properly wrap filename if it contains spaces
+    if (outFile.toString().indexOf(' ') >= 0) {
       buf.append('"');
       buf.append(outFile);
       buf.append('"');

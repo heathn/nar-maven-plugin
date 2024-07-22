@@ -19,9 +19,10 @@
  */
 package com.github.maven_nar.cpptasks.os400;
 
-import java.io.File;
-import java.io.FileOutputStream;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.List;
 import java.util.Vector;
 
 import org.apache.tools.ant.BuildException;
@@ -67,7 +68,7 @@ public final class IccLinker extends CommandLineLinker {
   }
 
   private final boolean isADatasetLinker;
-  File outputFile;
+  Path outputFile;
   private final String outputPrefix;
   CCTask task;
 
@@ -111,8 +112,8 @@ public final class IccLinker extends CommandLineLinker {
   }
 
   @Override
-  protected String[] addLibrarySets(final CCTask task, final LibrarySet[] libsets, final Vector<String> preargs,
-      final Vector<String> midargs, final Vector<String> endargs) {
+  protected String[] addLibrarySets(final CCTask task, final List<LibrarySet> libsets, final List<String> preargs,
+      final List<String> midargs, final List<String> endargs) {
     // If yo want to link against a library sitting in a dataset and
     // not in the HFS, you can just use the //'dataset' notation
     // to specify it. e.g:
@@ -123,14 +124,14 @@ public final class IccLinker extends CommandLineLinker {
     // as part of the link command.
     if (libsets != null) {
       for (final LibrarySet libset : libsets) {
-        final String libs[] = libset.getLibs();
+        final List<String> libs = libset.getLibs();
         for (final String lib : libs) {
           if (lib.startsWith("//")) {
-            endargs.addElement("-l");
-            endargs.addElement(lib);
+            endargs.add("-l");
+            endargs.add(lib);
           } else if (libset.getDataset() != null) {
             final String ds = libset.getDataset();
-            endargs.addElement("//'" + ds + "(" + lib + ")'");
+            endargs.add("//'" + ds + "(" + lib + ")'");
           }
         }
       }
@@ -145,12 +146,12 @@ public final class IccLinker extends CommandLineLinker {
   }
 
   @Override
-  public String getCommandFileSwitch(final String commandFile) {
+  public String getCommandFileSwitch(final Path commandFile) {
     return "@" + commandFile;
   }
 
   @Override
-  public File[] getLibraryPath() {
+  public List<Path> getLibraryPath() {
     return CUtil.getPathFromEnvironment("LIB", ";");
   }
 
@@ -181,29 +182,31 @@ public final class IccLinker extends CommandLineLinker {
   }
 
   @Override
-  public String[] getOutputFileNames(final String baseName, final VersionInfo versionInfo) {
-    final String[] baseNames = super.getOutputFileNames(baseName, versionInfo);
+  public Path[] getOutputFileNames(final Path baseName, final VersionInfo versionInfo) {
+    final Path[] baseNames = super.getOutputFileNames(baseName, versionInfo);
     if (this.outputPrefix.length() > 0) {
       for (int i = 0; i < baseNames.length; i++) {
-        baseNames[i] = this.outputPrefix + baseNames[i];
+        baseNames[i] = Path.of(this.outputPrefix + baseNames[i]);
       }
     }
     return baseNames;
   }
 
   @Override
-  protected String[] getOutputFileSwitch(final CCTask task, String outputFile) {
+  protected String[] getOutputFileSwitch(final CCTask task, Path outputFile) {
     if (this.isADatasetLinker && task.getDataset() != null) {
       final String ds = task.getDataset();
-      outputFile = "//'" + ds + "(" + outputFile + ")'";
+      return new String[] {
+        "-o", "//'" + ds + "(" + outputFile + ")'"
+      };
     }
     return getOutputFileSwitch(outputFile);
   }
 
   @Override
-  public String[] getOutputFileSwitch(final String outputFile) {
+  public String[] getOutputFileSwitch(final Path outputFile) {
     return new String[] {
-        "-o", outputFile
+        "-o", outputFile.toString()
     };
   }
 
@@ -213,28 +216,28 @@ public final class IccLinker extends CommandLineLinker {
   }
 
   @Override
-  public void link(final CCTask task, File outputFile, final String[] sourceFiles,
+  public void link(final CCTask task, Path outputFile, final List<Path> sourceFiles,
       final CommandLineLinkerConfiguration config) throws BuildException {
     this.task = task;
     this.outputFile = outputFile;
     if (this.isADatasetLinker) {
-      final int p = outputFile.getName().indexOf(".");
+      final int p = outputFile.getFileName().toString().indexOf(".");
       if (p >= 0) {
-        final String newname = outputFile.getName().substring(0, p);
-        outputFile = new File(outputFile.getParent(), newname);
+        final String newname = outputFile.getFileName().toString().substring(0, p);
+        outputFile = outputFile.resolveSibling(newname);
       }
     }
     super.link(task, outputFile, sourceFiles, config);
   }
 
   @Override
-  protected int runCommand(final CCTask task, final File workingDir, final String[] cmdline) throws BuildException {
+  protected int runCommand(final CCTask task, final Path workingDir, final String[] cmdline) throws BuildException {
     final int rc = super.runCommand(task, workingDir, cmdline);
     // create the .xds file if everything was ok.
     if (rc == 0) {
       try {
-        this.outputFile.delete();
-        new FileOutputStream(this.outputFile).close();
+        Files.deleteIfExists(outputFile);
+        Files.createFile(outputFile);
       } catch (final IOException e) {
         throw new BuildException(e.getMessage());
       }

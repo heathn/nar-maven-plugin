@@ -20,10 +20,11 @@
 package com.github.maven_nar.cpptasks.msvc;
 
 import java.io.BufferedWriter;
-import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.Writer;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.text.MessageFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -84,13 +85,13 @@ public final class MsvcProjectWriter implements ProjectWriter {
     }
   }
 
-  private static void writeWorkspaceProject(final Writer writer, final String projectName, final String projectFile,
+  private static void writeWorkspaceProject(final Writer writer, final String projectName, final Path projectFile,
       final List<String> dependsOn) throws IOException {
     writer.write("############################################");
     writer.write("###################################\r\n\r\n");
-    String file = projectFile;
-    if (!file.startsWith(".") && !file.startsWith("\\") && !file.startsWith("/")) {
-      file = ".\\" + file;
+    Path file = projectFile;
+    if (!file.toString().startsWith(".") && !file.toString().startsWith("\\") && !file.toString().startsWith("/")) {
+      file = Path.of(".\\" + file.toString());
     }
     writer.write("Project: \"" + projectName + "\"=\"" + file + "\" - Package Owner=<4>\r\n\r\n");
 
@@ -130,7 +131,7 @@ public final class MsvcProjectWriter implements ProjectWriter {
    *          compilation targets
    * @return representative (hopefully) compiler configuration
    */
-  private CommandLineCompilerConfiguration getBaseCompilerConfiguration(final Map<String, TargetInfo> targets) {
+  private CommandLineCompilerConfiguration getBaseCompilerConfiguration(final Map<Path, TargetInfo> targets) {
     //
     // find first target with an DevStudio C compilation
     //
@@ -160,13 +161,13 @@ public final class MsvcProjectWriter implements ProjectWriter {
    *          list of source files
    * @return File[] source files
    */
-  private File[] getSources(final List<File> sourceList) {
-    final File[] sortedSources = new File[sourceList.size()];
+  private Path[] getSources(final List<Path> sourceList) {
+    final Path[] sortedSources = new Path[sourceList.size()];
     sourceList.toArray(sortedSources);
-    Arrays.sort(sortedSources, new Comparator<File>() {
+    Arrays.sort(sortedSources, new Comparator<Path>() {
       @Override
-      public int compare(final File o1, final File o2) {
-        return o1.getName().compareTo(o2.getName());
+      public int compare(final Path o1, final Path o2) {
+        return o1.getFileName().compareTo(o2.getFileName());
       }
     });
     return sortedSources;
@@ -181,8 +182,8 @@ public final class MsvcProjectWriter implements ProjectWriter {
    *          File file
    * @return boolean true if member of group
    */
-  private boolean isGroupMember(final String filter, final File candidate) {
-    final String fileName = candidate.getName();
+  private boolean isGroupMember(final String filter, final Path candidate) {
+    final String fileName = candidate.getFileName().toString();
     final int lastDot = fileName.lastIndexOf('.');
     if (lastDot >= 0 && lastDot < fileName.length() - 1) {
       final String extension = ";" + fileName.substring(lastDot + 1).toLowerCase() + ";";
@@ -206,17 +207,17 @@ public final class MsvcProjectWriter implements ProjectWriter {
    * @throws IOException
    *           if error on writing project
    */
-  private void writeCompileOptions(final Writer writer, final boolean isDebug, final String baseDir,
+  private void writeCompileOptions(final Writer writer, final boolean isDebug, final Path baseDir,
       final CommandLineCompilerConfiguration compilerConfig) throws IOException {
     final StringBuffer baseOptions = new StringBuffer(50);
     baseOptions.append("# ADD BASE CPP");
     final StringBuffer options = new StringBuffer(50);
     options.append("# ADD CPP");
-    final File[] includePath = compilerConfig.getIncludePath();
-    for (final File element : includePath) {
+    final List<Path> includePath = compilerConfig.getIncludePath();
+    for (final Path element : includePath) {
       options.append(" /I \"");
-      final String relPath = CUtil.getRelativePath(baseDir, element);
-      options.append(CUtil.toWindowsPath(relPath));
+      final Path relPath = baseDir.relativize(element);
+      options.append(relPath);
       options.append('"');
     }
     final Hashtable<String, String> optionMap = new Hashtable<>();
@@ -287,8 +288,8 @@ public final class MsvcProjectWriter implements ProjectWriter {
   }
 
   private void writeConfig(final Writer writer, final boolean isDebug, final List<DependencyDef> dependencies,
-      final String basePath, final CommandLineCompilerConfiguration compilerConfig, final TargetInfo linkTarget,
-      final Map<String, TargetInfo> targets) throws IOException {
+      final Path basePath, final CommandLineCompilerConfiguration compilerConfig, final TargetInfo linkTarget,
+      final Map<Path, TargetInfo> targets) throws IOException {
     writer.write("# PROP BASE Use_MFC 0\r\n");
 
     String configType = "Release";
@@ -348,7 +349,7 @@ public final class MsvcProjectWriter implements ProjectWriter {
    *           if unable to write to project file
    */
   private void writeLinkOptions(final Writer writer, final boolean isDebug, final List<DependencyDef> dependencies,
-      final String basePath, final TargetInfo linkTarget, final Map<String, TargetInfo> targets) throws IOException {
+      final Path basePath, final TargetInfo linkTarget, final Map<Path, TargetInfo> targets) throws IOException {
 
     final StringBuffer baseOptions = new StringBuffer(100);
     final StringBuffer options = new StringBuffer(100);
@@ -359,24 +360,24 @@ public final class MsvcProjectWriter implements ProjectWriter {
     if (config instanceof CommandLineLinkerConfiguration) {
       final CommandLineLinkerConfiguration linkConfig = (CommandLineLinkerConfiguration) config;
 
-      final File[] linkSources = linkTarget.getAllSources();
-      for (final File linkSource : linkSources) {
+      final List<Path> linkSources = linkTarget.getAllSources();
+      for (final Path linkSource : linkSources) {
         //
         // if file was not compiled or otherwise generated
         //
-        if (targets.get(linkSource.getName()) == null) {
+        if (targets.get(linkSource.getFileName()) == null) {
           //
           // if source appears to be a system library or object file
           // just output the name of the file (advapi.lib for example)
           // otherwise construct a relative path.
           //
-          String relPath = linkSource.getName();
+          Path relPath = linkSource.getFileName();
           //
           // check if file comes from a project dependency
           // if it does it should not be explicitly linked
           boolean fromDependency = false;
-          if (relPath.indexOf(".") > 0) {
-            final String baseName = relPath.substring(0, relPath.indexOf("."));
+          if (relPath.toString().indexOf(".") > 0) {
+            final String baseName = relPath.toString().substring(0, relPath.toString().indexOf("."));
             for (final DependencyDef depend : dependencies) {
               if (baseName.compareToIgnoreCase(depend.getName()) == 0) {
                 fromDependency = true;
@@ -385,18 +386,18 @@ public final class MsvcProjectWriter implements ProjectWriter {
           }
           if (!fromDependency) {
             if (!CUtil.isSystemPath(linkSource)) {
-              relPath = CUtil.getRelativePath(basePath, linkSource);
+              relPath = basePath.relativize(linkSource);
             }
             //
             // if path has an embedded space then
             // must quote
-            if (relPath.indexOf(' ') > 0) {
+            if (relPath.toString().indexOf(' ') > 0) {
               options.append(" \"");
-              options.append(CUtil.toWindowsPath(relPath));
+              options.append(relPath);
               options.append("\"");
             } else {
               options.append(' ');
-              options.append(CUtil.toWindowsPath(relPath));
+              options.append(relPath);
             }
           }
         }
@@ -489,8 +490,8 @@ public final class MsvcProjectWriter implements ProjectWriter {
    *           if error writing project file
    */
   @Override
-  public void writeProject(final File fileName, final CCTask task, final ProjectDef projectDef, final List<File> files,
-      final Map<String, TargetInfo> targets, final TargetInfo linkTarget) throws IOException {
+  public void writeProject(final Path fileName, final CCTask task, final ProjectDef projectDef, final List<Path> files,
+      final Map<Path, TargetInfo> targets, final TargetInfo linkTarget) throws IOException {
 
     //
     // some characters are apparently not allowed in VS project names
@@ -500,17 +501,17 @@ public final class MsvcProjectWriter implements ProjectWriter {
     if (projectName != null) {
       projectName = toProjectName(projectName);
     } else {
-      projectName = toProjectName(fileName.getName());
+      projectName = toProjectName(fileName.getFileName().toString());
     }
 
-    final String basePath = fileName.getAbsoluteFile().getParent();
+    final Path basePath = fileName.getParent();
 
-    final File dspFile = new File(fileName + ".dsp");
-    if (!projectDef.getOverwrite() && dspFile.exists()) {
+    final Path dspFile = Path.of(fileName + ".dsp");
+    if (!projectDef.getOverwrite() && Files.exists(dspFile)) {
       throw new BuildException("Not allowed to overwrite project file " + dspFile.toString());
     }
-    final File dswFile = new File(fileName + ".dsw");
-    if (!projectDef.getOverwrite() && dswFile.exists()) {
+    final Path dswFile = Path.of(fileName + ".dsw");
+    if (!projectDef.getOverwrite() && Files.exists(dswFile)) {
       throw new BuildException("Not allowed to overwrite project file " + dswFile.toString());
     }
 
@@ -519,121 +520,121 @@ public final class MsvcProjectWriter implements ProjectWriter {
       throw new BuildException("Unable to generate Visual Studio project " + "when Microsoft C++ is not used.");
     }
 
-    Writer writer = new BufferedWriter(new FileWriter(dspFile));
-    writer.write("# Microsoft Developer Studio Project File - Name=\"");
-    writer.write(projectName);
-    writer.write("\" - Package Owner=<4>\r\n");
-    writer.write("# Microsoft Developer Studio Generated Build File, Format Version ");
-    writer.write(this.version);
-    writer.write("\r\n");
-    writer.write("# ** DO NOT EDIT **\r\n\r\n");
+    try (Writer writer = Files.newBufferedWriter(dspFile)) {
+      writer.write("# Microsoft Developer Studio Project File - Name=\"");
+      writer.write(projectName);
+      writer.write("\" - Package Owner=<4>\r\n");
+      writer.write("# Microsoft Developer Studio Generated Build File, Format Version ");
+      writer.write(this.version);
+      writer.write("\r\n");
+      writer.write("# ** DO NOT EDIT **\r\n\r\n");
 
-    writeComments(writer, projectDef.getComments());
+      writeComments(writer, projectDef.getComments());
 
-    final String outputType = task.getOuttype();
-    final String subsystem = task.getSubsystem();
-    String targtype = "Win32 (x86) Dynamic-Link Library";
-    String targid = "0x0102";
-    if ("executable".equals(outputType)) {
-      if ("console".equals(subsystem)) {
-        targtype = "Win32 (x86) Console Application";
-        targid = "0x0103";
+      final String outputType = task.getOuttype();
+      final String subsystem = task.getSubsystem();
+      String targtype = "Win32 (x86) Dynamic-Link Library";
+      String targid = "0x0102";
+      if ("executable".equals(outputType)) {
+        if ("console".equals(subsystem)) {
+          targtype = "Win32 (x86) Console Application";
+          targid = "0x0103";
+        } else {
+          targtype = "Win32 (x86) Application";
+          targid = "0x0101";
+        }
+      } else if ("static".equals(outputType)) {
+        targtype = "Win32 (x86) Static Library";
+        targid = "0x0104";
+      }
+      writer.write("# TARGTYPE \"");
+      writer.write(targtype);
+      writer.write("\" ");
+      writer.write(targid);
+      writer.write("\r\n\r\nCFG=");
+
+      writer.write(projectName + " - Win32 Debug");
+      writer.write("\r\n");
+
+      writeMessage(writer, projectName, targtype);
+
+      writer.write("# Begin Project\r\n");
+      if (this.version.equals("6.00")) {
+        writer.write("# PROP AllowPerConfigDependencies 0\r\n");
+      }
+      writer.write("# PROP Scc_ProjName \"\"\r\n");
+      writer.write("# PROP Scc_LocalPath \"\"\r\n");
+      writer.write("CPP=cl.exe\r\n");
+      writer.write("MTL=midl.exe\r\n");
+      writer.write("RSC=rc.exe\r\n");
+
+      writer.write("\r\n!IF  \"$(CFG)\" == \"" + projectName + " - Win32 Release\"\r\n");
+
+      writeConfig(writer, false, projectDef.getDependencies(), basePath, compilerConfig, linkTarget, targets);
+
+      writer.write("\r\n!ELSEIF  \"$(CFG)\" == \"" + projectName + " - Win32 Debug\"\r\n");
+
+      writeConfig(writer, true, projectDef.getDependencies(), basePath, compilerConfig, linkTarget, targets);
+
+      writer.write("\r\n!ENDIF\r\n");
+
+      writer.write("# Begin Target\r\n\r\n");
+      writer.write("# Name \"" + projectName + " - Win32 Release\"\r\n");
+      writer.write("# Name \"" + projectName + " - Win32 Debug\"\r\n");
+
+      final Path[] sortedSources = getSources(files);
+
+      if (this.version.equals("6.00")) {
+        final String sourceFilter = "cpp;c;cxx;rc;def;r;odl;idl;hpj;bat";
+        final String headerFilter = "h;hpp;hxx;hm;inl";
+        final String resourceFilter = "ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe";
+
+        writer.write("# Begin Group \"Source Files\"\r\n\r\n");
+        writer.write("# PROP Default_Filter \"" + sourceFilter + "\"\r\n");
+
+        for (final Path sortedSource1 : sortedSources) {
+          if (!isGroupMember(headerFilter, sortedSource1) && !isGroupMember(resourceFilter, sortedSource1)) {
+            writeSource(writer, basePath, sortedSource1);
+          }
+        }
+        writer.write("# End Group\r\n");
+
+        writer.write("# Begin Group \"Header Files\"\r\n\r\n");
+        writer.write("# PROP Default_Filter \"" + headerFilter + "\"\r\n");
+
+        for (final Path sortedSource : sortedSources) {
+          if (isGroupMember(headerFilter, sortedSource)) {
+            writeSource(writer, basePath, sortedSource);
+          }
+        }
+        writer.write("# End Group\r\n");
+
+        writer.write("# Begin Group \"Resource Files\"\r\n\r\n");
+        writer.write("# PROP Default_Filter \"" + resourceFilter + "\"\r\n");
+
+        for (final Path sortedSource : sortedSources) {
+          if (isGroupMember(resourceFilter, sortedSource)) {
+            writeSource(writer, basePath, sortedSource);
+          }
+        }
+        writer.write("# End Group\r\n");
+
       } else {
-        targtype = "Win32 (x86) Application";
-        targid = "0x0101";
-      }
-    } else if ("static".equals(outputType)) {
-      targtype = "Win32 (x86) Static Library";
-      targid = "0x0104";
-    }
-    writer.write("# TARGTYPE \"");
-    writer.write(targtype);
-    writer.write("\" ");
-    writer.write(targid);
-    writer.write("\r\n\r\nCFG=");
-
-    writer.write(projectName + " - Win32 Debug");
-    writer.write("\r\n");
-
-    writeMessage(writer, projectName, targtype);
-
-    writer.write("# Begin Project\r\n");
-    if (this.version.equals("6.00")) {
-      writer.write("# PROP AllowPerConfigDependencies 0\r\n");
-    }
-    writer.write("# PROP Scc_ProjName \"\"\r\n");
-    writer.write("# PROP Scc_LocalPath \"\"\r\n");
-    writer.write("CPP=cl.exe\r\n");
-    writer.write("MTL=midl.exe\r\n");
-    writer.write("RSC=rc.exe\r\n");
-
-    writer.write("\r\n!IF  \"$(CFG)\" == \"" + projectName + " - Win32 Release\"\r\n");
-
-    writeConfig(writer, false, projectDef.getDependencies(), basePath, compilerConfig, linkTarget, targets);
-
-    writer.write("\r\n!ELSEIF  \"$(CFG)\" == \"" + projectName + " - Win32 Debug\"\r\n");
-
-    writeConfig(writer, true, projectDef.getDependencies(), basePath, compilerConfig, linkTarget, targets);
-
-    writer.write("\r\n!ENDIF\r\n");
-
-    writer.write("# Begin Target\r\n\r\n");
-    writer.write("# Name \"" + projectName + " - Win32 Release\"\r\n");
-    writer.write("# Name \"" + projectName + " - Win32 Debug\"\r\n");
-
-    final File[] sortedSources = getSources(files);
-
-    if (this.version.equals("6.00")) {
-      final String sourceFilter = "cpp;c;cxx;rc;def;r;odl;idl;hpj;bat";
-      final String headerFilter = "h;hpp;hxx;hm;inl";
-      final String resourceFilter = "ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe";
-
-      writer.write("# Begin Group \"Source Files\"\r\n\r\n");
-      writer.write("# PROP Default_Filter \"" + sourceFilter + "\"\r\n");
-
-      for (final File sortedSource1 : sortedSources) {
-        if (!isGroupMember(headerFilter, sortedSource1) && !isGroupMember(resourceFilter, sortedSource1)) {
-          writeSource(writer, basePath, sortedSource1);
-        }
-      }
-      writer.write("# End Group\r\n");
-
-      writer.write("# Begin Group \"Header Files\"\r\n\r\n");
-      writer.write("# PROP Default_Filter \"" + headerFilter + "\"\r\n");
-
-      for (final File sortedSource : sortedSources) {
-        if (isGroupMember(headerFilter, sortedSource)) {
+        for (final Path sortedSource : sortedSources) {
           writeSource(writer, basePath, sortedSource);
         }
       }
-      writer.write("# End Group\r\n");
 
-      writer.write("# Begin Group \"Resource Files\"\r\n\r\n");
-      writer.write("# PROP Default_Filter \"" + resourceFilter + "\"\r\n");
-
-      for (final File sortedSource : sortedSources) {
-        if (isGroupMember(resourceFilter, sortedSource)) {
-          writeSource(writer, basePath, sortedSource);
-        }
-      }
-      writer.write("# End Group\r\n");
-
-    } else {
-      for (final File sortedSource : sortedSources) {
-        writeSource(writer, basePath, sortedSource);
-      }
+      writer.write("# End Target\r\n");
+      writer.write("# End Project\r\n");
     }
-
-    writer.write("# End Target\r\n");
-    writer.write("# End Project\r\n");
-    writer.close();
 
     //
     // write workspace file
     //
-    writer = new BufferedWriter(new FileWriter(dswFile));
-    writeWorkspace(writer, projectDef, projectName, dspFile);
-    writer.close();
+    try (Writer writer = Files.newBufferedWriter(dswFile)) {
+      writeWorkspace(writer, projectDef, projectName, dspFile);
+    }
 
   }
 
@@ -649,21 +650,21 @@ public final class MsvcProjectWriter implements ProjectWriter {
    * @throws IOException
    *           if error writing project file
    */
-  private void writeSource(final Writer writer, final String basePath, final File groupMember) throws IOException {
+  private void writeSource(final Writer writer, final Path basePath, final Path groupMember) throws IOException {
     writer.write("# Begin Source File\r\n\r\nSOURCE=");
-    String relativePath = CUtil.getRelativePath(basePath, groupMember);
+    Path relativePath = basePath.relativize(groupMember);
     //
     // if relative path is just a name (hello.c) then
     // make it .\hello.c
-    if (!relativePath.startsWith(".") && !relativePath.contains(":") && !relativePath.startsWith("\\")) {
-      relativePath = ".\\" + relativePath;
+    if (!relativePath.toString().startsWith(".") && !relativePath.toString().contains(":") && !relativePath.toString().startsWith("\\")) {
+      relativePath = Path.of(".\\" + relativePath);
     }
-    writer.write(CUtil.toWindowsPath(relativePath));
+    writer.write(relativePath.toString());
     writer.write("\r\n# End Source File\r\n");
   }
 
   private void writeWorkspace(final Writer writer, final ProjectDef project, final String projectName,
-      final File dspFile) throws IOException {
+      final Path dspFile) throws IOException {
 
     writer.write("Microsoft Developer Studio Workspace File, Format Version ");
     writer.write(this.version);
@@ -675,18 +676,17 @@ public final class MsvcProjectWriter implements ProjectWriter {
 
     final List<DependencyDef> dependencies = project.getDependencies();
     final List<String> projectDeps = new ArrayList<>();
-    final String basePath = dspFile.getParent();
+    final Path basePath = dspFile.getParent();
     for (final DependencyDef dep : dependencies) {
       if (dep.getFile() != null) {
         final String projName = toProjectName(dep.getName());
         projectDeps.add(projName);
-        final String depProject = CUtil
-            .toWindowsPath(CUtil.getRelativePath(basePath, new File(dep.getFile() + ".dsp")));
+        final Path depProject = basePath.relativize(Path.of(dep.getFile().toString() + ".dsp"));
         writeWorkspaceProject(writer, projName, depProject, dep.getDependsList());
       }
     }
 
-    writeWorkspaceProject(writer, projectName, dspFile.getName(), projectDeps);
+    writeWorkspaceProject(writer, projectName, dspFile.getFileName(), projectDeps);
 
     writer.write("############################################");
     writer.write("###################################\r\n\r\n");

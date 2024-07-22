@@ -19,9 +19,13 @@
  */
 package com.github.maven_nar;
 
-import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.List;
+import java.util.stream.Collectors;
 
+import org.apache.commons.lang3.function.Failable;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
 import org.apache.maven.plugin.logging.Log;
@@ -61,29 +65,29 @@ public class NarLayout20 extends AbstractNarLayout {
    * org.apache.maven.project.MavenProject, com.github.maven_nar.NarInfo)
    */
   @Override
-  public final void attachNars(final File baseDir, final ArchiverManager archiverManager,
+  public final void attachNars(final Path baseDir, final ArchiverManager archiverManager,
       final MavenProjectHelper projectHelper, final MavenProject project) throws MojoExecutionException {
-    if (getIncludeDirectory(baseDir, project.getArtifactId(), project.getVersion()).exists()) {
+    if (Files.exists(getIncludeDirectory(baseDir, project.getArtifactId(), project.getVersion()))) {
       attachNar(archiverManager, projectHelper, project, "noarch", baseDir, "include/**");
     }
 
-    final String[] binAOL = new File(baseDir, "bin").list();
-    for (int i = 0; binAOL != null && i < binAOL.length; i++) {
-      attachNar(archiverManager, projectHelper, project, binAOL[i] + "-" + Library.EXECUTABLE, baseDir, "bin/"
-          + binAOL[i] + "/**");
+    try {
+      Files.list(baseDir.resolve("bin")).forEach(Failable.asConsumer(f ->
+        attachNar(archiverManager, projectHelper, project, f + "-" + Library.EXECUTABLE, baseDir, "bin/" + f + "/**"))
+      );
+
+      final Path libDir = baseDir.resolve("lib");
+      Files.list(libDir).flatMap(Failable.asFunction(
+            dir -> Files.list(libDir.resolve(dir.getFileName()))))
+        .forEach(Failable.asConsumer(lib -> {
+            String aol = lib.getName(lib.getNameCount()-2).toString();
+            String type = lib.getFileName().toString();
+            attachNar(archiverManager, projectHelper, project, aol + "-" + type, baseDir, "lib/" + aol + "/" + type + "/**");
+      }));
+    } catch (IOException | RuntimeException e) {
+      throw new MojoExecutionException(e);
     }
 
-    final File libDir = new File(baseDir, "lib");
-    final String[] libAOL = libDir.list();
-    for (int i = 0; libAOL != null && i < libAOL.length; i++) {
-      final String bindingType = null;
-      final String[] libType = new File(libDir, libAOL[i]).list();
-      for (int j = 0; libType != null && j < libType.length; j++) {
-        attachNar(archiverManager, projectHelper, project, libAOL[i] + "-" + libType[j], baseDir, "lib/" + libAOL[i]
-            + "/" + libType[j] + "/**");
-      }
-
-    }
   }
 
   /*
@@ -93,10 +97,9 @@ public class NarLayout20 extends AbstractNarLayout {
    * java.lang.String)
    */
   @Override
-  public final File
-      getBinDirectory(final File baseDir, final String artifactId, final String version, final String aol) {
-    final File dir = new File(baseDir, this.fileLayout.getBinDirectory(aol));
-    return dir;
+  public final Path
+      getBinDirectory(final Path baseDir, final String artifactId, final String version, final String aol) {
+    return baseDir.resolve(this.fileLayout.getBinDirectory(aol));
   }
 
   /*
@@ -105,8 +108,8 @@ public class NarLayout20 extends AbstractNarLayout {
    * @see com.github.maven_nar.NarLayout#getIncludeDirectory(java.io.File)
    */
   @Override
-  public final File getIncludeDirectory(final File baseDir, final String artifactId, final String version) {
-    return new File(baseDir, this.fileLayout.getIncludeDirectory());
+  public final Path getIncludeDirectory(final Path baseDir, final String artifactId, final String version) {
+    return baseDir.resolve(this.fileLayout.getIncludeDirectory());
   }
 
   /*
@@ -116,14 +119,13 @@ public class NarLayout20 extends AbstractNarLayout {
    * com.github.maven_nar.AOL, String type)
    */
   @Override
-  public final File getLibDirectory(final File baseDir, final String artifactId, final String version,
+  public final Path getLibDirectory(final Path baseDir, final String artifactId, final String version,
       final String aol, final String type) throws MojoFailureException {
     if (type.equals(Library.EXECUTABLE)) {
       throw new MojoFailureException("INTERNAL ERROR, Replace call to getLibDirectory with getBinDirectory");
     }
 
-    final File dir = new File(baseDir, this.fileLayout.getLibDirectory(aol, type));
-    return dir;
+    return baseDir.resolve(this.fileLayout.getLibDirectory(aol, type));
   }
 
   /*
@@ -137,19 +139,18 @@ public class NarLayout20 extends AbstractNarLayout {
  * java.lang.String)
 */
   @Override
-  public final File getNarInfoDirectory(final File baseDir, final String groupId, final String artifactId, final String version,
+  public final Path getNarInfoDirectory(final Path baseDir, final String groupId, final String artifactId, final String version,
                                          final String aol, final String type) throws MojoExecutionException {
 
   // This functionality is not supported for older layouts, return an empty file to be passive.
     getLog().debug("NarLayout20 doesn't support writing NarInfo to project classifier directories,use NarLayout21 instead.");
-    return new File("");
+    return null;
   }
 
   @Override
-  public File getNarUnpackDirectory(final File baseUnpackDirectory, final File narFile) {
-    final File dir = new File(baseUnpackDirectory, FileUtils.basename(narFile.getPath(), "."
+  public Path getNarUnpackDirectory(final Path baseUnpackDirectory, final Path narFile) {
+    return baseUnpackDirectory.resolve(FileUtils.basename(narFile.toString(), "."
         + NarConstants.NAR_EXTENSION));
-    return dir;
   }
 
   /*
@@ -158,7 +159,7 @@ public class NarLayout20 extends AbstractNarLayout {
    * @see com.github.maven_nar.NarLayout#getNoArchDirectory(java.io.File)
    */
   @Override
-  public File getNoArchDirectory(final File baseDir, final String artifactId, final String version)
+  public Path getNoArchDirectory(final Path baseDir, final String artifactId, final String version)
       throws MojoExecutionException, MojoFailureException {
     return baseDir;
   }
@@ -171,81 +172,84 @@ public class NarLayout20 extends AbstractNarLayout {
    * org.apache.maven.project.MavenProject, com.github.maven_nar.NarInfo)
    */
   @Override
-  public final void prepareNarInfo(final File baseDir, final MavenProject project, final NarInfo narInfo,
+  public final void prepareNarInfo(final Path baseDir, final MavenProject project, final NarInfo narInfo,
       final AbstractCompileMojo mojo) throws MojoExecutionException {
-    if (getIncludeDirectory(baseDir, project.getArtifactId(), project.getVersion()).exists()) {
+    if (Files.exists(getIncludeDirectory(baseDir, project.getArtifactId(), project.getVersion()))) {
       narInfo.setNar(null, "noarch", project.getGroupId() + ":" + project.getArtifactId() + ":" + NarConstants.NAR_TYPE
           + ":" + "noarch");
     }
 
-    final String[] binAOL = new File(baseDir, "bin").list();
-    for (int i = 0; binAOL != null && i < binAOL.length; i++) {// TODO: chose
-                                                               // not to apply
-                                                               // new file
-                                                               // naming for
-                                                               // outfile in
-                                                               // case of
-                                                               // backwards
-                                                               // compatability,
-                                                               // may need to
-                                                               // reconsider
-      narInfo.setNar(null, Library.EXECUTABLE, project.getGroupId() + ":" + project.getArtifactId() + ":"
-          + NarConstants.NAR_TYPE + ":" + "${aol}" + "-" + Library.EXECUTABLE);
-      narInfo.setBinding(new AOL(binAOL[i]), Library.EXECUTABLE);
-      narInfo.setBinding(null, Library.EXECUTABLE);
-    }
+    narInfo.setNar(null, Library.EXECUTABLE, project.getGroupId() + ":" + project.getArtifactId() + ":"
+        + NarConstants.NAR_TYPE + ":" + "${aol}" + "-" + Library.EXECUTABLE);
+    narInfo.setBinding(null, Library.EXECUTABLE);
 
-    final File libDir = new File(baseDir, "lib");
-    final String[] libAOL = libDir.list();
-    for (int i = 0; libAOL != null && i < libAOL.length; i++) {
-      String bindingType = null;
-      final String[] libType = new File(libDir, libAOL[i]).list();
-      for (int j = 0; libType != null && j < libType.length; j++) {
-        narInfo.setNar(null, libType[j], project.getGroupId() + ":" + project.getArtifactId() + ":"
-            + NarConstants.NAR_TYPE + ":" + "${aol}" + "-" + libType[j]);
+    try {
+      // TODO: chose not to apply new file naming for outfile in case of
+      // backwards compatability, may need to reconsider
+      Files.list(baseDir.resolve("bin")).forEach(file -> 
+          narInfo.setBinding(new AOL(file.getFileName().toString()), Library.EXECUTABLE));
 
-        // set if not set or override if SHARED
-        if (bindingType == null || libType[j].equals(Library.SHARED)) {
-          bindingType = libType[j];
-        }
-      }
+      
+      final Path libDir = baseDir.resolve("lib");
+      Files.list(libDir)
+        .forEach(Failable.asConsumer(dir -> {
+          List<String> bindingTypes = Files.list(libDir.resolve(dir))
+            .map(f -> f.getFileName().toString())
+            .peek(type -> {
+              narInfo.setNar(null, type, project.getGroupId() + ":" + project.getArtifactId() + ":"
+                  + NarConstants.NAR_TYPE + ":" + "${aol}" + "-" + type);
+            }).collect(Collectors.toList());
 
-      final AOL aol = new AOL(libAOL[i]);
-      if (mojo.getLibsName() != null) {
-        narInfo.setLibs(aol, mojo.getLibsName());
-      }
-      if (narInfo.getBinding(aol, null) == null) {
-        narInfo.setBinding(aol, bindingType != null ? bindingType : Library.NONE);
-      }
-      if (narInfo.getBinding(null, null) == null) {
-        narInfo.setBinding(null, bindingType != null ? bindingType : Library.NONE);
-      }
+          String bindingType = null;
+          if (bindingTypes.contains(Library.SHARED)) {
+            bindingType = Library.SHARED;
+          } else {
+            bindingType = bindingTypes.get(0);
+          }
+
+          final AOL aol = new AOL(dir.getFileName().toString());
+          if (mojo.getLibsName() != null) {
+            narInfo.setLibs(aol, mojo.getLibsName());
+          }
+          if (narInfo.getBinding(aol, null) == null) {
+            narInfo.setBinding(aol, bindingType != null ? bindingType : Library.NONE);
+          }
+          if (narInfo.getBinding(null, null) == null) {
+            narInfo.setBinding(null, bindingType != null ? bindingType : Library.NONE);
+          }
+      }));
+    } catch (IOException | RuntimeException e) {
+      throw new MojoExecutionException(e);
     }
   }
 
   @Override
-  public void unpackNar(final File unpackDir, final ArchiverManager archiverManager, final File file, final String os,
+  public void unpackNar(final Path unpackDir, final ArchiverManager archiverManager, final Path file, final String os,
       final String linkerName, final AOL defaultAOL, final boolean skipRanlib) throws MojoExecutionException, MojoFailureException {
-    final File flagFile = new File(unpackDir, FileUtils.basename(file.getPath(), "." + NarConstants.NAR_EXTENSION)
+    final Path flagFile = unpackDir.resolve(FileUtils.basename(file.toString(), "." + NarConstants.NAR_EXTENSION)
         + ".flag");
 
     boolean process = false;
-    if (!unpackDir.exists()) {
-      unpackDir.mkdirs();
-      process = true;
-    } else if (!flagFile.exists()) {
-      process = true;
-    } else if (file.lastModified() > flagFile.lastModified()) {
-      process = true;
+    try {
+      if (Files.notExists(unpackDir)) {
+        Files.createDirectories(unpackDir);
+        process = true;
+      } else if (Files.notExists(flagFile)) {
+        process = true;
+      } else if (Files.getLastModifiedTime(file).compareTo(Files.getLastModifiedTime(flagFile)) > 0) {
+        process = true;
+      }
+    } catch (IOException e) {
+      throw new MojoExecutionException(e);
     }
 
     if (process) {
       try {
         unpackNarAndProcess(archiverManager, file, unpackDir, os, linkerName, defaultAOL, skipRanlib);
-        FileUtils.fileDelete(flagFile.getPath());
-        FileUtils.fileWrite(flagFile.getPath(), "");
+        Files.deleteIfExists(flagFile);
+        Files.createFile(flagFile);
       } catch (final IOException e) {
-        throw new MojoFailureException("Cannot create flag file: " + flagFile.getPath(), e);
+        throw new MojoFailureException("Cannot create flag file: " + flagFile, e);
       }
     }
   }

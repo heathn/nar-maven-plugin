@@ -19,7 +19,7 @@
  */
 package com.github.maven_nar.cpptasks.compiler;
 
-import java.io.File;
+import java.nio.file.Path;
 
 import org.apache.tools.ant.BuildException;
 
@@ -45,7 +45,7 @@ public class TestAbstractCompiler extends TestAbstractProcessor {
       }, ".o");
     }
 
-    public void compile(final CCTask task, final File[] srcfile, final File[] outputfile,
+    public void compile(final CCTask task, final Path[] srcfile, final Path[] outputfile,
         final CompilerConfiguration config) throws BuildException {
       throw new BuildException("Not implemented");
     }
@@ -58,7 +58,7 @@ public class TestAbstractCompiler extends TestAbstractProcessor {
     }
 
     @Override
-    public Parser createParser(final File file) {
+    public Parser createParser(final Path file) {
       return new CParser();
     }
 
@@ -84,15 +84,15 @@ public class TestAbstractCompiler extends TestAbstractProcessor {
 
   public void failingtestGetOutputFileName1() {
     final AbstractProcessor compiler = create();
-    String[] output = compiler.getOutputFileNames("c:/foo\\bar\\hello.c", null);
+    Path[] output = compiler.getOutputFileNames(Path.of("c:/foo\\bar\\hello.c"), null);
     assertEquals("hello" + getObjectExtension(), output[0]);
-    output = compiler.getOutputFileNames("c:/foo\\bar/hello.c", null);
+    output = compiler.getOutputFileNames(Path.of("c:/foo\\bar/hello.c"), null);
     assertEquals("hello" + getObjectExtension(), output[0]);
-    output = compiler.getOutputFileNames("hello.c", null);
+    output = compiler.getOutputFileNames(Path.of("hello.c"), null);
     assertEquals("hello" + getObjectExtension(), output[0]);
-    output = compiler.getOutputFileNames("c:/foo\\bar\\hello.h", null);
+    output = compiler.getOutputFileNames(Path.of("c:/foo\\bar\\hello.h"), null);
     assertEquals(0, output.length);
-    output = compiler.getOutputFileNames("c:/foo\\bar/hello.h", null);
+    output = compiler.getOutputFileNames(Path.of("c:/foo\\bar/hello.h"), null);
     assertEquals(0, output.length);
   }
 
@@ -102,6 +102,6 @@ public class TestAbstractCompiler extends TestAbstractProcessor {
 
   public void testCanParseTlb() {
     final AbstractCompiler compiler = (AbstractCompiler) create();
-    assertEquals(false, compiler.canParse(new File("sample.tlb")));
+    assertEquals(false, compiler.canParse(Path.of("sample.tlb")));
   }
 }

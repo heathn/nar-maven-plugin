@@ -1,3 +1,22 @@
+/*
+ * #%L
+ * Native ARchive plugin for Maven
+ * %%
+ * Copyright (C) 2002 - 2014 NAR Maven Plugin developers.
+ * %%
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * #L%
+ */
 package com.github.maven_nar.cpptasks;
 
 
@@ -5,6 +24,7 @@ import org.apache.tools.ant.Project;
 import org.apache.tools.ant.types.Environment;
 
 import java.io.*;
+import java.nio.file.Path;
 import java.util.Vector;
 
 
@@ -41,7 +61,7 @@ public class CommandExecution {
 
 
 
-    public static int runCommand(String[] cmdArgs, File workDir, CCTask task, Vector<Environment.Variable> env) throws  IOException{
+    public static int runCommand(String[] cmdArgs, Path workDir, CCTask task, Vector<Environment.Variable> env) throws  IOException{
 
 
         try {
@@ -52,7 +72,7 @@ public class CommandExecution {
             //Redirect the stderr to the stdout
             pb.redirectErrorStream(true);
 
-            pb.directory(workDir);
+            pb.directory(workDir.toFile());
 
             for (Environment.Variable var:env) {
                 pb.environment().put(var.getKey(), var.getValue());

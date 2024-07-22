@@ -19,7 +19,8 @@
  */
 package com.github.maven_nar.cpptasks.openwatcom;
 
-import java.io.File;
+import java.nio.file.Path;
+import java.util.List;
 import java.util.Vector;
 
 import org.apache.tools.ant.types.Environment;
@@ -153,7 +154,7 @@ public abstract class OpenWatcomCompiler extends CommandLineCompiler {
    * @return File[]
    */
   @Override
-  protected final File[] getEnvironmentIncludePath() {
+  protected final List<Path> getEnvironmentIncludePath() {
     return CUtil.getPathFromEnvironment("INCLUDE", ";");
   }
 
@@ -165,7 +166,7 @@ public abstract class OpenWatcomCompiler extends CommandLineCompiler {
    * @return String command line argument
    */
   @Override
-  protected final String getIncludeDirSwitch(final String includeDir) {
+  protected final String getIncludeDirSwitch(final Path includeDir) {
     return OpenWatcomProcessor.getIncludeDirSwitch(includeDir);
   }
 

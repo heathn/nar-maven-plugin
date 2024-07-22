@@ -19,8 +19,9 @@
  */
 package com.github.maven_nar;
 
-import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
@@ -37,17 +38,17 @@ public class NarCMakeProcess extends AbstractCMakeMojo {
 
   @Override
   public final void narExecute() throws MojoExecutionException, MojoFailureException {
-    File srcDir = getCMakeAOLTargetDirectory();
-    if (srcDir.exists()) {
+    Path srcDir = getCMakeAOLTargetDirectory();
+    if (Files.exists(srcDir)) {
       getLog().info("Running CMake process");
 
       // CMake appears to install .dlls in the bin folder.  Copy them
       // into the lib folder so that they are included in the
       // shared NAR artifact copy.
       if (getAOL().getOS() == OS.WINDOWS) {
-        File binDir = new File(srcDir, resourceBinDir);
-        File libDir = new File(srcDir, resourceLibDir);
-        if (binDir.exists() && libDir.exists()) {
+        Path binDir = srcDir.resolve(getResourceBinDir());
+        Path libDir = srcDir.resolve(getResourceLibDir());
+        if (Files.exists(binDir) && Files.exists(libDir)) {
           try {
             NarUtil.copyDirectoryStructure(binDir, libDir,
                 "**/*.dll", NarUtil.DEFAULT_EXCLUDES);

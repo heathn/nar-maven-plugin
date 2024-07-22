@@ -21,15 +21,14 @@ package com.github.maven_nar;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashSet;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
-import org.apache.maven.artifact.Artifact;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
 import org.apache.maven.plugins.annotations.LifecyclePhase;
@@ -38,7 +37,9 @@ import org.apache.maven.plugins.annotations.Parameter;
 import org.apache.maven.plugins.annotations.ResolutionScope;
 import org.apache.maven.project.MavenProject;
 import org.apache.maven.shared.artifact.filter.collection.ScopeFilter;
-import org.codehaus.plexus.util.StringUtils;
+import org.apache.maven.surefire.shared.lang3.function.Failable;
+
+import org.eclipse.aether.artifact.Artifact;
 
 /**
  * Tests NAR files. Runs Native Tests and executables if produced.
@@ -52,7 +53,7 @@ public class NarTestMojo extends AbstractCompileMojo {
    * The classpath elements of the project being tested.
    */
   @Parameter(defaultValue = "${project.testClasspathElements}", required = true, readonly = true)
-  private List classpathElements;
+  private List<String> classpathElements;
 
   /**
    * Directory for test resources. Defaults to src/test/resources
@@ -60,11 +61,11 @@ public class NarTestMojo extends AbstractCompileMojo {
   @Parameter(defaultValue = "${basedir}/src/test/resources", required = true)
   private File testResourceDirectory;
 
-  private String[] generateEnvironment(Map<String, String> environmentVariables) throws MojoExecutionException, MojoFailureException {
+  private List<String> generateEnvironment(Map<String, String> environmentVariables) throws MojoExecutionException, MojoFailureException {
     List<String> env = new ArrayList<>();
 
     // Add the default configured environment
-    Collections.addAll(env, generateEnvironment());
+    env.addAll(generateEnvironment());
 
     // Add manually specified environment variables
     for (Map.Entry<String, String> envVar : environmentVariables.entrySet()) {
@@ -72,31 +73,31 @@ public class NarTestMojo extends AbstractCompileMojo {
       env.add(envVar.getKey() + "=" + envVar.getValue());
     }
 
-    return env.toArray(new String[env.size()]);
+    return env;
   }
 
-  private String[] generateEnvironment() throws MojoExecutionException, MojoFailureException {
-    final List env = new ArrayList();
+  private List<String> generateEnvironment() throws MojoExecutionException, MojoFailureException {
+    final List<String> env = new ArrayList<>();
 
-    final Set/* <File> */sharedPaths = new HashSet();
-
-    // add all shared libraries of this package
-    for (final Object element : getLibraries()) {
-      final Library lib = (Library) element;
-      if (lib.getType().equals(Library.SHARED)) {
-        final File path = getLayout().getLibDirectory(getTargetDirectory(), getMavenProject().getArtifactId(),
-            getMavenProject().getVersion(), getAOL().toString(), lib.getType());
-        getLog().debug("Adding path to shared library: " + path);
-        sharedPaths.add(path);
-      }
+    final Set<Path> sharedPaths;
+    try {
+      // add all shared libraries of this package
+      sharedPaths = getLibraries().stream()
+        .filter(lib -> lib.getType().equals(Library.SHARED))
+        .map(Failable.asFunction(lib -> getLayout().getLibDirectory(getTargetDirectory(),
+            getMavenProject().getArtifactId(),
+            getMavenProject().getVersion(), getAOL().toString(), lib.getType())))
+        .peek(path -> getLog().debug("Adding path to shared library: " + path))
+        .collect(Collectors.toSet());
+    } catch (RuntimeException e) {
+      throw new MojoExecutionException(e);
     }
 
     // add dependent shared libraries
     final String classifier = getAOL() + "-shared";
-    final List narArtifacts = getNarArtifacts();
-    final List dependencies = getNarManager().getAttachedNarDependencies(narArtifacts, classifier);
-    for (final Object dependency1 : dependencies) {
-      final Artifact dependency = (Artifact) dependency1;
+    final List<NarArtifact> narArtifacts = getNarArtifacts();
+    final List<Artifact> dependencies = getNarManager().getAttachedNarDependencies(narArtifacts, classifier);
+    for (final Artifact dependency : dependencies) {
       getLog().debug("Looking for dependency " + dependency);
 
       // FIXME reported to maven developer list, isSnapshot
@@ -104,7 +105,7 @@ public class NarTestMojo extends AbstractCompileMojo {
       // of getBaseVersion, called in pathOf.
       dependency.isSnapshot();
 
-      final File libDirectory = getLayout()
+      final Path libDirectory = getLayout()
           .getLibDirectory(getUnpackDirectory(), dependency.getArtifactId(), dependency.getBaseVersion(),
               getAOL().toString(), Library.SHARED);
       sharedPaths.add(libDirectory);
@@ -112,13 +113,9 @@ public class NarTestMojo extends AbstractCompileMojo {
 
     // set environment
     if (sharedPaths.size() > 0) {
-      String sharedPath = "";
-      for (final Iterator i = sharedPaths.iterator(); i.hasNext();) {
-        sharedPath += ((File) i.next()).getPath();
-        if (i.hasNext()) {
-          sharedPath += File.pathSeparator;
-        }
-      }
+      String sharedPath = sharedPaths.stream()
+        .map(Path::toString)
+        .collect(Collectors.joining(File.pathSeparator));
 
       final String sharedEnv = NarUtil.addLibraryPathToEnv(sharedPath, null, getOS());
       env.add(sharedEnv);
@@ -133,17 +130,18 @@ public class NarTestMojo extends AbstractCompileMojo {
       // locate any test resources.
       // Add executable directory
       // NOTE should we use layout here ?
-      File binPath = new File(getTestTargetDirectory(), "bin");
-      binPath = new File(binPath, getAOL().toString());
+      Path binPath = getTestTargetDirectory().resolve(
+          Path.of("bin", getAOL().toString()));
       String path = NarUtil.getEnv("PATH", "Path", "");
       if (path.length() > 0) path += File.pathSeparator;
       env.add("PATH=" + path + binPath);
     }
 
     // add CLASSPATH
-    env.add("CLASSPATH=" + StringUtils.join(this.classpathElements.iterator(), File.pathSeparator));
+    env.add("CLASSPATH=" + classpathElements.stream()
+      .collect(Collectors.joining(File.pathSeparator)));
 
-    return env.size() > 0 ? (String[]) env.toArray(new String[env.size()]) : new String[]{};
+    return env;
   }
 
   /**
@@ -153,11 +151,11 @@ public class NarTestMojo extends AbstractCompileMojo {
    */
   @Override
   protected ScopeFilter getArtifactScopeFilter() {
-    return new ScopeFilter( Artifact.SCOPE_TEST, null );
+    return new ScopeFilter(org.apache.maven.artifact.Artifact.SCOPE_TEST, null );
   }
 
   @Override
-  protected File getUnpackDirectory() {
+  protected Path getUnpackDirectory() {
     return getTestUnpackDirectory() == null ? super.getUnpackDirectory() : getTestUnpackDirectory();
   }
 
@@ -168,12 +166,12 @@ public class NarTestMojo extends AbstractCompileMojo {
     } else {
 
       // run all tests
-      for (final Object o : getTests()) {
-        runTest((Test) o);
+      for (final Test test : getTests()) {
+        runTest(test);
       }
 
-      for (final Object element : getLibraries()) {
-        runExecutable((Library) element);
+      for (final Library element : getLibraries()) {
+        runExecutable(element);
       }
     }
   }
@@ -183,16 +181,16 @@ public class NarTestMojo extends AbstractCompileMojo {
       final MavenProject project = getMavenProject();
       // FIXME NAR-90, we could make sure we get the final name from layout
       final String extension = getOS().equals(OS.WINDOWS) ? ".exe" : "";
-      final File executable = new File(getLayout().getBinDirectory(getTargetDirectory(),
-          getMavenProject().getArtifactId(), getMavenProject().getVersion(), getAOL().toString()),
-          project.getArtifactId() + extension);
-      if (!executable.exists()) {
+      final Path executable = getLayout().getBinDirectory(getTargetDirectory(),
+          getMavenProject().getArtifactId(), getMavenProject().getVersion(),
+          getAOL().toString()).resolve(project.getArtifactId() + extension);
+      if (Files.notExists(executable)) {
         getLog().warn("Skipping non-existing executable " + executable);
         return;
       }
       getLog().info("Running executable " + executable);
-      final List args = library.getArgs();
-      final int result = NarUtil.runCommand(executable.getPath(), (String[]) args.toArray(new String[args.size()]),
+      final List<String> args = library.getArgs();
+      final int result = NarUtil.runCommand(executable.toString(), args,
           null, generateEnvironment(), getLog());
       if (result != 0) {
         throw new MojoFailureException("Test " + executable + " failed with exit code: " + result + " 0x"
@@ -206,22 +204,25 @@ public class NarTestMojo extends AbstractCompileMojo {
     if (test.shouldRun()) {
       // NOTE should we use layout here ?
       final String name = test.getName() + (getOS().equals(OS.WINDOWS) ? ".exe" : "");
-      File path = new File(getTestTargetDirectory(), "bin");
-      path = new File(path, getAOL().toString());
-      path = new File(path, name);
-      if (!path.exists()) {
+      Path path = getTestTargetDirectory().resolve(
+          Path.of("bin", getAOL().toString(), name));
+      if (Files.notExists(path)) {
         getLog().warn("Skipping non-existing test " + path);
         return;
       }
 
-      final File workingDir = new File(getTestTargetDirectory(), "test-reports");
-      workingDir.mkdirs();
+      final Path workingDir = getTestTargetDirectory().resolve("test-reports");
+      try {
+        Files.createDirectories(workingDir);
+      } catch (IOException e) {
+        throw new MojoExecutionException(e);
+      }
 
       // Copy test resources
       try {
         int copied = 0;
-        if (this.testResourceDirectory.exists()) {
-          copied += NarUtil.copyDirectoryStructure(this.testResourceDirectory, workingDir, null,
+        if (Files.exists(this.testResourceDirectory.toPath())) {
+          copied += NarUtil.copyDirectoryStructure(this.testResourceDirectory.toPath(), workingDir, null,
               NarUtil.DEFAULT_EXCLUDES);
         }
         getLog().info("Copied " + copied + " test resources");
@@ -231,8 +232,8 @@ public class NarTestMojo extends AbstractCompileMojo {
 
       getLog().info("Running test " + name + " in " + workingDir);
 
-      final List args = test.getArgs();
-      final int result = NarUtil.runCommand(path.toString(), (String[]) args.toArray(new String[args.size()]),
+      final List<String> args = test.getArgs();
+      final int result = NarUtil.runCommand(path.toString(), args,
           workingDir, generateEnvironment(test.getEnvironmentVariables()), getLog());
       if (result != 0) {
         throw new MojoFailureException("Test " + name + " failed with exit code: " + result + " 0x"

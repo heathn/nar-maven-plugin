@@ -21,15 +21,18 @@ package com.github.maven_nar.cpptasks;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
 import java.util.*;
+import java.util.function.Predicate;
+import java.util.stream.Collectors;
 
 import org.apache.tools.ant.BuildException;
 import org.apache.tools.ant.Project;
 import org.apache.tools.ant.taskdefs.Execute;
-import org.apache.tools.ant.taskdefs.LogStreamHandler;
 import org.apache.tools.ant.types.Commandline;
 import org.apache.tools.ant.types.Environment;
-import org.apache.tools.ant.util.StringUtils;
 
 /**
  * Some utilities used by the CC and Link tasks.
@@ -43,24 +46,17 @@ public class CUtil {
    * array. Used for task attributes.
    */
   public static final class StringArrayBuilder {
-    private final String[] _value;
+    private final List<String> _value;
 
     public StringArrayBuilder(final String value) {
       // Split the defines up
-      final StringTokenizer tokens = new StringTokenizer(value, ", ");
-      final Vector vallist = new Vector();
-      while (tokens.hasMoreTokens()) {
-        final String val = tokens.nextToken().trim();
-        if (val.length() == 0) {
-          continue;
-        }
-        vallist.addElement(val);
-      }
-      this._value = new String[vallist.size()];
-      vallist.copyInto(this._value);
+      _value = Arrays.stream(value.split(",|\\s"))
+          .map(String::trim)
+          .filter(Predicate.not(String::isEmpty))
+          .collect(Collectors.toList());
     }
 
-    public String[] getValue() {
+    public List<String> getValue() {
       return this._value;
     }
   }
@@ -68,29 +64,16 @@ public class CUtil {
   public final static int FILETIME_EPSILON = 500;
 
   /**
-   * Adds the elements of the array to the given vector
-   */
-  public static void addAll(final Vector dest, final Object[] src) {
-    if (src == null) {
-      return;
-    }
-    for (final Object element : src) {
-      dest.addElement(element);
-    }
-  }
-
-  /**
    * Checks a array of names for non existent or non directory entries and
    * nulls them out.
    *
    * @return Count of non-null elements
    */
-  public static int checkDirectoryArray(final String[] names) {
+  public static int checkDirectoryArray(final Path[] names) {
     int count = 0;
     for (int i = 0; i < names.length; i++) {
       if (names[i] != null) {
-        final File dir = new File(names[i]);
-        if (dir.exists() && dir.isDirectory()) {
+        if (Files.exists(names[i]) && Files.isDirectory(names[i])) {
           count++;
         } else {
           names[i] = null;
@@ -103,10 +86,9 @@ public class CUtil {
   /**
    * Extracts the basename of a file, removing the extension, if present
    */
-  public static String getBasename(final File file) {
-    final String path = file.getPath();
+  public static String getBasename(final Path file) {
     // Remove the extension
-    String basename = file.getName();
+    String basename = file.getFileName().toString();
     final int pos = basename.lastIndexOf('.');
     if (pos != -1) {
       basename = basename.substring(0, pos);
@@ -122,17 +104,17 @@ public class CUtil {
    *          Name of executable such as "cl.exe"
    * @return parent directory or null if not located
    */
-  public static File getExecutableLocation(final String exeName) {
+  public static Path getExecutableLocation(final String exeName) {
     //
     // must add current working directory to the
     // from of the path from the "path" environment variable
-    final File currentDir = new File(System.getProperty("user.dir"));
-    if (new File(currentDir, exeName).exists()) {
+    final Path currentDir = Path.of(System.getProperty("user.dir"));
+    if (Files.exists(currentDir.resolve(exeName))) {
       return currentDir;
     }
-    final File[] envPath = CUtil.getPathFromEnvironment("PATH", File.pathSeparator);
-    for (final File element : envPath) {
-      if (new File(element, exeName).exists()) {
+    final List<Path> envPath = CUtil.getPathFromEnvironment("PATH", File.pathSeparator);
+    for (final Path element : envPath) {
+      if (Files.exists(element.resolve(exeName))) {
         return element;
       }
     }
@@ -161,25 +143,13 @@ public class CUtil {
    *          or ":"
    * @return array of File's for each part that is an existing directory
    */
-  public static File[] getPathFromEnvironment(final String envVariable, final String delim) {
+  public static List<Path> getPathFromEnvironment(final String envVariable, final String delim) {
     // OS/4000 does not support the env command.
     if (System.getProperty("os.name").equals("OS/400")) {
-      return new File[] {};
+      return Collections.emptyList();
     }
-    final Vector osEnv = Execute.getProcEnvironment();
-    final String match = envVariable.concat("=");
-    for (final Enumeration e = osEnv.elements(); e.hasMoreElements();) {
-      final String entry = ((String) e.nextElement()).trim();
-      if (entry.length() > match.length()) {
-        final String entryFrag = entry.substring(0, match.length());
-        if (entryFrag.equalsIgnoreCase(match)) {
-          final String path = entry.substring(match.length());
-          return parsePath(path, delim);
-        }
-      }
-    }
-    final File[] noPath = new File[0];
-    return noPath;
+    Map<String, String> env = Execute.getEnvironmentVariables();
+    return parsePath(env.getOrDefault(envVariable, ""), delim);
   }
 
   /**
@@ -316,15 +286,15 @@ public class CUtil {
    * to a degree that file system time truncation is not significant.
    *
    * @param time1
-   *          long first time value
+   *          first time value
    * @param time2
-   *          long second time value
+   *          second time value
    * @return boolean if first time value is later than second time value.
    *         If the values are within the rounding error of the file system
    *         return false.
    */
-  public static boolean isSignificantlyAfter(final long time1, final long time2) {
-    return time1 > time2 + FILETIME_EPSILON;
+  public static boolean isSignificantlyAfter(final FileTime time1, final FileTime time2) {
+    return time1.toMillis() > time2.toMillis() + FILETIME_EPSILON;
   }
 
   /**
@@ -332,15 +302,15 @@ public class CUtil {
    * to a degree that file system time truncation is not significant.
    *
    * @param time1
-   *          long first time value
+   *          first time value
    * @param time2
-   *          long second time value
+   *          second time value
    * @return boolean if first time value is earlier than second time value.
    *         If the values are within the rounding error of the file system
    *         return false.
    */
-  public static boolean isSignificantlyBefore(final long time1, final long time2) {
-    return time1 + FILETIME_EPSILON < time2;
+  public static boolean isSignificantlyBefore(final FileTime time1, final FileTime time2) {
+    return time1.toMillis() + FILETIME_EPSILON < time2.toMillis();
   }
 
   /**
@@ -352,8 +322,8 @@ public class CUtil {
    * @return true is source file appears to be system library
    *         and its path should be discarded.
    */
-  public static boolean isSystemPath(final File source) {
-    final String lcPath = source.getAbsolutePath().toLowerCase(java.util.Locale.US);
+  public static boolean isSystemPath(final Path source) {
+    final String lcPath = source.toAbsolutePath().toString().toLowerCase(java.util.Locale.US);
     return lcPath.contains("platformsdk") || lcPath.contains("windows kits") || lcPath.contains("microsoft")
         || Objects.equals(lcPath, "/usr/include")
         || Objects.equals(lcPath, "/usr/lib") || Objects.equals(lcPath, "/usr/local/include")
@@ -368,35 +338,18 @@ public class CUtil {
    * @param delim
    *          delimiter, typically ; or :
    */
-  public static File[] parsePath(final String path, final String delim) {
-    final Vector libpaths = new Vector();
-    int delimPos = 0;
-    for (int startPos = 0; startPos < path.length(); startPos = delimPos + delim.length()) {
-      delimPos = path.indexOf(delim, startPos);
-      if (delimPos < 0) {
-        delimPos = path.length();
-      }
-      //
-      // don't add an entry for zero-length paths
-      //
-      if (delimPos > startPos) {
-        final String dirName = path.substring(startPos, delimPos);
-        final File dir = new File(dirName);
-        if (dir.exists() && dir.isDirectory()) {
-          libpaths.addElement(dir);
-        }
-      }
-    }
-    final File[] paths = new File[libpaths.size()];
-    libpaths.copyInto(paths);
-    return paths;
+  public static List<Path> parsePath(final String path, final String delim) {
+    return Arrays.stream(path.split(delim))
+        .filter(Predicate.not(String::isEmpty))
+        .map(Path::of)
+        .collect(Collectors.toList());
   }
 
   /**
    * This method is exposed so test classes can overload and test the
    * arguments without actually spawning the compiler
    */
-  public static int runCommand(final CCTask task, final File workingDir, final String[] cmdline,
+  public static int runCommand(final CCTask task, final Path workingDir, final String[] cmdline,
       final boolean newEnvironment, final Environment env) throws BuildException {
     try {
       task.log(Commandline.toString(cmdline), task.getCommandLogLevel());
@@ -446,47 +399,6 @@ public class CUtil {
     return true;
   }
 
-  /**
-   * Compares the contents of an array and a Vector for equality.
-   */
-  public static boolean sameList(final Vector v, final Object[] a) {
-    if (v == null || a == null || v.size() != a.length) {
-      return false;
-    }
-    for (int i = 0; i < a.length; i++) {
-      final Object o = a[i];
-      if (!o.equals(v.elementAt(i))) {
-        return false;
-      }
-    }
-    return true;
-  }
-
-  /**
-   * Compares the contents of an array and a Vector for set equality. Assumes
-   * input array and vector are sets (i.e. no duplicate entries)
-   */
-  public static boolean sameSet(final Object[] a, final Vector b) {
-    if (a == null || b == null || a.length != b.size()) {
-      return false;
-    }
-    if (a.length == 0) {
-      return true;
-    }
-    // Convert the array into a set
-    final Hashtable t = new Hashtable();
-    for (final Object element : a) {
-      t.put(element, element);
-    }
-    for (int i = 0; i < b.size(); i++) {
-      final Object o = b.elementAt(i);
-      if (t.remove(o) == null) {
-        return false;
-      }
-    }
-    return t.size() == 0;
-  }
-
   private static boolean
       substringMatch(final String src, final int beginIndex, final int endIndex, final String target) {
     if (src.length() < endIndex) {
@@ -495,25 +407,16 @@ public class CUtil {
     return src.substring(beginIndex, endIndex).equals(target);
   }
 
-  /**
-   * Converts a vector to a string array.
-   */
-  public static String[] toArray(final Vector src) {
-    final String[] retval = new String[src.size()];
-    src.copyInto(retval);
-    return retval;
-  }
-
   public static String toUnixPath(final String path) {
     if (File.separatorChar != '/' && path.indexOf(File.separatorChar) != -1) {
-      return StringUtils.replace(path, File.separator, "/");
+      return path.replace(File.separator, "/");
     }
     return path;
   }
 
   public static String toWindowsPath(final String path) {
     if (File.separatorChar != '\\' && path.indexOf(File.separatorChar) != -1) {
-      return StringUtils.replace(path, File.separator, "\\");
+      return path.replace(File.separator, "\\");
     }
     return path;
   }

@@ -25,7 +25,6 @@ import org.apache.maven.plugin.MojoFailureException;
 import org.apache.maven.plugins.annotations.Component;
 import org.apache.maven.plugins.annotations.LifecyclePhase;
 import org.apache.maven.plugins.annotations.Mojo;
-import org.apache.maven.plugins.annotations.Parameter;
 import org.apache.maven.plugins.annotations.ResolutionScope;
 import org.apache.maven.toolchain.ToolchainManager;
 
@@ -39,10 +38,11 @@ import org.apache.maven.toolchain.ToolchainManager;
  */
 @Mojo(name = "nar-javah", defaultPhase = LifecyclePhase.COMPILE, requiresDependencyResolution = ResolutionScope.COMPILE)
 public class NarJavahMojo extends AbstractNarMojo {
+
   @Component
   private ToolchainManager toolchainManager;
 
-  @Parameter(defaultValue = "${session}", readonly = true)
+  @Component
   private MavenSession session;
 
   protected final MavenSession getSession() {

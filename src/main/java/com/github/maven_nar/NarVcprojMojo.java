@@ -19,14 +19,12 @@
  */
 package com.github.maven_nar;
 
-import java.io.File;
 import java.io.IOException;
-import java.util.HashSet;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Iterator;
-import java.util.LinkedHashSet;
 import java.util.LinkedList;
 import java.util.List;
-import java.util.Set;
 
 import org.apache.maven.artifact.Artifact;
 import org.apache.maven.model.Profile;
@@ -52,7 +50,6 @@ import com.github.maven_nar.cpptasks.types.DefineArgument;
 import com.github.maven_nar.cpptasks.types.DefineSet;
 import com.github.maven_nar.cpptasks.types.LibrarySet;
 import com.github.maven_nar.cpptasks.types.LinkerArgument;
-import com.github.maven_nar.cpptasks.types.SystemLibrarySet;
 
 /**
  * Generates a Visual Studio 2005 project file (vcproj) Heavily inspired by
@@ -91,21 +88,26 @@ public class NarVcprojMojo extends AbstractCompileMojo {
     // TODO: this should match the standard NAR location defined by layout
     // similar to Nar Compile
     // outDir
-    File outDir = new File(getTargetDirectory(), "bin");
-    outDir = new File(outDir, getAOL().toString());
-    outDir.mkdirs();
+    Path outDir = getTargetDirectory().resolve(
+        Path.of("bin", getAOL().toString()));
+
 
     // outFile
-    final File outFile = new File(outDir, getOutput(getAOL(), type));
+    final Path outFile = outDir.resolve(getOutput(getAOL(), type));
 
     getLog().debug("NAR - output: '" + outFile + "'");
     task.setOutfile(outFile);
 
     // object directory
-    File objDir = new File(getTargetDirectory(), "obj");
-    objDir = new File(objDir, getAOL().toString());
-    objDir.mkdirs();
+    Path objDir = getTargetDirectory().resolve(Path.of("obj", getAOL().toString()));
     task.setObjdir(objDir);
+
+    try {
+      Files.createDirectories(outDir);
+      Files.createDirectories(objDir);
+    } catch (IOException e) {
+      throw new MojoExecutionException(e);
+    }
 
     // failOnError, libtool
     task.setFailonerror(failOnError(getAOL()));
@@ -131,9 +133,9 @@ public class NarVcprojMojo extends AbstractCompileMojo {
     cpp.addConfiguredDefineset(defineSet);
 
     // add javah include path
-    final File jniDirectory = getJavah().getJniDirectory();
-    if (jniDirectory.exists()) {
-      task.createIncludePath().setPath(jniDirectory.getPath());
+    final Path jniDirectory = getJavah().getJniDirectory();
+    if (Files.exists(jniDirectory)) {
+      task.createIncludePath().setPath(jniDirectory.toString());
     }
 
     // add java include paths
@@ -149,12 +151,12 @@ public class NarVcprojMojo extends AbstractCompileMojo {
       final String binding = narDependency.getNarInfo().getBinding(getAOL(), Library.STATIC);
       getLog().debug("Looking for " + narDependency + " found binding " + binding);
       if (!binding.equals(Library.JNI)) {
-        final File unpackDirectory = getUnpackDirectory();
-        final File include = getLayout().getIncludeDirectory(unpackDirectory, narDependency.getArtifactId(),
+        final Path unpackDirectory = getUnpackDirectory();
+        final Path include = getLayout().getIncludeDirectory(unpackDirectory, narDependency.getArtifactId(),
             narDependency.getBaseVersion());
         getLog().debug("Looking for directory: " + include);
-        if (include.exists()) {
-          task.createIncludePath().setPath(include.getPath());
+        if (Files.exists(include)) {
+          task.createIncludePath().setPath(include.toString());
         } else {
           getLog().warn(String.format("Unable to locate %1$s lib include path '%2$s'", binding, include));
         }
@@ -171,22 +173,22 @@ public class NarVcprojMojo extends AbstractCompileMojo {
     // not add all libraries, see NARPLUGIN-96
     if (type.equals(Library.SHARED) || type.equals(Library.JNI) || type.equals(Library.EXECUTABLE)) {
 
-      final List depLibOrder = getDependencyLibOrder();
-      List depLibs = dependencies;
+      final List<String> depLibOrder = getDependencyLibOrder();
+      List<NarArtifact> depLibs = dependencies;
 
       // reorder the libraries that come from the nar dependencies
       // to comply with the order specified by the user
       if (depLibOrder != null && !depLibOrder.isEmpty()) {
 
-        final List tmp = new LinkedList();
+        final List<NarArtifact> tmp = new LinkedList<>();
 
         for (final Object aDepLibOrder : depLibOrder) {
 
           final String depToOrderName = (String) aDepLibOrder;
 
-          for (final Iterator j = depLibs.iterator(); j.hasNext(); ) {
+          for (final Iterator<NarArtifact> j = depLibs.iterator(); j.hasNext(); ) {
 
-            final NarArtifact dep = (NarArtifact) j.next();
+            final NarArtifact dep = j.next();
             final String depName = dep.getGroupId() + ":" + dep.getArtifactId();
 
             if (depName.equals(depToOrderName)) {
@@ -200,12 +202,8 @@ public class NarVcprojMojo extends AbstractCompileMojo {
         tmp.addAll(depLibs);
         depLibs = tmp;
       }
-      
-      Set<SysLib> dependencySysLibs = new LinkedHashSet<>();
 
-      for (final Object depLib : depLibs) {
-
-        final NarArtifact dependency = (NarArtifact) depLib;
+      for (final NarArtifact dependency : depLibs) {
 
         // FIXME no handling of "local"
 
@@ -217,12 +215,12 @@ public class NarVcprojMojo extends AbstractCompileMojo {
         getLog().debug("Using Library AOL: " + aol.toString());
 
         if (!binding.equals(Library.JNI) && !binding.equals(Library.NONE) && !binding.equals(Library.EXECUTABLE)) {
-          final File unpackDirectory = getUnpackDirectory();
-          final File dir = getLayout()
+          final Path unpackDirectory = getUnpackDirectory();
+          final Path dir = getLayout()
               .getLibDirectory(unpackDirectory, dependency.getArtifactId(), dependency.getBaseVersion(), aol.toString(),
                   binding);
           getLog().debug("Looking for Library Directory: " + dir);
-          if (dir.exists()) {
+          if (Files.exists(dir)) {
             final LibrarySet libSet = new LibrarySet();
             libSet.setProject(antProject);
 
@@ -259,21 +257,16 @@ public class NarVcprojMojo extends AbstractCompileMojo {
       projectWriterEnum.setValue("msvc8");
       final ProjectDef projectDef = new ProjectDef();
       projectDef.setType(projectWriterEnum);
-      String filename = null;
-      try {
-        final File outputDir = new File(getTargetDirectory(), "vcproj");
-        if (!outputDir.exists()) {
-          final boolean succeeded = outputDir.mkdir();
-          if (!succeeded) {
-            throw new MojoExecutionException("Unable to create directory: " + outputDir);
-          }
+      final Path outputDir = getTargetDirectory().resolve("vcproj");
+      if (Files.notExists(outputDir)) {
+        try {
+          Files.createDirectories(outputDir);
+        } catch (IOException e) {
+          throw new MojoExecutionException("Unable to create directory: " + outputDir);
         }
-        filename = outputDir + "/" + getMavenProject().getArtifactId();
-        final File projFile = new File(filename);
-        projectDef.setOutfile(projFile.getCanonicalFile());
-      } catch (final IOException e) {
-        throw new MojoExecutionException("Unable to create file: " + filename, e);
       }
+      final Path projFile = outputDir.resolve(getMavenProject().getArtifactId());
+      projectDef.setOutfile(projFile.toAbsolutePath());
       task.addProject(projectDef);
       task.setProjectsOnly(true);
 
@@ -283,7 +276,7 @@ public class NarVcprojMojo extends AbstractCompileMojo {
       // execute
       try {
         task.execute();
-        getLog().info("Wrote project file: " + filename + ".vcproj");
+        getLog().info("Wrote project file: " + projFile.getFileName() + ".vcproj");
       } catch (final BuildException e) {
         throw new MojoExecutionException("NAR: Compile failed", e);
       }
@@ -313,9 +306,8 @@ public class NarVcprojMojo extends AbstractCompileMojo {
     // for vcproj generation.
     boolean debug = false;
 
-    final List profiles = NarUtil.collectActiveProfiles(getMavenProject());
-    for (final Object profile1 : profiles) {
-      final Profile profile = (Profile) profile1;
+    final List<Profile> profiles = NarUtil.collectActiveProfiles(getMavenProject());
+    for (final Profile profile : profiles) {
       if (profile.getId().equalsIgnoreCase("windows-debug")) {
         debug = true;
         break;

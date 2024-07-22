@@ -21,6 +21,8 @@ package com.github.maven_nar;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
@@ -260,10 +262,10 @@ public abstract class Compiler {
     return value.replaceAll("\r", "").replaceAll("\n", ""); // ?maybe replace with chars \\n
   }
   
-  public final void copyIncludeFiles(final MavenProject mavenProject, final File targetDirectory) throws IOException {
+  public final void copyIncludeFiles(final MavenProject mavenProject, final Path targetDirectory) throws IOException {
     for (final IncludePath includePath : getIncludePaths("dummy")) {
       if (includePath.exists()) {
-        NarUtil.copyDirectoryStructure(includePath.getFile(), targetDirectory, includePath.getIncludes(),
+        NarUtil.copyDirectoryStructure(includePath.getFile().toPath(), targetDirectory, includePath.getIncludes(),
             NarUtil.DEFAULT_EXCLUDES);
       }
     }
@@ -456,21 +458,20 @@ public abstract class Compiler {
     }
 
     // Add default fileset (if exists)
-    final List<File> srcDirs = getSourceDirectories(type);
+    final List<Path> srcDirs = getSourceDirectories(type);
     final Set<String> includeSet = getIncludes(type);
     final Set<String> excludeSet = getExcludes(type);
 
     // now add all but the current test to the excludes
-    for (final Object o : this.mojo.getTests()) {
-      final Test test = (Test) o;
+    for (final Test test : this.mojo.getTests()) {
       if (!test.getName().equals(output)) {
         excludeSet.add("**/" + test.getName() + ".*");
       }
     }
 
-    for (final File srcDir : srcDirs) {
+    for (final Path srcDir : srcDirs) {
       this.mojo.getLog().debug("Checking for existence of " + getLanguage() + " source directory: " + srcDir);
-      if (srcDir.exists()) {
+      if (Files.exists(srcDir)) {
         if (this.compileOrder != null) {
           compilerDef.setOrder(Arrays.asList(StringUtils.split(this.compileOrder, ", ")));
         }
@@ -479,18 +480,18 @@ public abstract class Compiler {
         fileSet.setProject(this.mojo.getAntProject());
         fileSet.setIncludes(StringUtils.join(includeSet.iterator(), ","));
         fileSet.setExcludes(StringUtils.join(excludeSet.iterator(), ","));
-        fileSet.setDir(srcDir);
+        fileSet.setDir(srcDir.toFile());
         compilerDef.addFileset(fileSet);
       }
     }
     
     if (type.equals(TEST)) {
       if (this.testSourceDirectory.exists()) {
-        compilerDef.setWorkDir(this.testSourceDirectory);
+        compilerDef.setWorkDir(this.testSourceDirectory.toPath());
       }
     } else {
       if (this.sourceDirectory.exists()) {
-        compilerDef.setWorkDir(this.sourceDirectory);
+        compilerDef.setWorkDir(this.sourceDirectory.toPath());
       }
     }
 
@@ -530,14 +531,21 @@ public abstract class Compiler {
       return includeList;
     }
 
-    includeList = new ArrayList<>();
-    for (final File file2 : getSourceDirectories(type)) {
+    if (type.equals(TEST)) {
+      this.testIncludePaths = new ArrayList<>();
+      includeList = this.testIncludePaths;
+    } else {
+      this.includePaths = new ArrayList<>();
+      includeList = this.includePaths;
+    }
+
+    for (final Path path : getSourceDirectories(type)) {
       // VR 20100318 only add include directories that exist - we now fail the
       // build fast if an include directory does not exist
-      final File file = new File(file2, "include");
-      if (file.isDirectory()) {
+      final Path file = path.resolve("include");
+      if (Files.isDirectory(file)) {
         final IncludePath includePath = new IncludePath();
-        includePath.setPath(file.getPath());
+        includePath.setPath(file.toString());
         includeList.add(includePath);
       }
     }
@@ -584,7 +592,7 @@ public abstract class Compiler {
     return this.mojo.getAOL().getKey() + "." + getLanguage() + ".";
   }
 
-  public final List<File> getSourceDirectories() {
+  public final List<Path> getSourceDirectories() {
     return getSourceDirectories("dummy");
   }
 
@@ -592,8 +600,8 @@ public abstract class Compiler {
     return debug;
   }
 
-  private List<File> getSourceDirectories(final String type) {
-    final List<File> sourceDirectories = new ArrayList<>();
+  private List<Path> getSourceDirectories(final String type) {
+    final List<Path> sourceDirectories = new ArrayList<>();
     final File baseDir = this.mojo.getMavenProject().getBasedir();
 
     if (type.equals(TEST)) {
@@ -601,12 +609,12 @@ public abstract class Compiler {
         this.testSourceDirectory = new File(baseDir, "/src/test");
       }
       if (this.testSourceDirectory.exists()) {
-        sourceDirectories.add(this.testSourceDirectory);
+        sourceDirectories.add(this.testSourceDirectory.toPath());
       }
 
-      for (final Object element : this.mojo.getMavenProject().getTestCompileSourceRoots()) {
-        final File extraTestSourceDirectory = new File((String) element);
-        if (extraTestSourceDirectory.exists()) {
+      for (final String element : this.mojo.getMavenProject().getTestCompileSourceRoots()) {
+        final Path extraTestSourceDirectory = Path.of(element);
+        if (Files.exists(extraTestSourceDirectory)) {
           sourceDirectories.add(extraTestSourceDirectory);
         }
       }
@@ -615,20 +623,20 @@ public abstract class Compiler {
         this.sourceDirectory = new File(baseDir, "src/main");
       }
       if (this.sourceDirectory.exists()) {
-        sourceDirectories.add(this.sourceDirectory);
+        sourceDirectories.add(this.sourceDirectory.toPath());
       }
 
-      for (final Object element : this.mojo.getMavenProject().getCompileSourceRoots()) {
-        final File extraSourceDirectory = new File((String) element);
-        if (extraSourceDirectory.exists()) {
+      for (final String element : this.mojo.getMavenProject().getCompileSourceRoots()) {
+        final Path extraSourceDirectory = Path.of(element);
+        if (Files.exists(extraSourceDirectory)) {
           sourceDirectories.add(extraSourceDirectory);
         }
       }
     }
 
     if (this.mojo.getLog().isDebugEnabled()) {
-      for (final File file : sourceDirectories) {
-        this.mojo.getLog().debug("Added to sourceDirectory: " + file.getPath());
+      for (final Path file : sourceDirectories) {
+        this.mojo.getLog().debug("Added to sourceDirectory: " + file.toString());
       }
     }
     return sourceDirectories;

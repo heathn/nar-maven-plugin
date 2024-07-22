@@ -21,7 +21,6 @@ package com.github.maven_nar;
 
 import java.io.BufferedReader;
 import java.io.File;
-import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -29,18 +28,23 @@ import java.io.PrintWriter;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
-import java.nio.file.attribute.PosixFilePermission;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Stream;
 
 import org.apache.bcel.classfile.ClassParser;
 import org.apache.bcel.classfile.JavaClass;
+import org.apache.maven.model.Profile;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
 import org.apache.maven.plugin.logging.Log;
 import org.apache.maven.plugins.annotations.Parameter;
 import org.apache.maven.project.MavenProject;
+import org.apache.maven.surefire.shared.lang3.function.Failable;
+
 import org.codehaus.plexus.util.FileUtils;
 import org.codehaus.plexus.util.cli.Commandline;
 
@@ -80,7 +84,7 @@ public final class NarUtil {
   public static final String DEFAULT_EXCLUDES = "**/*~,**/#*#,**/.#*,**/%*%,**/._*,"
       + "**/CVS,**/CVS/**,**/.cvsignore," + "**/SCCS,**/SCCS/**,**/vssver.scc," + "**/.svn,**/.svn/**,**/.DS_Store";
 
-  public static String addLibraryPathToEnv(final String path, final Map environment, final String os) {
+  public static String addLibraryPathToEnv(final String path, final Map<String, String> environment, final String os) {
     String pathName = null;
     char separator = ' ';
     switch (os) {
@@ -102,7 +106,7 @@ public final class NarUtil {
         break;
     }
 
-    String value = environment != null ? (String) environment.get(pathName) : null;
+    String value = environment != null ? environment.get(pathName) : null;
     if (value == null) {
       value = NarUtil.getEnv(pathName, pathName, null);
     }
@@ -129,8 +133,8 @@ public final class NarUtil {
    *          The project to start with
    * @return A list of active profiles
    */
-  static List collectActiveProfiles(final MavenProject project) {
-    final List profiles = project.getActiveProfiles();
+  static List<Profile> collectActiveProfiles(final MavenProject project) {
+    final List<Profile> profiles = project.getActiveProfiles();
 
     if (project.hasParent()) {
       profiles.addAll(collectActiveProfiles(project.getParent()));
@@ -139,30 +143,30 @@ public final class NarUtil {
     return profiles;
   }
 
-  public static int copyDirectoryStructure(final File sourceDirectory, final File destinationDirectory,
+  public static int copyDirectoryStructure(final Path sourceDirectory, final Path destinationDirectory,
       final String includes, final String excludes) throws IOException {
-    if (!sourceDirectory.exists()) {
-      throw new IOException("Source directory doesn't exists (" + sourceDirectory.getAbsolutePath() + ").");
+    if (Files.notExists(sourceDirectory)) {
+      throw new IOException("Source directory doesn't exists (" + sourceDirectory.toAbsolutePath() + ").");
     }
 
     // Call copyDirectoryLayout first to make sure any empty directories
     // are included when copying the directory tree.
     final String[] inc = includes == null ? null : includes.split(",");
     final String[] exc = excludes == null ? null : excludes.split(",");
-    FileUtils.copyDirectoryLayout(sourceDirectory, destinationDirectory, inc, exc);
-    List<File> files = FileUtils.getFiles(sourceDirectory, includes, excludes);
-    final String sourcePath = sourceDirectory.getAbsolutePath();
+    FileUtils.copyDirectoryLayout(sourceDirectory.toFile(), destinationDirectory.toFile(), inc, exc);
+    List<File> files = FileUtils.getFiles(sourceDirectory.toFile(), includes, excludes);
+    final String sourcePath = sourceDirectory.toAbsolutePath().toString();
 
     int copied = 0;
-    for (final Object file1 : files) {
-      final File file = (File) file1;
-      String dest = file.getAbsolutePath();
+    for (final File file1 : files) {
+      final Path file = file1.toPath();
+      String dest = file.toAbsolutePath().toString();
       dest = dest.substring(sourcePath.length() + 1);
-      final File destination = new File(destinationDirectory, dest);
-      if (file.isFile()) {
+      final Path destination = destinationDirectory.resolve(dest);
+      if (Files.isRegularFile(file)) {
         // destination = destination.getParentFile();
         // use FileUtils from commons-io, because it preserves timestamps
-        org.apache.commons.io.FileUtils.copyFile(file, destination);
+        org.apache.commons.io.FileUtils.copyFile(file.toFile(), destination.toFile());
         copied++;
 
         // copy executable bit
@@ -177,63 +181,54 @@ public final class NarUtil {
         } catch (final SecurityException | InvocationTargetException | IllegalAccessException | IllegalArgumentException | NoSuchMethodException e) {
           // ignored
         }
-      } else if (file.isDirectory()) {
-        if (!destination.exists() && !destination.mkdirs()) {
-          throw new IOException("Could not create destination directory '" + destination.getAbsolutePath() + "'.");
+      } else if (Files.isDirectory(file)) {
+        if (Files.notExists(destination)) {
+          try {
+            Files.createDirectories(destination);
+          } catch (IOException e) {
+            throw new IOException("Could not create destination directory '" + destination.toAbsolutePath() + "'.", e);
+          }
         }
         copied += copyDirectoryStructure(file, destination, includes, excludes);
       } else {
-        throw new IOException("Unknown file type: " + file.getAbsolutePath());
+        throw new IOException("Unknown file type: " + file.toAbsolutePath());
       }
     }
     return copied;
   }
 
-  public static void deleteDirectory(final File dir) throws MojoExecutionException {
-    int retries = OS.WINDOWS.equalsIgnoreCase(System.getProperty("os.name")) ? 3 : 1;  // Windows file locking (such as due to virus scanners) and sometimes deleting slowly, or slow to report completion.
-    while (retries > 0) {
-      retries--;
-      try {
-        FileUtils.deleteDirectory(dir);
-        retries = 0;
-      } catch (final IOException e) {
-        if (retries > 0) {
-          Thread.yield();
-        } else {
-          throw new MojoExecutionException("Could not delete directory: " + dir, e);
-        }
+  public static void deleteDirectory(final Path dir) throws MojoExecutionException {
+    try {
+      try (Stream<Path> pathStream = Files.walk(dir)) {
+        pathStream.sorted(Comparator.reverseOrder())
+          .map(Path::toFile)
+          .forEach(File::delete);
       }
-      if (retries > 0) {
-//      getLog().info("Could not delete directory: " + dir + " : Retrying");
-        try {
-          Thread.sleep(200);
-        } catch (InterruptedException e) {
-        }
-      //TODO: if( windows and interactive ) prompt for retry?
-      //@Component(role=org.codehaus.plexus.components.interactivity.Prompter.class, hint="archetype")
-      //public class ArchetypePrompter
-      }
+    } catch (IOException e) {
+      throw new MojoExecutionException(e);
     }
   }
   
-  static Set findInstallNameToolCandidates(final File[] files, final Log log)
+  static Set<Path> findInstallNameToolCandidates(final Path[] files, final Log log)
       throws MojoExecutionException, MojoFailureException {
-    final HashSet candidates = new HashSet();
+    final Set<Path> candidates = new HashSet<>();
 
-    for (final File file2 : files) {
-      final File file = file2;
+    for (final Path file : files) {
 
-      if (!file.exists()) {
+      if (Files.notExists(file)) {
         continue;
       }
 
-      if (file.isDirectory()) {
-        candidates.addAll(findInstallNameToolCandidates(file.listFiles(), log));
+      if (Files.isDirectory(file)) {
+        try {
+          candidates.addAll(findInstallNameToolCandidates(Files.list(file).toArray(Path[]::new), log));
+        } catch (IOException e) {
+          throw new MojoExecutionException(e);
+        }
       }
 
-      final String fileName = file.getName();
-      if (file.isFile() && file.canWrite()
-          && (fileName.endsWith(".so") || fileName.endsWith(".dylib") || fileName.endsWith(".jnilib"))) {
+      if (Files.isRegularFile(file) && Files.isWritable(file)
+          && (file.toString().endsWith(".so") || file.toString().endsWith(".dylib") || file.toString().endsWith(".jnilib"))) {
         candidates.add(file);
       }
     }
@@ -344,14 +339,14 @@ public final class NarUtil {
     return header;
   }
 
-  public static File getJavaHome(final File javaHome, final String os) {
-    File home = javaHome;
+  public static Path getJavaHome(final Path javaHome, final String os) {
+    Path home = javaHome;
     // adjust JavaHome
     if (home == null) {
-      home = new File(System.getProperty("java.home"));
-      if (home.getName().equals("jre")) {
+      home = Path.of(System.getProperty("java.home"));
+      if (home.getFileName().toString().equals("jre")) {
         // we want the JDK base directory, not the JRE subfolder
-        home = home.getParentFile();
+        home = home.getParent();
       }
     }
     return home;
@@ -405,100 +400,85 @@ public final class NarUtil {
     return Objects.equals(getOS(null), OS.WINDOWS);
   }
 
-  public static void makeExecutable(final File file, final Log log) throws MojoExecutionException, MojoFailureException {
-    if (!file.exists()) {
+  public static void makeExecutable(final Path file, final Log log) throws MojoExecutionException, MojoFailureException {
+    if (Files.notExists(file)) {
       return;
     }
 
-    if (file.isDirectory()) {
-      final File[] files = file.listFiles();
-      for (final File file2 : files) {
-        makeExecutable(file2, log);
-      }
-    }
-    if (file.isFile() && file.canRead() && file.canWrite() && !file.isHidden()) {
-      // chmod +x file
-      final int result = runCommand("chmod", new String[] {
-          "+x", file.getPath()
-      }, null, null, log);
-      if (result != 0) {
-        throw new MojoExecutionException("Failed to execute 'chmod +x " + file.getPath() + "'" + " return code: \'"
-            + result + "\'.");
-      }
+    try {
+      Files.walk(file).forEach(f -> {
+        try {
+          if (Files.isRegularFile(f) && Files.isReadable(f) && Files.isWritable(f) && !Files.isHidden(f)) {
+            file.toFile().setExecutable(true);
+          }
+        } catch (IOException e) {
+          log.warn(String.format("Unabled to test hidden attribute for file: {}", f));
+        }
+      });
+    } catch (IOException e) {
+      throw new MojoExecutionException(e);
     }
   }
 
-  public static void makeLink(final File file, final Log log) throws MojoExecutionException, MojoFailureException {
-    if (!file.exists()) {
+  public static void makeLink(final Path file, final Log log) throws MojoExecutionException, MojoFailureException {
+    if (Files.notExists(file)) {
       return;
     }
 
-    if (file.isDirectory()) {
-      final File[] files = file.listFiles();
-      for (final File file2 : files) {
-        makeLink(file2, log);
-      }
-    }
-    if (file.isFile() && file.canRead() && file.canWrite() && !file.isHidden()) {
+    try {
+      Files.walk(file)
+        .filter(Failable.asPredicate(f -> Files.isRegularFile(f) && Files.isReadable(f) && Files.isWritable(f) && !Files.isHidden(f)))
+        .filter(f -> f.getFileName().toString().matches(".*\\.so(\\.\\d+)*$"))
+        .forEach(Failable.asConsumer(f -> {
+        
+          // Create the soname if it doesn't exists
+          StringTextStream out = new StringTextStream();
+          runCommand("objdump",
+              List.of("-p", f.toAbsolutePath().toString()),
+              null,
+              null,
+              out,
+              new TextStream() {
+                @Override
+                public void println(String text) {
+                  log.error(text);
+                }
+              },
+              new TextStream() {
+                @Override
+                public void println(String text) {
+                  log.debug(text);
+                }
+              }, log, true);
 
-      // Create the soname if it doesn't exists
-      StringTextStream out = new StringTextStream();
-      runCommand("objdump",
-          new String[] { "-p", file.getAbsolutePath() },
-          null,
-          null,
-          out,
-          new TextStream() {
-            @Override
-            public void println(String text) {
-              log.error(text);
-            }
-          },
-          new TextStream() {
-            @Override
-            public void println(String text) {
-              log.debug(text);
-            }
-          }, log);
-
-      Pattern p = Pattern.compile("SONAME\\s+(\\S+\\.so[?:\\.\\d+]+)?");
-      Matcher m = p.matcher(out.toString());
-      // It is possible that there is no SONAME set
-      String soname = null;
-      if (m.find()) {
-        soname = m.group(1);
-      }
-
-      if (soname != null) {
-        final File sofile = new File(file.getParent(), soname);
-        if (!sofile.exists()) {
-          // ln lib.so lib.so.xx
-          final int result = runCommand("ln", new String[] {
-              file.getPath(), sofile.getPath()
-          }, null, null, log);
-          if (result != 0) {
-            throw new MojoExecutionException("Failed to execute 'ln -s " + file.getName() + " " + sofile.getPath() + "'"
-                + " return code: \'" + result + "\'.");
+          Pattern p = Pattern.compile("SONAME\\s+(\\S+\\.so[?:\\.\\d+]+)?");
+          Matcher m = p.matcher(out.toString());
+          // It is possible that there is no SONAME set
+          String soname = null;
+          if (m.find()) {
+            soname = m.group(1);
           }
-        }
 
-        // Create the link name if it doesn't exist
-        if (!soname.endsWith(".so")) {
-          String linkName = soname.substring(0, soname.indexOf(".so")+3);
-          final File linkLib = new File(file.getParent(), linkName);
-          if (!linkLib.exists()) {
-            // ln lib.so lib.so.xx
-            final int result = runCommand("ln", new String[] {
-                file.getPath(), linkLib.getPath()
-            }, null, null, log);
-            if (result != 0) {
-              throw new MojoExecutionException("Failed to execute 'ln -s " + file.getName() + " " + linkLib.getPath() + "'"
-                  + " return code: \'" + result + "\'.");
+          if (soname != null) {
+            final Path sofile = f.resolveSibling(soname);
+            if (Files.notExists(sofile)) {
+              // ln lib.so lib.so.xx
+              Files.createLink(sofile, f);
+            }
+    
+            // Create the link name if it doesn't exist
+            if (!soname.endsWith(".so")) {
+              String linkName = soname.substring(0, soname.indexOf(".so")+3);
+              final Path linkLib = f.resolveSibling(linkName);
+              if (Files.notExists(linkLib)) {
+                // ln lib.so lib.so.xx
+                Files.createLink(linkLib, f);
+              }
             }
           }
-        }
-      }
-
+        }));
+    } catch (IOException | RuntimeException e) {
+      throw new MojoExecutionException(e);
     }
   }
 
@@ -573,7 +553,7 @@ public final class NarUtil {
     /* Matcher. jdk 1.4 */quoteReplacement(replacement.toString()));
   }
 
-  public static int runCommand(final String cmd, final String[] args, final File workingDirectory, final String[] env,
+  public static int runCommand(final String cmd, final List<String> args, final Path workingDirectory, final List<String> env,
       final Log log) throws MojoExecutionException, MojoFailureException {
     if (log.isInfoEnabled()) {
       final StringBuilder argLine = new StringBuilder();
@@ -583,7 +563,7 @@ public final class NarUtil {
         }
       }
       if (workingDirectory != null) {
-        log.info("+ cd " + workingDirectory.getAbsolutePath());
+        log.info("+ cd " + workingDirectory.toAbsolutePath());
       }
       log.info("+ " + cmd + argLine);
     }
@@ -606,13 +586,13 @@ public final class NarUtil {
     }, log);
   }
 
-  public static int runCommand(final String cmd, final String[] args, final File workingDirectory, final String[] env,
+  public static int runCommand(final String cmd, final List<String> args, final Path workingDirectory, final List<String> env,
       final TextStream out, final TextStream err, final TextStream dbg, final Log log)
       throws MojoExecutionException, MojoFailureException {
     return runCommand(cmd, args, workingDirectory, env, out, err, dbg, log, false);
   }
 
-  public static int runCommand(final String cmd, final String[] args, final File workingDirectory, final String[] env,
+  public static int runCommand(final String cmd, final List<String> args, final Path workingDirectory, final List<String> env,
       final TextStream out, final TextStream err, final TextStream dbg, final Log log, final boolean expectFailure)
       throws MojoExecutionException, MojoFailureException {
     final Commandline cmdLine = new Commandline();
@@ -624,11 +604,11 @@ public final class NarUtil {
         for (final String arg : args) {
           dbg.println("  '" + arg + "'");
         }
-        cmdLine.addArguments(args);
+        cmdLine.addArguments(args.stream().toArray(String[]::new));
       }
       if (workingDirectory != null) {
-        dbg.println("in: " + workingDirectory.getPath());
-        cmdLine.setWorkingDirectory(workingDirectory);
+        dbg.println("in: " + workingDirectory);
+        cmdLine.setWorkingDirectory(workingDirectory.toAbsolutePath().toString());
       }
 
       if (env != null) {
@@ -655,7 +635,7 @@ public final class NarUtil {
       final int timeout = 5000;
       errorGobbler.join(timeout);
       outputGobbler.join(timeout);
-      if (exitValue != 0 ^ expectFailure) {
+      if (exitValue != 0 && !expectFailure) {
         if (log == null) {
           System.err.println(err.toString());
           System.err.println(out.toString());
@@ -675,16 +655,15 @@ public final class NarUtil {
     }
   }
 
-  static void runInstallNameTool(final File[] files, final Log log) throws MojoExecutionException, MojoFailureException {
-    final Set libs = findInstallNameToolCandidates(files, log);
+  static void runInstallNameTool(final Path[] files, final Log log) throws MojoExecutionException, MojoFailureException {
+    final Set<Path> libs = findInstallNameToolCandidates(files, log);
 
-    for (final Object lib1 : libs) {
-      final File subjectFile = (File) lib1;
-      final String subjectName = subjectFile.getName();
-      final String subjectPath = subjectFile.getPath();
+    for (final Path subjectFile : libs) {
+      final String subjectName = subjectFile.getFileName().toString();
+      final String subjectPath = subjectFile.toString();
 
-      final int idResult = runCommand("install_name_tool", new String[] { "-id", subjectPath, subjectPath
-      }, null, null, log);
+      final int idResult = runCommand("install_name_tool",
+          List.of("-id", subjectPath, subjectPath), null, null, log);
 
       if (idResult != 0) {
         throw new MojoExecutionException(
@@ -692,17 +671,16 @@ public final class NarUtil {
                 + idResult + "\'.");
       }
 
-      for (final Object lib : libs) {
-        final File dependentFile = (File) lib;
-        final String dependentPath = dependentFile.getPath();
+      for (final Path dependentFile : libs) {
+        final String dependentPath = dependentFile.toString();
 
         if (Objects.equals(dependentPath, subjectPath)) {
           continue;
         }
 
         final int changeResult = runCommand("install_name_tool",
-            new String[] { "-change", subjectName, subjectPath, dependentPath
-            }, null, null, log);
+            List.of("-change", subjectName, subjectPath, dependentPath),
+            null, null, log);
 
         if (changeResult != 0) {
           throw new MojoExecutionException(
@@ -713,27 +691,29 @@ public final class NarUtil {
     }
   }
 
-  public static void runRanlib(final File file, final Log log) throws MojoExecutionException, MojoFailureException {
-    if (!file.exists()) {
+  public static void runRanlib(final Path file, final Log log) throws MojoExecutionException, MojoFailureException {
+    if (Files.notExists(file)) {
       return;
     }
 
-    if (file.isDirectory()) {
-      final File[] files = file.listFiles();
-      for (final File file2 : files) {
-        runRanlib(file2, log);
-      }
+    try {
+      Files.walk(file)
+        .filter(Failable.asPredicate(f -> Files.isRegularFile(f) && Files.isWritable(f) && !Files.isHidden(f)))
+        .filter(f -> f.toString().endsWith(".a"))
+        .forEach(Failable.asConsumer(f -> {
+          // ranlib file
+          final int result = runCommand("ranlib",
+              List.of(f.toString()), null, null, log);
+          if (result != 0) {
+            throw new RuntimeException("Failed to execute 'ranlib " + file + "'" + " return code: \'"
+                + result + "\'.");
+          }
+        })
+      );
+    } catch (IOException | RuntimeException e) {
+      throw new MojoExecutionException(e);
     }
-    if (file.isFile() && file.canWrite() && !file.isHidden() && file.getName().endsWith(".a")) {
-      // ranlib file
-      final int result = runCommand("ranlib", new String[] {
-        file.getPath()
-      }, null, null, log);
-      if (result != 0) {
-        throw new MojoExecutionException("Failed to execute 'ranlib " + file.getPath() + "'" + " return code: \'"
-            + result + "\'.");
-      }
-    }
+    
   }
 
   /**
@@ -774,8 +754,8 @@ public final class NarUtil {
     return builder.toString();
   }
 
-  public static void writeCommandFile(File file, List<String[]> commands) throws MojoExecutionException {
-    try (PrintWriter compileCommandWriter = new PrintWriter(new FileWriter(file))) {
+  public static void writeCommandFile(Path file, List<String[]> commands) throws MojoExecutionException {
+    try (PrintWriter compileCommandWriter = new PrintWriter(Files.newBufferedWriter(file))) {
       for (String[] commandArr : commands) {
         String command = NarUtil.commandArrayToCommand(commandArr);
         compileCommandWriter.println(command);
@@ -783,27 +763,6 @@ public final class NarUtil {
     } catch (IOException e) {
       throw new MojoExecutionException("Unable to write command history to " + file, e);
     }
-  }
-  
-  
-  public static Set<PosixFilePermission> parseOctalPermission(String octal) {
-    
-    if (octal == null) return null;
-    
-    Set<PosixFilePermission> permissions = new HashSet<>();
-    short dec = Short.parseShort(octal, 8);
-
-    if ((dec & 0b000000001) != 0) permissions.add(PosixFilePermission.OTHERS_EXECUTE);
-    if ((dec & 0b000000010) != 0) permissions.add(PosixFilePermission.OTHERS_WRITE);
-    if ((dec & 0b000000100) != 0) permissions.add(PosixFilePermission.OTHERS_READ);
-    if ((dec & 0b000001000) != 0) permissions.add(PosixFilePermission.GROUP_EXECUTE);
-    if ((dec & 0b000010000) != 0) permissions.add(PosixFilePermission.GROUP_READ);
-    if ((dec & 0b000100000) != 0) permissions.add(PosixFilePermission.GROUP_READ);
-    if ((dec & 0b001000000) != 0) permissions.add(PosixFilePermission.OWNER_EXECUTE);
-    if ((dec & 0b010000000) != 0) permissions.add(PosixFilePermission.OWNER_WRITE);
-    if ((dec & 0b100000000) != 0) permissions.add(PosixFilePermission.OWNER_READ);
-    
-    return permissions;
   }
 
   /**

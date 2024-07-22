@@ -19,7 +19,8 @@
  */
 package com.github.maven_nar.cpptasks.arm;
 
-import java.io.File;
+import java.nio.file.Path;
+import java.util.List;
 import java.util.Vector;
 
 import com.github.maven_nar.cpptasks.CUtil;
@@ -90,12 +91,12 @@ public class ADSLinker extends CommandLineLinker {
    * @see com.github.maven_nar.cpptasks.compiler.CommandLineLinker#getCommandFileSwitch(java.lang.String)
    */
   @Override
-  protected String getCommandFileSwitch(final String commandFile) {
+  protected String getCommandFileSwitch(final Path commandFile) {
     return "-via" + commandFile;
   }
 
   @Override
-  public File[] getLibraryPath() {
+  public List<Path> getLibraryPath() {
     return CUtil.getPathFromEnvironment("ARMLIB", ";");
   }
 
@@ -120,9 +121,9 @@ public class ADSLinker extends CommandLineLinker {
   }
 
   @Override
-  protected String[] getOutputFileSwitch(final String outputFile) {
+  protected String[] getOutputFileSwitch(final Path outputFile) {
     return new String[] {
-        "-output", outputFile
+        "-output", outputFile.toString()
     };
   }
 

@@ -22,13 +22,12 @@ package com.github.maven_nar.cpptasks.platforms;
 import java.io.BufferedWriter;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStreamWriter;
 import java.io.Writer;
+import java.nio.file.Files;
+import java.nio.file.Path;
 
 import com.github.maven_nar.cpptasks.CUtil;
 import com.github.maven_nar.cpptasks.TargetMatcher;
@@ -61,8 +60,8 @@ public final class WindowsPlatform {
    * @throws IOException
    *           if unable to write version resource
    */
-  public static void addVersionFiles(final VersionInfo versionInfo, final LinkType linkType, final File outputFile,
-      final boolean isDebug, final File objDir, final TargetMatcher matcher) throws IOException {
+  public static void addVersionFiles(final VersionInfo versionInfo, final LinkType linkType, final Path outputFile,
+      final boolean isDebug, final Path objDir, final TargetMatcher matcher) throws IOException {
     if (versionInfo == null) {
       throw new NullPointerException("versionInfo");
     }
@@ -81,25 +80,22 @@ public final class WindowsPlatform {
      */
     final VersionInfo mergedInfo = versionInfo.merge();
 
-    final File versionResource = new File(objDir, "versioninfo.rc");
+    final Path versionResource = objDir.resolve("versioninfo.rc");
 
     boolean notChanged = false;
     //
     // if the resource exists
     //
-    if (versionResource.exists()) {
+    if (Files.exists(versionResource)) {
       final ByteArrayOutputStream memStream = new ByteArrayOutputStream();
       final Writer writer = new BufferedWriter(new OutputStreamWriter(memStream));
       writeResource(writer, mergedInfo, outputFile, isDebug, linkType);
       writer.close();
       final ByteArrayInputStream proposedResource = new ByteArrayInputStream(memStream.toByteArray());
 
-      final InputStream existingResource = new FileInputStream(versionResource);
-      //
-      //
-      //
-      notChanged = hasSameContent(proposedResource, existingResource);
-      existingResource.close();
+      try (final InputStream existingResource = Files.newInputStream(versionResource)) {
+        notChanged = hasSameContent(proposedResource, existingResource);
+      }
     }
 
     //
@@ -107,12 +103,12 @@ public final class WindowsPlatform {
     // write the file
     //
     if (!notChanged) {
-      final Writer writer = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(versionResource)));
-      writeResource(writer, mergedInfo, outputFile, isDebug, linkType);
-      writer.close();
+      try (final Writer writer = Files.newBufferedWriter(versionResource)) {
+        writeResource(writer, mergedInfo, outputFile, isDebug, linkType);
+      }
     }
     if (matcher != null) {
-      matcher.visit(new File(versionResource.getParent()), versionResource.getName());
+      matcher.visit(versionResource.getParent(), versionResource.getFileName());
     }
 
   }
@@ -215,7 +211,7 @@ public final class WindowsPlatform {
    * @throws IOException
    *           if error writing resource file
    */
-  public static void writeResource(final Writer writer, final VersionInfo versionInfo, final File outputFile,
+  public static void writeResource(final Writer writer, final VersionInfo versionInfo, final Path outputFile,
       final boolean isDebug, final LinkType linkType) throws IOException {
 
     writer.write("#include \"windows.h\"\n");

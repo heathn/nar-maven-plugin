@@ -19,7 +19,9 @@
  */
 package com.github.maven_nar.cpptasks.trolltech;
 
-import java.io.File;
+import java.nio.file.Path;
+import java.util.Collections;
+import java.util.List;
 import java.util.Vector;
 
 import org.apache.tools.ant.BuildException;
@@ -141,12 +143,12 @@ public final class UserInterfaceCompiler extends CommandLineCompiler {
    *          progress monitor
    */
   @Override
-  public void compile(final CCTask task, final File outputDir, final String[] sourceFiles, final String[] args,
+  public void compile(final CCTask task, final Path outputDir, final Path[] sourceFiles, final String[] args,
       final String[] endArgs, final boolean relentless, final CommandLineCompilerConfiguration config,
       final ProgressMonitor monitor) {
 
     BuildException exc = null;
-    final String[] thisSource = new String[1];
+    final Path[] thisSource = new Path[1];
     final String[] uicCommand = new String[args.length + endArgs.length + 4];
     uicCommand[0] = "uic";
     final String[] uicImplCommand = new String[args.length + endArgs.length + 6];
@@ -170,22 +172,22 @@ public final class UserInterfaceCompiler extends CommandLineCompiler {
       uicImplCommand[uicImplIndex++] = endArg;
       mocCommand[mocIndex++] = endArg;
     }
-    for (final String sourceFile : sourceFiles) {
+    for (final Path sourceFile : sourceFiles) {
       uicIndex = args.length + 2;
       uicImplIndex = args.length + 2;
       mocIndex = args.length + 2;
-      final String[] outputFileNames = getOutputFileNames(sourceFile, null);
+      final Path[] outputFileNames = getOutputFileNames(sourceFile, null);
 
-      uicCommand[uicIndex++] = outputFileNames[0];
-      uicCommand[uicIndex++] = sourceFile;
+      uicCommand[uicIndex++] = outputFileNames[0].toString();
+      uicCommand[uicIndex++] = sourceFile.toString();
 
-      uicImplCommand[uicImplIndex++] = outputFileNames[1];
+      uicImplCommand[uicImplIndex++] = outputFileNames[1].toString();
       uicImplCommand[uicImplIndex++] = "-impl";
-      uicImplCommand[uicImplIndex++] = outputFileNames[0];
-      uicImplCommand[uicImplIndex++] = sourceFile;
+      uicImplCommand[uicImplIndex++] = outputFileNames[0].toString();
+      uicImplCommand[uicImplIndex++] = sourceFile.toString();
 
-      mocCommand[mocIndex++] = outputFileNames[2];
-      mocCommand[mocIndex++] = outputFileNames[0];
+      mocCommand[mocIndex++] = outputFileNames[2].toString();
+      mocCommand[mocIndex++] = outputFileNames[0].toString();
 
       int retval = runCommand(task, outputDir, uicCommand);
       if (retval == 0) {
@@ -232,7 +234,7 @@ public final class UserInterfaceCompiler extends CommandLineCompiler {
    * @return parser
    */
   @Override
-  protected Parser createParser(final File source) {
+  protected Parser createParser(final Path source) {
     return new UserInterfaceParser();
   }
 
@@ -266,8 +268,8 @@ public final class UserInterfaceCompiler extends CommandLineCompiler {
    * @return File[] standard include paths
    */
   @Override
-  protected File[] getEnvironmentIncludePath() {
-    return new File[0];
+  protected List<Path> getEnvironmentIncludePath() {
+    return Collections.emptyList();
   }
 
   /**
@@ -278,7 +280,7 @@ public final class UserInterfaceCompiler extends CommandLineCompiler {
    * @return String command switch to add specified directory to search path
    */
   @Override
-  protected String getIncludeDirSwitch(final String includeDir) {
+  protected String getIncludeDirSwitch(final Path includeDir) {
     return "";
   }
 
@@ -295,17 +297,17 @@ public final class UserInterfaceCompiler extends CommandLineCompiler {
    * @return String input file argument
    */
   @Override
-  protected String getInputFileArgument(final File outputDir, final String filename, final int index) {
+  protected String getInputFileArgument(final Path outputDir, final Path filename, final int index) {
     switch (index) {
       case 0:
         return "-o";
 
       case 1:
-        final String outputFileName = getOutputFileNames(filename, null)[0];
-        return new File(outputDir, outputFileName).toString();
+        final Path outputFileName = getOutputFileNames(filename, null)[0];
+        return outputDir.resolve(outputFileName).toString();
 
       case 2:
-        return filename;
+        return filename.toString();
 
       default:
         return null;
@@ -354,13 +356,15 @@ public final class UserInterfaceCompiler extends CommandLineCompiler {
    * @return String[] output file names
    */
   @Override
-  public String[] getOutputFileNames(final String inputFile, final VersionInfo versionInfo) {
+  public Path[] getOutputFileNames(final Path inputFile, final VersionInfo versionInfo) {
     //
     // if a recognized input file
     //
     final String baseName = getBaseOutputName(inputFile);
-    return new String[] {
-        baseName + ".h", baseName + ".cpp", "moc_" + baseName + ".cpp"
+    return new Path[] {
+        Path.of(baseName + ".h"),
+        Path.of(baseName + ".cpp"),
+        Path.of("moc_" + baseName + ".cpp")
     };
   }
 

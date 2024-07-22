@@ -19,17 +19,20 @@
  */
 package com.github.maven_nar;
 
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Arrays;
+import java.util.List;
 import java.util.Properties;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.logging.Log;
+
 
 /**
  * @author Mark Donszelmann
@@ -49,7 +52,7 @@ public class NarInfo {
     this(groupId, artifactId, version, log, null);
   }
 
-  public NarInfo(final String groupId, final String artifactId, final String version, final Log log, File propertiesFile)
+  public NarInfo(final String groupId, final String artifactId, final String version, final Log log, Path propertiesFile)
       throws MojoExecutionException {
     this.groupId = groupId;
     this.artifactId = artifactId;
@@ -60,12 +63,12 @@ public class NarInfo {
     // Fill with general properties.nar file
     if (propertiesFile != null) {
       try {
-        if (propertiesFile.isDirectory()) {
-          propertiesFile = new File(propertiesFile, getNarInfoFileName());
+        if (Files.isDirectory(propertiesFile)) {
+          propertiesFile = propertiesFile.resolve(getNarInfoFileName());
         }
-        this.info.load(new FileInputStream(propertiesFile));
-      } catch (final FileNotFoundException e) {
-        // ignored
+        if (Files.exists(propertiesFile)) {
+          this.info.load(Files.newInputStream(propertiesFile));
+        }
       } catch (final IOException e) {
         throw new MojoExecutionException("Problem loading " + propertiesFile, e);
       }
@@ -87,9 +90,12 @@ public class NarInfo {
   }
 
   // FIXME replace with list of AttachedNarArtifacts
-  public final String[] getAttachedNars(final AOL aol, final String type) {
+  public final List<String> getAttachedNars(final AOL aol, final String type) {
     final String attachedNars = getProperty(aol, NarConstants.NAR + "." + type);
-    return attachedNars != null ? attachedNars.split(",") : null;
+    return Stream.ofNullable(attachedNars)
+        .map(s -> s.split(","))
+        .flatMap(Arrays::stream)
+        .collect(Collectors.toList());
   }
 
   /**
@@ -144,8 +150,8 @@ public class NarInfo {
     return Boolean.valueOf(getProperty(aol, key, String.valueOf(defaultValue))).booleanValue();
   }
 
-  public final File getProperty(final AOL aol, final String key, final File defaultValue) {
-    return new File(getProperty(aol, key, defaultValue.getPath()));
+  public final Path getProperty(final AOL aol, final String key, final Path defaultValue) {
+    return Path.of(getProperty(aol, key, defaultValue.toString()));
   }
 
   public final int getProperty(final AOL aol, final String key, final int defaultValue) {
@@ -266,10 +272,10 @@ public class NarInfo {
     return s.toString();
   }
 
-  public final void writeToDirectory(final File... directories) throws MojoExecutionException {
-    for(File directory:directories) {
+  public final void writeToDirectory(final Path... directories) throws MojoExecutionException {
+    for (Path directory : directories) {
       try {
-        writeToFile(new File(directory, getNarInfoFileName()));
+        writeToFile(directory.resolve(getNarInfoFileName()));
       }
       catch (final IOException ioe) {
         throw new MojoExecutionException("Cannot write nar properties file to " + directory, ioe);
@@ -277,13 +283,13 @@ public class NarInfo {
     }
   }
 
-  public final void writeToFile(final File file) throws IOException {
-    final File parent = file.getParentFile();
+  public final void writeToFile(final Path file) throws IOException {
+    final Path parent = file.getParent();
     if (parent != null) {
-      parent.mkdirs();
+      Files.createDirectories(parent);
     }
     log.debug("Write NAR Properties: " + file.toString());
-    this.info.store(new FileOutputStream(file), "NAR Properties for " + this.groupId + "." + this.artifactId + "-"
+    this.info.store(Files.newOutputStream(file), "NAR Properties for " + this.groupId + "." + this.artifactId + "-"
         + this.version);
   }
 }

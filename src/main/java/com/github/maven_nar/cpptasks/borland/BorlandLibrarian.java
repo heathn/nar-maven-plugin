@@ -19,9 +19,11 @@
  */
 package com.github.maven_nar.cpptasks.borland;
 
-import java.io.File;
 import java.io.IOException;
-import java.util.Vector;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 
 import org.apache.tools.ant.BuildException;
 
@@ -52,7 +54,7 @@ public class BorlandLibrarian extends CommandLineLinker {
   }
 
   @Override
-  protected String getCommandFileSwitch(final String cmdFile) {
+  protected String getCommandFileSwitch(final Path cmdFile) {
     //
     // tlib requires quotes around paths containing -
     // ilink32 doesn't like them
@@ -74,7 +76,7 @@ public class BorlandLibrarian extends CommandLineLinker {
   }
 
   @Override
-  public File[] getLibraryPath() {
+  public List<Path> getLibraryPath() {
     return CUtil.getPathFromEnvironment("LIB", ";");
   }
 
@@ -94,7 +96,7 @@ public class BorlandLibrarian extends CommandLineLinker {
   }
 
   @Override
-  public String[] getOutputFileSwitch(final String outFile) {
+  public String[] getOutputFileSwitch(final Path outFile) {
     return BorlandProcessor.getOutputFileSwitch(outFile);
   }
 
@@ -108,11 +110,16 @@ public class BorlandLibrarian extends CommandLineLinker {
    *
    */
   @Override
-  public void link(final CCTask task, final File outputFile, final String[] sourceFiles,
+  public void link(final CCTask task, final Path outputFile, final List<Path> sourceFiles,
       final CommandLineLinkerConfiguration config) throws BuildException {
     //
     // delete any existing library
-    outputFile.delete();
+    try {
+      Files.delete(outputFile);
+    } catch (IOException e) {
+      throw new BuildException(e);
+    }
+  
     //
     // build a new library
     super.link(task, outputFile, sourceFiles, config);
@@ -132,50 +139,51 @@ public class BorlandLibrarian extends CommandLineLinker {
    * @return arguments for runTask
    */
   @Override
-  protected String[] prepareArguments(final CCTask task, final String outputDir, final String outputName,
-      final String[] sourceFiles, final CommandLineLinkerConfiguration config) {
+  protected String[] prepareArguments(final CCTask task, final Path outputDir, final Path outputName,
+      final List<Path> sourceFiles, final CommandLineLinkerConfiguration config) {
     final String[] preargs = config.getPreArguments();
     final String[] endargs = config.getEndArguments();
     final StringBuffer buf = new StringBuffer();
-    final Vector<String> execArgs = new Vector<>(preargs.length + endargs.length + 10 + sourceFiles.length);
+    final List<String> executeArgs = new ArrayList<>();
 
-    execArgs.addElement(this.getCommand());
-    final String outputFileName = new File(outputDir, outputName).toString();
-    execArgs.addElement(quoteFilename(buf, outputFileName));
+    executeArgs.add(this.getCommand().toString());
+    final Path outputFileName = outputDir.resolve(outputName);
+    executeArgs.add(quoteFilename(buf, outputFileName));
 
     for (final String prearg : preargs) {
-      execArgs.addElement(prearg);
+      executeArgs.add(prearg);
     }
 
     //
     // add a place-holder for page size
     //
-    final int pageSizeIndex = execArgs.size();
-    execArgs.addElement(null);
+    final int pageSizeIndex = executeArgs.size();
+    executeArgs.add(null);
 
     int objBytes = 0;
 
-    for (final String sourceFile : sourceFiles) {
-      final String last4 = sourceFile.substring(sourceFile.length() - 4).toLowerCase();
+    for (final Path sourceFile : sourceFiles) {
+      final String last4 = sourceFile.toString().substring(sourceFile.toString().length() - 4).toLowerCase();
       if (last4.equals(".def")) {
       } else {
         if (last4.equals(".res")) {
         } else {
           if (last4.equals(".lib")) {
           } else {
-            execArgs.addElement("+" + quoteFilename(buf, sourceFile));
-            objBytes += new File(sourceFile).length();
+            executeArgs.add("+" + quoteFilename(buf, sourceFile));
+            try {
+              objBytes += Files.size(sourceFile);
+            } catch (IOException e) {
+              throw new RuntimeException(e);
+            }
           }
         }
       }
     }
 
     for (final String endarg : endargs) {
-      execArgs.addElement(endarg);
+      executeArgs.add(endarg);
     }
-
-    final String[] execArguments = new String[execArgs.size()];
-    execArgs.copyInto(execArguments);
 
     final int minPageSize = objBytes >> 16;
     int pageSize = 0;
@@ -185,9 +193,9 @@ public class BorlandLibrarian extends CommandLineLinker {
         break;
       }
     }
-    execArguments[pageSizeIndex] = "/P" + Integer.toString(pageSize);
+    executeArgs.set(pageSizeIndex, "/P" + Integer.toString(pageSize));
 
-    return execArguments;
+    return executeArgs.toArray(String[]::new);
   }
 
   /**
@@ -200,9 +208,9 @@ public class BorlandLibrarian extends CommandLineLinker {
    * @return arguments for runTask
    */
   @Override
-  protected String[] prepareResponseFile(final File outputFile, final String[] args) throws IOException {
+  protected String[] prepareResponseFile(final Path outputFile, final String[] args) throws IOException {
     final String[] cmdargs = BorlandProcessor.prepareResponseFile(outputFile, args, " & \n");
-    cmdargs[cmdargs.length - 1] = getCommandFileSwitch(cmdargs[cmdargs.length - 1]);
+    cmdargs[cmdargs.length - 1] = getCommandFileSwitch(Path.of(cmdargs[cmdargs.length - 1]));
     return cmdargs;
   }
 
@@ -216,7 +224,7 @@ public class BorlandLibrarian extends CommandLineLinker {
    * @return filename potentially enclosed in quotes.
    */
   @Override
-  protected String quoteFilename(final StringBuffer buf, final String filename) {
+  protected String quoteFilename(final StringBuffer buf, final Path filename) {
     buf.setLength(0);
     BorlandProcessor.quoteFile(buf, filename);
     return buf.toString();

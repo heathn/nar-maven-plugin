@@ -109,7 +109,7 @@ public class Library implements Executable {
    * and type=executable.
    */
   @Parameter
-  private List/* <String> */args = new ArrayList();
+  private List<String> args = new ArrayList<>();
 
   /**
    * List of artifact:binding  for type of dependency to link against when there is a choice.
@@ -118,7 +118,7 @@ public class Library implements Executable {
   private List<String> dependencyBindings = new ArrayList<>();
   
   @Override
-  public final List/* <String> */getArgs() {
+  public final List<String> getArgs() {
     return this.args;
   }
 

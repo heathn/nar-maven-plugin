@@ -19,20 +19,18 @@
  */
 package com.github.maven_nar;
 
-import org.apache.maven.artifact.Artifact;
-import org.apache.maven.artifact.DefaultArtifact;
+import org.eclipse.aether.artifact.Artifact;
+import org.eclipse.aether.util.artifact.DelegatingArtifact;
 
 /**
  * @author Mark Donszelmann
  */
-public class NarArtifact extends DefaultArtifact {
+public class NarArtifact extends DelegatingArtifact {
 
   private final NarInfo narInfo;
 
   public NarArtifact(final Artifact dependency, final NarInfo narInfo) {
-    super(dependency.getGroupId(), dependency.getArtifactId(), dependency.getVersionRange(), dependency.getScope(),
-        dependency.getType(), dependency.getClassifier(), dependency.getArtifactHandler(), dependency.isOptional());
-    this.setFile(dependency.getFile());
+    super(dependency);
     this.narInfo = narInfo;
   }
 
@@ -43,4 +41,11 @@ public class NarArtifact extends DefaultArtifact {
   public final NarInfo getNarInfo() {
     return this.narInfo;
   }
+
+  @Override
+  protected DelegatingArtifact newInstance(Artifact delegate) {
+    // TODO Auto-generated method stub
+    throw new UnsupportedOperationException("Unimplemented method 'newInstance'");
+  }
+
 }

@@ -21,11 +21,15 @@ package com.github.maven_nar.cpptasks.compiler;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Path;
 import java.util.Collections;
 import java.util.Enumeration;
 import java.util.List;
 import java.util.Vector;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import java.util.ArrayList;
+import java.util.Arrays;
 
 import org.apache.tools.ant.BuildException;
 import org.apache.tools.ant.types.Environment;
@@ -41,8 +45,9 @@ import com.github.maven_nar.cpptasks.TargetDef;
 import com.github.maven_nar.cpptasks.VersionInfo;
 import com.github.maven_nar.cpptasks.types.CommandLineArgument;
 import com.github.maven_nar.cpptasks.types.UndefineArgument;
+
+import com.google.common.collect.Lists;
 import com.google.common.collect.ObjectArrays;
-import org.apache.tools.ant.util.FileUtils;
 
 /**
  * An abstract Compiler implementation which uses an external program to
@@ -101,12 +106,12 @@ public abstract class CommandLineCompiler extends AbstractCompiler {
    *          Vector of command line arguments used to build the
    *          configuration identifier
    */
-  protected void addIncludes(final String baseDirPath, final File[] includeDirs, final Vector<String> args,
+  protected void addIncludes(final Path baseDirPath, final List<Path> includeDirs, final Vector<String> args,
       final Vector<String> relativeArgs, final StringBuffer includePathId, final boolean isSystem) {
-    for (final File includeDir : includeDirs) {
-      args.addElement(getIncludeDirSwitch(includeDir.getAbsolutePath(), isSystem));
+    for (final Path includeDir : includeDirs) {
+      args.addElement(getIncludeDirSwitch(includeDir.toAbsolutePath(), isSystem));
       if (relativeArgs != null) {
-        final String relative = CUtil.getRelativePath(baseDirPath, includeDir);
+        final Path relative = baseDirPath.relativize(includeDir);
         relativeArgs.addElement(getIncludeDirSwitch(relative, isSystem));
         if (includePathId != null) {
           if (includePathId.length() == 0) {
@@ -122,16 +127,16 @@ public abstract class CommandLineCompiler extends AbstractCompiler {
 
   abstract protected void addWarningSwitch(Vector<String> args, int warnings);
 
-  protected void buildDefineArguments(final CompilerDef[] defs, final Vector<String> args) {
+  protected void buildDefineArguments(final List<CompilerDef> defs, final Vector<String> args) {
     //
     // assume that we aren't inheriting defines from containing <cc>
     //
-    UndefineArgument[] merged = defs[0].getActiveDefines();
-    for (int i = 1; i < defs.length; i++) {
+    List<UndefineArgument> merged = defs.get(0).getActiveDefines();
+    for (int i = 1; i < defs.size(); i++) {
       //
       // if we are inheriting, merge the specific defines with the
       // containing defines
-      merged = UndefineArgument.merge(defs[i].getActiveDefines(), merged);
+      merged = UndefineArgument.merge(defs.get(i).getActiveDefines(), merged);
     }
     final StringBuffer buf = new StringBuffer(30);
     for (final UndefineArgument current : merged) {
@@ -146,29 +151,24 @@ public abstract class CommandLineCompiler extends AbstractCompiler {
   }
 
   @Override
-  public String[] getOutputFileNames(final String inputFile, final VersionInfo versionInfo) {
+  public Path[] getOutputFileNames(final Path inputFile, final VersionInfo versionInfo) {
     //
     // if a recognized input file
     //
     if (bid(inputFile) > 1) {
       final String baseName = getBaseOutputName(inputFile);
-      final File standardisedFile = new File(inputFile);
-      try {
-        return new String[] {
-          baseName + FilenameUtils.EXTENSION_SEPARATOR + Integer.toHexString(standardisedFile.getCanonicalPath().hashCode()) + getOutputSuffix()
-        };
-      } catch (IOException e) {
-        throw new BuildException("Source file not found", e);
-      }
+      return new Path[] {
+        Path.of(baseName + FilenameUtils.EXTENSION_SEPARATOR + Integer.toHexString(inputFile.normalize().hashCode()) + getOutputSuffix())
+      };
     }
-    return new String[0];
+    return new Path[0];
   }
 
   /**
    * Compiles a source file.
    * 
    */
-  public void compile(final CCTask task, final File outputDir, final String[] sourceFiles, String[] args,
+  public void compile(final CCTask task, final Path outputDir, final Path[] sourceFiles, String[] args,
       final String[] endArgs, final boolean relentless, final CommandLineCompilerConfiguration config,
       final ProgressMonitor monitor) throws BuildException {
     BuildException exc = null;
@@ -245,7 +245,7 @@ public abstract class CommandLineCompiler extends AbstractCompiler {
         if (ret != 0) { retval = ret; }
       }
       if (monitor != null) {
-        final String[] fileNames = new String[firstFileNextExec - sourceIndex];
+        final Path[] fileNames = new Path[firstFileNextExec - sourceIndex];
 
         System.arraycopy(sourceFiles, sourceIndex + 0, fileNames, 0, fileNames.length);
         monitor.progress(fileNames);
@@ -285,19 +285,20 @@ public abstract class CommandLineCompiler extends AbstractCompiler {
     this.prefix = specificDef.getCompilerPrefix();
     this.objDir = task.getObjdir();
     final Vector<String> args = new Vector<>();
-    final CompilerDef[] defaultProviders = new CompilerDef[baseDefs.length + 1];
-    for (int i = 0; i < baseDefs.length; i++) {
-      defaultProviders[i + 1] = (CompilerDef) baseDefs[i];
-    }
-    defaultProviders[0] = specificDef;
+    final List<CompilerDef> defaultProviders = new ArrayList<>();
+    defaultProviders.add(specificDef);
+    defaultProviders.addAll(Arrays.asList(baseDefs).stream()
+        // Downcast the ProcessorDef -> CompilerDef
+        .map(CompilerDef.class::cast)
+        .collect(Collectors.toList()));
     final Vector<CommandLineArgument> cmdArgs = new Vector<>();
 
     //
     // add command line arguments inherited from <cc> element
     // any "extends" and finally the specific CompilerDef
-    CommandLineArgument[] commandArgs;
-    for (int i = defaultProviders.length - 1; i >= 0; i--) {
-      commandArgs = defaultProviders[i].getActiveProcessorArgs();
+    List<CommandLineArgument> commandArgs;
+    for (CompilerDef defaultProvider : Lists.reverse(defaultProviders)) {
+      commandArgs = defaultProvider.getActiveProcessorArgs();
       for (final CommandLineArgument commandArg : commandArgs) {
         if (commandArg.getLocation() == 0) {
           String arg = commandArg.getValue();
@@ -311,16 +312,13 @@ public abstract class CommandLineCompiler extends AbstractCompiler {
         }
       }
     }
-    final Vector<ProcessorParam> params = new Vector<>();
+
     //
     // add command line arguments inherited from <cc> element
     // any "extends" and finally the specific CompilerDef
-    ProcessorParam[] paramArray;
-    for (int i = defaultProviders.length - 1; i >= 0; i--) {
-      paramArray = defaultProviders[i].getActiveProcessorParams();
-      Collections.addAll(params, paramArray);
-    }
-    paramArray = params.toArray(new ProcessorParam[params.size()]);
+    final List<ProcessorParam> params = Lists.reverse(defaultProviders).stream()
+        .flatMap(processorDef -> processorDef.getActiveProcessorParams().stream())
+        .collect(Collectors.toList());
 
     if (specificDef.isClearDefaultOptions() == false) {
       final boolean multithreaded = specificDef.getMultithreaded(defaultProviders, 1);
@@ -369,49 +367,27 @@ public abstract class CommandLineCompiler extends AbstractCompiler {
     // add all active include and sysincludes
     //
     final StringBuffer includePathIdentifier = new StringBuffer();
-    final File baseDir = specificDef.getProject().getBaseDir();
-    String baseDirPath;
-    try {
-      baseDirPath = baseDir.getCanonicalPath();
-    } catch (final IOException ex) {
-      baseDirPath = baseDir.toString();
-    }
-    final Vector<String> includePath = new Vector<>();
-    final Vector<String> sysIncludePath = new Vector<>();
-    for (int i = defaultProviders.length - 1; i >= 0; i--) {
-      String[] incPath = defaultProviders[i].getActiveIncludePaths();
-      for (final String element : incPath) {
-        includePath.addElement(element);
-      }
-      incPath = defaultProviders[i].getActiveSysIncludePaths();
-      for (final String element : incPath) {
-        sysIncludePath.addElement(element);
-      }
-    }
-    final File[] incPath = new File[includePath.size()];
-    for (int i = 0; i < includePath.size(); i++) {
-      incPath[i] = new File(includePath.elementAt(i));
-    }
-    final File[] sysIncPath = new File[sysIncludePath.size()];
-    for (int i = 0; i < sysIncludePath.size(); i++) {
-      sysIncPath[i] = new File(sysIncludePath.elementAt(i));
-    }
-    addIncludes(baseDirPath, incPath, args, relativeArgs, includePathIdentifier, false);
-    addIncludes(baseDirPath, sysIncPath, args, null, null, true);
-    final StringBuffer buf = new StringBuffer(getIdentifier());
-    for (int i = 0; i < relativeArgs.size(); i++) {
-      buf.append(' ');
-      buf.append(relativeArgs.elementAt(i));
-    }
-    for (final String endArg : endArgs) {
-      buf.append(' ');
-      buf.append(endArg);
-    }
-    final String configId = buf.toString();
+    final Path baseDir = specificDef.getProject().getBaseDir().toPath();
+    final List<Path> includePath = Lists.reverse(defaultProviders).stream()
+        .flatMap(compilerDef -> compilerDef.getActiveIncludePaths().stream())
+        .map(Path::of)
+        .collect(Collectors.toList());
+    final List<Path> sysIncludePath = Lists.reverse(defaultProviders).stream()
+        .flatMap(compilerDef -> compilerDef.getActiveSysIncludePaths().stream())
+        .map(Path::of)
+        .collect(Collectors.toList());
+
+    addIncludes(baseDir, includePath, args, relativeArgs, includePathIdentifier, false);
+    addIncludes(baseDir, sysIncludePath, args, null, null, true);
+    final String configId = Stream.concat(Stream.concat(
+          Stream.of(getIdentifier()),
+          relativeArgs.stream().sorted()),
+          Arrays.stream(endArgs))
+        .collect(Collectors.joining(" "));
     final String[] argArray = new String[args.size()];
     args.copyInto(argArray);
     final boolean rebuild = specificDef.getRebuild(baseDefs, 0);
-    final File[] envIncludePath = getEnvironmentIncludePath();
+    final List<Path> envIncludePath = getEnvironmentIncludePath();
     final String path = specificDef.getToolPath();
 
     CommandLineCompiler compiler = this;
@@ -433,8 +409,8 @@ public abstract class CommandLineCompiler extends AbstractCompiler {
     compiler.setCommands(specificDef.getCommands());
     compiler.setDryRun(specificDef.isDryRun());
 
-    return new CommandLineCompilerConfiguration(compiler, configId, incPath, sysIncPath, envIncludePath,
-        includePathIdentifier.toString(), argArray, paramArray, rebuild, endArgs, path, specificDef.getCcache());
+    return new CommandLineCompilerConfiguration(compiler, configId, includePath, sysIncludePath, envIncludePath,
+        includePathIdentifier.toString(), argArray, params, rebuild, endArgs, path, specificDef.getCcache());
   }
 
   protected int getArgumentCountPerInputFile() {
@@ -465,7 +441,7 @@ public abstract class CommandLineCompiler extends AbstractCompiler {
 
   abstract protected void getDefineSwitch(StringBuffer buffer, String define, String value);
 
-  protected abstract File[] getEnvironmentIncludePath();
+  protected abstract List<Path> getEnvironmentIncludePath();
 
   @Override
   public String getIdentifier() {
@@ -483,7 +459,7 @@ public abstract class CommandLineCompiler extends AbstractCompiler {
     return this.identifier;
   }
 
-  abstract protected String getIncludeDirSwitch(String source);
+  abstract protected String getIncludeDirSwitch(Path source);
 
   /**
    * Added by Darren Sargent 22Oct2008 Returns the include dir switch value.
@@ -497,24 +473,20 @@ public abstract class CommandLineCompiler extends AbstractCompiler {
    * 
    * @return the include dir switch value.
    */
-  protected String getIncludeDirSwitch(final String source, final boolean isSystem) {
+  protected String getIncludeDirSwitch(final Path source, final boolean isSystem) {
     return getIncludeDirSwitch(source);
   }
 
-  protected String getInputFileArgument(final File outputDir, final String filename, final int index) {
+  protected String getInputFileArgument(final Path outputDir, final Path filename, final int index) {
     //
     // if there is an embedded space,
     // must enclose in quotes
-    String relative="";
     String inputFile;
-    try {
-      relative = FileUtils.getRelativePath(workDir, new File(filename));
-    } catch (Exception ex) {
-    }
-    if (relative.isEmpty()) {
-      inputFile = filename;
+    Path relative = workDir.relativize(filename);
+    if (relative.getNameCount() == 0) {
+      inputFile = filename.toString();
     } else {
-      inputFile = relative;
+      inputFile = relative.toString();
     }
     if (inputFile.indexOf(' ') >= 0) {
       final String buf = "\"" + inputFile +
@@ -555,7 +527,7 @@ public abstract class CommandLineCompiler extends AbstractCompiler {
    *          String input file
    * @return int characters added to command line for the input file.
    */
-  protected int getTotalArgumentLengthForInputFile(final File outputDir, final String inputFile) {
+  protected int getTotalArgumentLengthForInputFile(final Path outputDir, final Path inputFile) {
     final int argumentCountPerInputFile = getArgumentCountPerInputFile();
     int len=0;
     for (int k = 0; k < argumentCountPerInputFile; k++) {
@@ -570,7 +542,7 @@ public abstract class CommandLineCompiler extends AbstractCompiler {
    * This method is exposed so test classes can overload and test the
    * arguments without actually spawning the compiler
    */
-  protected int runCommand(final CCTask task, final File workingDir, final String[] cmdline) throws BuildException {
+  protected int runCommand(final CCTask task, final Path workingDir, final String[] cmdline) throws BuildException {
     if(commands!=null)
       commands.add(cmdline);
     if (dryRun) return 0;

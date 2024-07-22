@@ -19,7 +19,9 @@
  */
 package com.github.maven_nar.cpptasks.ti;
 
-import java.io.File;
+import java.nio.file.Path;
+import java.util.Collections;
+import java.util.List;
 import java.util.Vector;
 
 import com.github.maven_nar.cpptasks.compiler.CommandLineLinker;
@@ -92,13 +94,13 @@ public class ClxxLinker extends CommandLineLinker {
   }
 
   @Override
-  protected String getCommandFileSwitch(final String commandFile) {
+  protected String getCommandFileSwitch(final Path commandFile) {
     return "@" + commandFile;
   }
 
   @Override
-  public File[] getLibraryPath() {
-    return new File[0];
+  public List<Path> getLibraryPath() {
+    return Collections.emptyList();
   }
 
   @Override
@@ -124,9 +126,9 @@ public class ClxxLinker extends CommandLineLinker {
   }
 
   @Override
-  protected String[] getOutputFileSwitch(final String outputFile) {
+  protected String[] getOutputFileSwitch(final Path outputFile) {
     return new String[] {
-        "-o", outputFile
+        "-o", outputFile.toString()
     };
   }
 

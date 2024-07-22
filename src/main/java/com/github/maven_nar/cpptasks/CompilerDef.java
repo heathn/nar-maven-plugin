@@ -19,10 +19,13 @@
  */
 package com.github.maven_nar.cpptasks;
 
+import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Enumeration;
 import java.util.List;
 import java.util.Vector;
+import java.util.stream.Collectors;
 
 import org.apache.tools.ant.BuildException;
 import org.apache.tools.ant.Project;
@@ -37,7 +40,7 @@ import com.github.maven_nar.cpptasks.types.DefineSet;
 import com.github.maven_nar.cpptasks.types.IncludePath;
 import com.github.maven_nar.cpptasks.types.SystemIncludePath;
 import com.github.maven_nar.cpptasks.types.UndefineArgument;
-import java.io.File;
+
 
 /**
  * A compiler definition. compiler elements may be placed either as children of
@@ -48,20 +51,20 @@ import java.io.File;
  */
 public final class CompilerDef extends ProcessorDef {
   /** The source file sets. */
-  private final Vector defineSets = new Vector();
+  private final List<DefineSet> defineSets = new ArrayList<>();
   private Boolean ccache = false;
   private Boolean exceptions;
   private Boolean rtti;
-  private final Vector includePaths = new Vector();
+  private final List<ConditionalPath> includePaths = new ArrayList<>();
   private Boolean multithreaded;
-  private final Vector precompileDefs = new Vector();
-  private final Vector sysIncludePaths = new Vector();
+  private final Vector<PrecompileDef> precompileDefs = new Vector<>();
+  private final Vector<ConditionalPath> sysIncludePaths = new Vector<>();
   private OptimizationEnum optimization;
   private int warnings = -1;
   private List<String> order;
   private String toolPath;
   private String compilerPrefix;
-  private File workDir;
+  private Path workDir;
   private boolean gccFileAbsolutePath;
   private String fortifyID="";
   private List<String[]> commands;
@@ -102,7 +105,7 @@ public final class CompilerDef extends ProcessorDef {
     if (isReference()) {
       throw noChildrenAllowed();
     }
-    this.defineSets.addElement(defs);
+    this.defineSets.add(defs);
   }
 
   /**
@@ -117,7 +120,7 @@ public final class CompilerDef extends ProcessorDef {
       throw noChildrenAllowed();
     }
     final IncludePath path = new IncludePath(p);
-    this.includePaths.addElement(path);
+    this.includePaths.add(path);
     return path;
   }
 
@@ -162,7 +165,7 @@ public final class CompilerDef extends ProcessorDef {
     throw new org.apache.tools.ant.BuildException("Not an actual task, but looks like one for documentation purposes");
   }
 
-  public UndefineArgument[] getActiveDefines() {
+  public List<UndefineArgument> getActiveDefines() {
     final Project p = getProject();
     if (p == null) {
       throw new java.lang.IllegalStateException("project must be set before this call");
@@ -170,49 +173,38 @@ public final class CompilerDef extends ProcessorDef {
     if (isReference()) {
       return ((CompilerDef) getCheckedRef(CompilerDef.class, "CompilerDef")).getActiveDefines();
     }
-    final Vector actives = new Vector();
+    final List<UndefineArgument> actives = new ArrayList<>();
     for (int i = 0; i < this.defineSets.size(); i++) {
-      final DefineSet currentSet = (DefineSet) this.defineSets.elementAt(i);
+      final DefineSet currentSet = this.defineSets.get(i);
       final UndefineArgument[] defines = currentSet.getDefines();
       for (final UndefineArgument define : defines) {
         if (define.isActive(p)) {
-          actives.addElement(define);
+          actives.add(define);
         }
       }
     }
-    final UndefineArgument[] retval = new UndefineArgument[actives.size()];
-    actives.copyInto(retval);
-    return retval;
+    return actives;
   }
 
   /**
    * Returns the compiler-specific include path.
    */
-  public String[] getActiveIncludePaths() {
+  public List<String> getActiveIncludePaths() {
     if (isReference()) {
       return ((CompilerDef) getCheckedRef(CompilerDef.class, "CompilerDef")).getActiveIncludePaths();
     }
     return getActivePaths(this.includePaths);
   }
 
-  private String[] getActivePaths(final Vector paths) {
+  private List<String> getActivePaths(final List<ConditionalPath> paths) {
     final Project p = getProject();
     if (p == null) {
       throw new java.lang.IllegalStateException("project not set");
     }
-    final Vector activePaths = new Vector(paths.size());
-    for (int i = 0; i < paths.size(); i++) {
-      final ConditionalPath path = (ConditionalPath) paths.elementAt(i);
-      if (path.isActive(p)) {
-        final String[] pathEntries = path.list();
-        for (final String pathEntrie : pathEntries) {
-          activePaths.addElement(pathEntrie);
-        }
-      }
-    }
-    final String[] pathNames = new String[activePaths.size()];
-    activePaths.copyInto(pathNames);
-    return pathNames;
+    return paths.stream()
+        .filter(path -> path.isActive(p))
+        .flatMap(path -> Arrays.stream(path.list()))
+        .collect(Collectors.toList());
   }
 
   public PrecompileDef getActivePrecompile(final CompilerDef ccElement) {
@@ -240,7 +232,7 @@ public final class CompilerDef extends ProcessorDef {
     return null;
   }
 
-  public String[] getActiveSysIncludePaths() {
+  public List<String> getActiveSysIncludePaths() {
     if (isReference()) {
       return ((CompilerDef) getCheckedRef(CompilerDef.class, "CompilerDef")).getActiveSysIncludePaths();
     }
@@ -251,43 +243,43 @@ public final class CompilerDef extends ProcessorDef {
     return this.ccache;
   }
 
-  public final boolean getExceptions(final CompilerDef[] defaultProviders, final int index) {
+  public final boolean getExceptions(final List<CompilerDef> defaultProviders, final int index) {
     if (isReference()) {
       return ((CompilerDef) getCheckedRef(CompilerDef.class, "CompilerDef")).getExceptions(defaultProviders, index);
     }
     if (this.exceptions != null) {
       return this.exceptions.booleanValue();
     } else {
-      if (defaultProviders != null && index < defaultProviders.length) {
-        return defaultProviders[index].getExceptions(defaultProviders, index + 1);
+      if (defaultProviders != null && index < defaultProviders.size()) {
+        return defaultProviders.get(index).getExceptions(defaultProviders, index + 1);
       }
     }
     return false;
   }
 
-  public boolean getMultithreaded(final CompilerDef[] defaultProviders, final int index) {
+  public boolean getMultithreaded(final List<CompilerDef> defaultProviders, final int index) {
     if (isReference()) {
       return ((CompilerDef) getCheckedRef(CompilerDef.class, "CompilerDef")).getMultithreaded(defaultProviders, index);
     }
     if (this.multithreaded != null) {
       return this.multithreaded.booleanValue();
     } else {
-      if (defaultProviders != null && index < defaultProviders.length) {
-        return defaultProviders[index].getMultithreaded(defaultProviders, index + 1);
+      if (defaultProviders != null && index < defaultProviders.size()) {
+        return defaultProviders.get(index).getMultithreaded(defaultProviders, index + 1);
       }
     }
     return true;
   }
 
-  public final OptimizationEnum getOptimization(final CompilerDef[] defaultProviders, final int index) {
+  public final OptimizationEnum getOptimization(final List<CompilerDef> defaultProviders, final int index) {
     if (isReference()) {
       return ((CompilerDef) getCheckedRef(CompilerDef.class, "CompilerDef")).getOptimization(defaultProviders, index);
     }
     if (this.optimization != null) {
       return this.optimization;
     } else {
-      if (defaultProviders != null && index < defaultProviders.length) {
-        return defaultProviders[index].getOptimization(defaultProviders, index + 1);
+      if (defaultProviders != null && index < defaultProviders.size()) {
+        return defaultProviders.get(index).getOptimization(defaultProviders, index + 1);
       }
     }
     return null;
@@ -310,15 +302,15 @@ public final class CompilerDef extends ProcessorDef {
     return processor;
   }
 
-  public final Boolean getRtti(final CompilerDef[] defaultProviders, final int index) {
+  public final Boolean getRtti(final List<CompilerDef> defaultProviders, final int index) {
     if (isReference()) {
       return ((CompilerDef) getCheckedRef(CompilerDef.class, "CompilerDef")).getRtti(defaultProviders, index);
     }
     if (this.rtti != null) {
       return this.rtti;
     } else {
-      if (defaultProviders != null && index < defaultProviders.length) {
-        return defaultProviders[index].getRtti(defaultProviders, index + 1);
+      if (defaultProviders != null && index < defaultProviders.size()) {
+        return defaultProviders.get(index).getRtti(defaultProviders, index + 1);
       }
     }
     return null;
@@ -332,16 +324,16 @@ public final class CompilerDef extends ProcessorDef {
     return this.compilerPrefix;
   }
 
-  public File getWorkDir() {
+  public Path getWorkDir() {
       return this.workDir;
   }
   
-  public int getWarnings(final CompilerDef[] defaultProviders, final int index) {
+  public int getWarnings(final List<CompilerDef> defaultProviders, final int index) {
     if (isReference()) {
       return ((CompilerDef) getCheckedRef(CompilerDef.class, "CompilerDef")).getWarnings(defaultProviders, index);
     }
-    if (this.warnings == -1 && defaultProviders != null && index < defaultProviders.length) {
-      return defaultProviders[index].getWarnings(defaultProviders, index + 1);
+    if (this.warnings == -1 && defaultProviders != null && index < defaultProviders.size()) {
+      return defaultProviders.get(index).getWarnings(defaultProviders, index + 1);
     }
     return this.warnings;
   }
@@ -572,7 +564,7 @@ public final class CompilerDef extends ProcessorDef {
     this.compilerPrefix = prefix;
   }
 
-  public void setWorkDir(final File workDir) {
+  public void setWorkDir(final Path workDir) {
       this.workDir = workDir;
   }
 
@@ -614,5 +606,10 @@ public final class CompilerDef extends ProcessorDef {
 
   public void setDryRun(boolean dryRun) {
     this.dryRun = dryRun;
+  }
+
+  @Override
+  public String toString() {
+    return getProcessor().getIdentifier();
   }
 }

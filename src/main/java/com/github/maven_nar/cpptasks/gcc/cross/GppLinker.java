@@ -19,7 +19,9 @@
  */
 package com.github.maven_nar.cpptasks.gcc.cross;
 
-import java.io.File;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Vector;
 
 import org.apache.tools.ant.BuildException;
@@ -64,7 +66,7 @@ public class GppLinker extends AbstractLdLinker {
     return instance;
   }
 
-  private File[] libDirs;
+  private List<Path> libDirs;
   private String runtimeLibrary;
 
   protected GppLinker(final String command, final String[] extensions, final String[] ignoredExtensions,
@@ -74,14 +76,14 @@ public class GppLinker extends AbstractLdLinker {
 
   @Override
   protected void addImpliedArgs(final CCTask task, final boolean debug, final LinkType linkType,
-      final Vector<String> args) {
+      final List<String> args) {
     super.addImpliedArgs(task, debug, linkType, args);
     if (getIdentifier().contains("mingw")) {
       if (linkType.isSubsystemConsole()) {
-        args.addElement("-mconsole");
+        args.add("-mconsole");
       }
       if (linkType.isSubsystemGUI()) {
-        args.addElement("-mwindows");
+        args.add("-mwindows");
       }
     }
     if (linkType.isStaticRuntime()) {
@@ -100,11 +102,11 @@ public class GppLinker extends AbstractLdLinker {
   }
 
   @Override
-  public String[] addLibrarySets(final CCTask task, final LibrarySet[] libsets, final Vector<String> preargs,
-      final Vector<String> midargs, final Vector<String> endargs) {
+  public String[] addLibrarySets(final CCTask task, final List<LibrarySet> libsets, final List<String> preargs,
+      final List<String> midargs, final List<String> endargs) {
     final String[] rs = super.addLibrarySets(task, libsets, preargs, midargs, endargs);
     if (this.runtimeLibrary != null) {
-      endargs.addElement(this.runtimeLibrary);
+      endargs.add(this.runtimeLibrary);
     }
     return rs;
   }
@@ -169,9 +171,9 @@ public class GppLinker extends AbstractLdLinker {
    * 
    */
   @Override
-  public File[] getLibraryPath() {
+  public List<Path> getLibraryPath() {
     if (this.libDirs == null) {
-      final Vector<String> dirs = new Vector<>();
+      final Vector<Path> dirs = new Vector<>();
       // Ask GCC where it will look for its libraries.
       final String[] args = new String[] {
           "g++", "-print-search-dirs"
@@ -184,27 +186,26 @@ public class GppLinker extends AbstractLdLinker {
           int s = prefixIndex + libPrefix.length();
           int t = cmdout[i].indexOf(';', s);
           while (t > 0) {
-            dirs.addElement(cmdout[i].substring(s, t));
+            dirs.addElement(Path.of(cmdout[i].substring(s, t)));
             s = t + 1;
             t = cmdout[i].indexOf(';', s);
           }
-          dirs.addElement(cmdout[i].substring(s));
+          dirs.addElement(Path.of(cmdout[i].substring(s)));
           ++i;
           for (; i < cmdout.length; ++i) {
-            dirs.addElement(cmdout[i]);
+            dirs.addElement(Path.of(cmdout[i]));
           }
         }
       }
       // Eliminate all but actual directories.
-      final String[] libpath = new String[dirs.size()];
+      final Path[] libpath = new Path[dirs.size()];
       dirs.copyInto(libpath);
       final int count = CUtil.checkDirectoryArray(libpath);
       // Build return array.
-      this.libDirs = new File[count];
-      int index = 0;
-      for (final String element : libpath) {
+      this.libDirs = new ArrayList<>(count);
+      for (final Path element : libpath) {
         if (element != null) {
-          this.libDirs[index++] = new File(element);
+          this.libDirs.add(element);
         }
       }
     }
@@ -234,7 +235,7 @@ public class GppLinker extends AbstractLdLinker {
   }
 
   @Override
-  public void link(final CCTask task, final File outputFile, final String[] sourceFiles,
+  public void link(final CCTask task, final Path outputFile, final List<Path> sourceFiles,
       final CommandLineLinkerConfiguration config) throws BuildException {
     try {
       final GppLinker clone = (GppLinker) this.clone();
@@ -248,7 +249,7 @@ public class GppLinker extends AbstractLdLinker {
     }
   }
 
-  private void superlink(final CCTask task, final File outputFile, final String[] sourceFiles,
+  private void superlink(final CCTask task, final Path outputFile, final List<Path> sourceFiles,
       final CommandLineLinkerConfiguration config) throws BuildException {
     super.link(task, outputFile, sourceFiles, config);
   }

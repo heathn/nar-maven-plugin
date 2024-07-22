@@ -19,6 +19,7 @@
  */
 package com.github.maven_nar.cpptasks.sun;
 
+import java.nio.file.Path;
 import java.util.Vector;
 
 import com.github.maven_nar.cpptasks.types.LibraryTypeEnum;
@@ -79,7 +80,7 @@ public class C89Processor {
     }
   }
 
-  public static String getIncludeDirSwitch(final String includeDir) {
+  public static String getIncludeDirSwitch(final Path includeDir) {
     return "-I" + includeDir;
   }
 
@@ -100,9 +101,9 @@ public class C89Processor {
     return patterns;
   }
 
-  public static String[] getOutputFileSwitch(final String outPath) {
+  public static String[] getOutputFileSwitch(final Path outPath) {
     final StringBuffer buf = new StringBuffer("-o ");
-    if (outPath.indexOf(' ') >= 0) {
+    if (outPath.toString().indexOf(' ') >= 0) {
       buf.append('\"');
       buf.append(outPath);
       buf.append('\"');

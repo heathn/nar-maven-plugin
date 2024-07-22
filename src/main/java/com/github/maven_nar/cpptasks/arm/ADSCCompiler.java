@@ -19,7 +19,8 @@
  */
 package com.github.maven_nar.cpptasks.arm;
 
-import java.io.File;
+import java.nio.file.Path;
+import java.util.List;
 import java.util.Vector;
 
 import org.apache.tools.ant.types.Environment;
@@ -97,8 +98,8 @@ public class ADSCCompiler extends CommandLineCCompiler {
     return tcpp;
   }
 
-  private static void quoteFile(final StringBuffer buf, final String outPath) {
-    if (outPath.indexOf(' ') >= 0) {
+  private static void quoteFile(final StringBuffer buf, final Path outPath) {
+    if (outPath.toString().indexOf(' ') >= 0) {
       buf.append('\"');
       buf.append(outPath);
       buf.append('\"');
@@ -174,7 +175,7 @@ public class ADSCCompiler extends CommandLineCCompiler {
    * @see com.github.maven_nar.cpptasks.compiler.CommandLineCompiler#getEnvironmentIncludePath()
    */
   @Override
-  protected File[] getEnvironmentIncludePath() {
+  protected List<Path> getEnvironmentIncludePath() {
     return CUtil.getPathFromEnvironment("ARMINC", ";");
   }
 
@@ -183,7 +184,7 @@ public class ADSCCompiler extends CommandLineCCompiler {
    * 
    */
   @Override
-  protected String getIncludeDirSwitch(final String source) {
+  protected String getIncludeDirSwitch(final Path source) {
     final StringBuffer buf = new StringBuffer("-I");
     quoteFile(buf, source);
     return buf.toString();
