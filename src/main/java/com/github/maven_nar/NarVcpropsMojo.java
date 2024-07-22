@@ -23,11 +23,18 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
+import java.util.StringJoiner;
+import java.util.function.BiConsumer;
+import java.util.stream.Collector;
+import java.util.stream.Collectors;
 
 import org.apache.maven.artifact.Artifact;
 import org.apache.maven.plugin.MojoExecutionException;
@@ -77,8 +84,8 @@ public class NarVcpropsMojo extends AbstractCompileMojo {
   }
 
   // Copied from NarCompileMojo
-  private List<File> getIncludeDirs() throws MojoExecutionException, MojoFailureException {
-    List<File> includeDirs = new ArrayList<File>();
+  private List<Path> getIncludeDirs() throws MojoExecutionException, MojoFailureException {
+    List<Path> includeDirs = new ArrayList<>();
     for (Object dep : getNarManager().getNarDependencies("compile")) {
       NarArtifact narDependency = (NarArtifact) dep;
       // FIXME, handle multiple includes from one NAR
@@ -87,11 +94,11 @@ public class NarVcpropsMojo extends AbstractCompileMojo {
       getLog().debug(
           "Looking for " + narDependency + " found binding " + binding);
       if (!binding.equals(Library.JNI)) {
-        File unpackDirectory = getUnpackDirectory();
-        File include = getLayout().getIncludeDirectory(unpackDirectory,
+        Path unpackDirectory = getUnpackDirectory();
+        Path include = getLayout().getIncludeDirectory(unpackDirectory,
             narDependency.getArtifactId(), narDependency.getBaseVersion());
         getLog().debug("Looking for include directory: " + include);
-        if (include.exists()) {
+        if (Files.exists(include)) {
           includeDirs.add(include);
         } else {
           throw new MojoExecutionException(
@@ -102,8 +109,8 @@ public class NarVcpropsMojo extends AbstractCompileMojo {
     return includeDirs;
   }
 
-  private List<File> getLibs() throws MojoExecutionException, MojoFailureException {
-    List<File> libs = new ArrayList<File>();
+  private List<Path> getLibs() throws MojoExecutionException, MojoFailureException {
+    List<Path> libs = new ArrayList<>();
 
     List<String> depLibOrder = getDependencyLibOrder();
     List<NarArtifact> depLibs = getNarManager().getNarDependencies("compile");
@@ -142,20 +149,20 @@ public class NarVcpropsMojo extends AbstractCompileMojo {
 
       if (!binding.equals(Library.JNI) && !binding.equals(Library.NONE)
           && !binding.equals(Library.EXECUTABLE)) {
-        File unpackDirectory = getUnpackDirectory();
+        Path unpackDirectory = getUnpackDirectory();
 
-        File dir = getLayout().getLibDirectory(unpackDirectory,
+        Path dir = getLayout().getLibDirectory(unpackDirectory,
             dependency.getArtifactId(), dependency.getBaseVersion(),
             aol.toString(), binding);
 
         getLog().debug("Looking for Library Directory: " + dir);
-        if (dir.exists()) {
+        if (Files.exists(dir)) {
           // FIXME, no way to override
           List<String> libNames = Arrays.asList(dependency.getNarInfo()
               .getLibs(getAOL()).split(" "));
           for (String libName : libNames) {
-            File f = new File(dir, getLinkName(libName));
-            if (f.exists()) {
+            Path f = dir.resolve(getLinkName(libName));
+            if (Files.exists(f)) {
               libs.add(f);
             } else {
               // Not having an import library is not necessary fatal.
@@ -173,17 +180,33 @@ public class NarVcpropsMojo extends AbstractCompileMojo {
     return libs;
   }
 
-  private void writePropsFile(List<File> includeDirs, List<File> libs) throws IOException {
+  private void writePropsFile(List<Path> includeDirs, List<Path> libs) throws IOException {
     // Convert the includeDirs list to a semi-colon separated string
-    StringBuffer includeStr = new StringBuffer();
-    for (Iterator<File> i = includeDirs.iterator(); i.hasNext();) {
-      includeStr.append(i.next().getAbsolutePath());
-      if (i.hasNext())
-        includeStr.append(";");
-    }
+    String includeStr = includeDirs.stream()
+      .map(dir -> dir.toAbsolutePath().toString())
+      .collect(Collectors.joining(";"));
+
     // From the list of files in libs create two semi-colon separated
     // strings: a list of directories where the libraries are located and
     // a list of the library file names.
+    Map.Entry<String, String> paths = libs.stream()
+      .collect(Collectors.teeing(
+        Collector.of(
+          () -> new StringJoiner(";"),
+          new BiConsumer<StringJoiner, Path>() {
+            public void accept(StringJoiner sj, Path p) { sj.add(p.getParent().toString()); };
+          },
+          StringJoiner::merge,
+          StringJoiner::toString),
+        Collector.of(
+          () -> new StringJoiner(";"),
+          new BiConsumer<StringJoiner, Path>() {
+            public void accept(StringJoiner sj, Path p) { sj.add(p.getFileName().toString()); };
+          },
+          StringJoiner::merge,
+          StringJoiner::toString),
+        Map::entry));
+/*
     StringBuffer libDirStr = new StringBuffer();
     StringBuffer libStr = new StringBuffer();
     for (Iterator<File> i = libs.iterator(); i.hasNext();) {
@@ -195,6 +218,7 @@ public class NarVcpropsMojo extends AbstractCompileMojo {
         libStr.append(";");
       }
     }
+*/
     FileOutputStream fos = new FileOutputStream(new File(
         vcPropsTargetDirectory, vcPropsName));
     PrintWriter p = new PrintWriter(fos);
@@ -202,9 +226,9 @@ public class NarVcpropsMojo extends AbstractCompileMojo {
     p.println("<Project ToolsVersion=\"4.0\" xmlns=\"http://schemas.microsoft.com/developer/msbuild/2003\">");
     p.println("  <ImportGroup Label=\"PropertySheets\" />");
     p.println("  <PropertyGroup Label=\"UserMacros\">");
-    p.println("    <NARIncludes>" + includeStr.toString() + "</NARIncludes>");
-    p.println("    <NARLibs>" + libStr.toString() + "</NARLibs>");
-    p.println("    <NARLibDirs>" + libDirStr.toString() + "</NARLibDirs>");
+    p.println("    <NARIncludes>" + includeStr + "</NARIncludes>");
+    p.println("    <NARLibs>" + paths.getValue() + "</NARLibs>");
+    p.println("    <NARLibDirs>" + paths.getKey() + "</NARLibDirs>");
     p.println("  </PropertyGroup>");
     p.println("  <PropertyGroup />");
     p.println("  <ItemDefinitionGroup />");

@@ -19,7 +19,7 @@
  */
 package com.github.maven_nar;
 
-import java.io.File;
+import java.nio.file.Path;
 
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
@@ -40,7 +40,7 @@ public interface NarLayout {
    * all the attached nar archive files.
    */
   void
-      attachNars(File baseDir, ArchiverManager archiverManager, MavenProjectHelper projectHelper, MavenProject project)
+      attachNars(Path baseDir, ArchiverManager archiverManager, MavenProjectHelper projectHelper, MavenProject project)
           throws MojoExecutionException, MojoFailureException;
 
   /**
@@ -48,7 +48,7 @@ public interface NarLayout {
    * 
    * @return
    */
-  File getBinDirectory(File baseDir, String artifactId, String version, String aol)
+  Path getBinDirectory(Path baseDir, String artifactId, String version, String aol)
       throws MojoExecutionException, MojoFailureException;
 
   /**
@@ -56,7 +56,7 @@ public interface NarLayout {
    * 
    * @return
    */
-  File getIncludeDirectory(File baseDir, String artifactId, String version)
+  Path getIncludeDirectory(Path baseDir, String artifactId, String version)
       throws MojoExecutionException, MojoFailureException;
 
   /**
@@ -66,7 +66,7 @@ public interface NarLayout {
    * @throws MojoExecutionException
    *           , MojoFailureException
    */
-  File getLibDirectory(File baseDir, String artifactId, String version, String aol, String type)
+  Path getLibDirectory(Path baseDir, String artifactId, String version, String aol, String type)
           throws MojoExecutionException, MojoFailureException;
 
   /**
@@ -76,18 +76,18 @@ public interface NarLayout {
    * @throws MojoExecutionException
    *           , MojoFailureException
    */
-  File getNarInfoDirectory(File baseDir, String groupId, String artifactId, String version, String aol, String type)
+  Path getNarInfoDirectory(Path baseDir, String groupId, String artifactId, String version, String aol, String type)
           throws MojoExecutionException, MojoFailureException;
 
   /**
    * Returns the unpack directory of a specific nar file.
    */
-  File getNarUnpackDirectory(File baseUnpackDirectory, File narFile);
+  Path getNarUnpackDirectory(Path baseUnpackDirectory, Path narFile);
 
   /**
    * Specifies where all the "no architecture" specific files are stored
    */
-  File getNoArchDirectory(File baseDir, String artifactId, String version)
+  Path getNoArchDirectory(Path baseDir, String artifactId, String version)
       throws MojoExecutionException, MojoFailureException;
 
   /**
@@ -95,7 +95,7 @@ public interface NarLayout {
    * NarInfo accordingly so it can be included in the nar archive.
    * @throws MojoFailureException 
    */
-  void prepareNarInfo(File baseDir, MavenProject project, NarInfo narInfo, AbstractCompileMojo libraryName)
+  void prepareNarInfo(Path baseDir, MavenProject project, NarInfo narInfo, AbstractCompileMojo libraryName)
       throws MojoExecutionException, MojoFailureException;
 
   /**
@@ -104,7 +104,7 @@ public interface NarLayout {
    * @param defaultAOL
    * @param linkerName
    */
-  void unpackNar(File baseDir, ArchiverManager archiverManager, File file, String os, String linkerName, AOL defaultAOL, boolean skipRanlib)
+  void unpackNar(Path baseDir, ArchiverManager archiverManager, Path file, String os, String linkerName, AOL defaultAOL, boolean skipRanlib)
           throws MojoExecutionException, MojoFailureException;
 
 }

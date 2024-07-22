@@ -21,6 +21,9 @@ package com.github.maven_nar.cpptasks.types;
 
 import junit.framework.TestCase;
 
+import java.util.ArrayList;
+import java.util.List;
+
 import org.apache.tools.ant.BuildException;
 import org.apache.tools.ant.Project;
 
@@ -116,23 +119,27 @@ public class TestDefineArgument extends TestCase {
   }
 
   public void testMerge() {
-    final UndefineArgument[] base = new UndefineArgument[2];
-    final UndefineArgument[] specific = new UndefineArgument[2];
-    base[0] = new DefineArgument();
-    base[0].setName("foo");
-    base[1] = new UndefineArgument();
-    base[1].setName("hello");
-    specific[0] = new DefineArgument();
-    specific[0].setName("hello");
-    specific[1] = new UndefineArgument();
-    specific[1].setName("world");
-    final UndefineArgument[] merged = UndefineArgument.merge(base, specific);
-    assertEquals(3, merged.length);
-    assertEquals("foo", merged[0].getName());
-    assertEquals(true, merged[0].isDefine());
-    assertEquals("hello", merged[1].getName());
-    assertEquals(true, merged[1].isDefine());
-    assertEquals("world", merged[2].getName());
-    assertEquals(false, merged[2].isDefine());
+    final List<UndefineArgument> base = new ArrayList<>();
+    final List<UndefineArgument> specific = new ArrayList<>();
+    UndefineArgument arg = new DefineArgument();
+    arg.setName("foo");
+    base.add(arg);
+    arg = new UndefineArgument();
+    arg.setName("hello");
+    base.add(arg);
+    arg = new DefineArgument();
+    arg.setName("hello");
+    specific.add(arg);
+    arg = new UndefineArgument();
+    arg.setName("world");
+    specific.add(arg);
+    final List<UndefineArgument> merged = UndefineArgument.merge(base, specific);
+    assertEquals(3, merged.size());
+    assertEquals("foo", merged.get(0).getName());
+    assertEquals(true, merged.get(0).isDefine());
+    assertEquals("hello", merged.get(1).getName());
+    assertEquals(true, merged.get(1).isDefine());
+    assertEquals("world", merged.get(2).getName());
+    assertEquals(false, merged.get(2).isDefine());
   }
 }

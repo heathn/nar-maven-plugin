@@ -19,7 +19,12 @@
  */
 package com.github.maven_nar;
 
-import java.io.File;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Arrays;
+import java.util.List;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
@@ -73,31 +78,27 @@ public class NarCMakeMojo extends AbstractCMakeMojo {
       return;
     }
 
-    File srcDir = getCMakeAOLSourceDirectory();
-    if (srcDir.exists()) {
+    Path srcDir = getCMakeAOLSourceDirectory();
+    if (Files.exists(srcDir)) {
       String cmd;
-      String[] args= null;
-      String[] env= null;
+      List<String> args = null;
 
       if (getAOL().getOS().equals(OS.WINDOWS)) {
         getLog().info("Running MSBuild");
-        cmd = getMsvc().getMSBuild().getAbsolutePath();
-        if (cmakeMakeArgs != null) {
-          String argList = cmakeMakeArgs + " " + cmakeProjectFile;
-          args = argList.split(" ");
-        } else {
-          args = new String[] { cmakeProjectFile };
-        }
+        cmd = getMsvc().getMSBuild().toAbsolutePath().toString();
+        args = Stream.concat(Stream.ofNullable(cmakeMakeArgs), Stream.of(cmakeProjectFile))
+            .map(s -> s.split(" "))
+            .flatMap(Arrays::stream)
+            .collect(Collectors.toList());
       } else {
         getLog().info("Running GNU make");
         cmd = make;
-        if (cmakeMakeArgs != null) {
-          args = cmakeMakeArgs.split(" ");
-        } else {
-          args = new String[0];
-        }
+        args = Stream.ofNullable(cmakeMakeArgs)
+            .map(s -> s.split(" "))
+            .flatMap(Arrays::stream)
+            .collect(Collectors.toList());
       }
-      int result = NarUtil.runCommand(cmd, args, srcDir, env, getLog());
+      int result = NarUtil.runCommand(cmd, args, srcDir, null, getLog());
       if (result != 0) {
         throw new MojoExecutionException("'make' errorcode: " + result);
       }
@@ -105,19 +106,17 @@ public class NarCMakeMojo extends AbstractCMakeMojo {
       if (!cmakeMakeInstallSkip) {
         getLog().info("Running make install");
         if (getAOL().getOS().equals(OS.WINDOWS)) {
-          if (cmakeMakeArgs != null) {
-            String argList = cmakeMakeArgs + " INSTALL.vcxproj";
-            args = argList.split(" ");
-          } else {
-            args = new String[] { "INSTALL.vcxproj" };
-          }
+          args = Stream.concat(Stream.ofNullable(cmakeMakeArgs),
+            Stream.of("INSTALL.vcxproj"))
+              .map(s -> s.split(" "))
+              .flatMap(Arrays::stream)
+              .collect(Collectors.toList());
         } else {
-          if (cmakeMakeArgs != null) {
-            String argList = cmakeMakeArgs + " install";
-            args = argList.split(" ");
-          } else {
-            args = new String[] { "install" };
-          }
+          args = Stream.concat(Stream.ofNullable(cmakeMakeArgs),
+            Stream.of("install"))
+              .map(s -> s.split(" "))
+              .flatMap(Arrays::stream)
+              .collect(Collectors.toList());
         }
         result = NarUtil.runCommand(cmd, args, srcDir, null, getLog());
         if ( result != 0 ) {

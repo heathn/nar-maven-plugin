@@ -19,8 +19,8 @@
  */
 package com.github.maven_nar.cpptasks;
 
-import java.io.File;
 import java.io.IOException;
+import java.nio.file.Path;
 
 import javax.xml.parsers.ParserConfigurationException;
 
@@ -51,7 +51,7 @@ public class TestDependencyTable extends TestXMLConsumer {
     final String tmpDir = System.getProperty("java.io.tmpdir");
     try {
       copyResourceToTmpDir("openshore/dependencies.xml", "dependencies.xml");
-      final DependencyTable dependencies = new DependencyTable(new File(tmpDir));
+      final DependencyTable dependencies = new DependencyTable(Path.of(tmpDir));
       dependencies.load();
     } finally {
       deleteTmpFile("dependencies.xml");
@@ -67,7 +67,7 @@ public class TestDependencyTable extends TestXMLConsumer {
     final String tmpDir = System.getProperty("java.io.tmpdir");
     try {
       copyResourceToTmpDir("xerces-c/dependencies.xml", "dependencies.xml");
-      final DependencyTable dependencies = new DependencyTable(new File(tmpDir));
+      final DependencyTable dependencies = new DependencyTable(Path.of(tmpDir));
       dependencies.load();
     } finally {
       deleteTmpFile("dependencies.xml");

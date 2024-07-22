@@ -46,7 +46,7 @@ public class FlexLong {
       this.value = (Long) rc;
     } catch (final Exception e) {
       // Try it the old fashioned way, we must be on a 1.1 jre
-      this.value = new Long(value);
+      this.value = Long.valueOf(value);
     }
   }
 

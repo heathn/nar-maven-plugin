@@ -19,6 +19,9 @@
  */
 package com.github.maven_nar.cpptasks.compiler;
 
+import java.nio.file.Path;
+import java.util.List;
+
 import com.github.maven_nar.cpptasks.ProcessorParam;
 import com.github.maven_nar.cpptasks.VersionInfo;
 
@@ -33,7 +36,7 @@ public interface ProcessorConfiguration {
    * 
    * @return 0 is no interest to process, 100 is strong interest to process
    */
-  int bid(String filename);
+  int bid(Path filename);
 
   /**
    * Returns a string representation of this configuration. Should be
@@ -51,9 +54,9 @@ public interface ProcessorConfiguration {
    *         not
    *         determined by input file
    */
-  String[] getOutputFileNames(String inputFile, VersionInfo versionInfo);
+  Path[] getOutputFileNames(Path inputFile, VersionInfo versionInfo);
 
-  ProcessorParam[] getParams();
+  List<ProcessorParam> getParams();
 
   /**
    * If true, all files using this configuration should be rebuilt and any

@@ -19,7 +19,7 @@
  */
 package com.github.maven_nar.cpptasks.compiler;
 
-import java.io.File;
+import java.nio.file.Path;
 
 import org.apache.tools.ant.types.Environment;
 
@@ -41,7 +41,7 @@ public abstract class CommandLineCCompiler extends CommandLineCompiler {
   }
 
   @Override
-  protected Parser createParser(final File source) {
+  protected Parser createParser(final Path source) {
     return new CParser();
   }
 }

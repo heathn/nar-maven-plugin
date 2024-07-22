@@ -19,7 +19,9 @@
  */
 package com.github.maven_nar;
 
-import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -85,20 +87,25 @@ public class NarTestCompileMojo extends AbstractCompileMojo {
     task.setOuttype(outTypeEnum);
 
     // outDir
-    File outDir = new File(getTestTargetDirectory(), "bin");
-    outDir = new File(outDir, getAOL().toString());
-    outDir.mkdirs();
+    Path outDir = getTestTargetDirectory().resolve(
+      Path.of("bin", getAOL().toString()));
 
     // outFile
-    final File outFile = new File(outDir, test.getName());
+    final Path outFile = outDir.resolve(test.getName());
     getLog().debug("NAR - output: '" + outFile + "'");
     task.setOutfile(outFile);
 
     // object directory
-    File objDir = new File(getTestTargetDirectory(), "obj");
-    objDir = new File(objDir, getAOL().toString());
-    objDir.mkdirs();
+    Path objDir = getTestTargetDirectory().resolve(
+      Path.of("obj", getAOL().toString()));
     task.setObjdir(objDir);
+
+    try {
+      Files.createDirectories(outDir);
+      Files.createDirectories(objDir);
+    } catch (IOException e) {
+      throw new MojoExecutionException(e);
+    }
 
     // failOnError, libtool
     task.setFailonerror(failOnError(getAOL()));
@@ -151,23 +158,22 @@ public class NarTestCompileMojo extends AbstractCompileMojo {
     List<String> linkPaths = new ArrayList<String>();
 
     // If we're restricting deps to direct deps ONLY then trim transitive deps
-    if (directDepsOnly){
+    if (directDepsOnly) {
       HashSet<String> directDepsSet = getDirectDepsSet(getVerboseDependencyTree());
-      ListIterator <NarArtifact> depsIt = dependencies.listIterator();
+      ListIterator<NarArtifact> depsIt = dependencies.listIterator();
 
       // Trim all deps from dependencies that are not in the directDepsSet, warn if they are found.
-      while(depsIt.hasNext()){
+      while (depsIt.hasNext()) {
         NarInfo dep = depsIt.next().getNarInfo();
-        if(!directDepsSet.contains(dep.getGroupId() + ":" + dep.getArtifactId())){
+        if (!directDepsSet.contains(dep.getGroupId() + ":" + dep.getArtifactId())) {
           this.getLog().debug("Stray dependency: " + dep + " found. This may cause build failures.");
           depsIt.remove();
           // If this transitive dependency was a shared object, add it to the linkPaths list.
           String depType = dep.getBinding(null, null);
-          if (Objects.equals(depType, Library.SHARED))
-          {
-            File soDir = getLayout().getLibDirectory(getTargetDirectory(), dep.getArtifactId(), dep.getVersion(), getAOL().toString(), depType);
-            if (soDir.exists()){
-              linkPaths.add(soDir.getAbsolutePath());
+          if (Objects.equals(depType, Library.SHARED)) {
+            Path soDir = getLayout().getLibDirectory(getTargetDirectory(), dep.getArtifactId(), dep.getVersion(), getAOL().toString(), depType);
+            if (Files.exists(soDir)) {
+              linkPaths.add(soDir.toAbsolutePath().toString());
             }
           }
         }
@@ -175,32 +181,31 @@ public class NarTestCompileMojo extends AbstractCompileMojo {
     }
     
     // add dependency include paths
-    for (final Object depLib1 : dependencies) {
-      final NarArtifact artifact = (NarArtifact) depLib1;
+    for (final NarArtifact artifact : dependencies) {
 
       // check if it exists in the normal unpack directory
-      File include = getLayout()
+      Path include = getLayout()
           .getIncludeDirectory(getUnpackDirectory(), artifact.getArtifactId(), artifact.getBaseVersion());
-      if (!include.exists()) {
+      if (Files.notExists(include)) {
         // otherwise try the test unpack directory
         include = getLayout()
             .getIncludeDirectory(getTestUnpackDirectory(), artifact.getArtifactId(), artifact.getBaseVersion());
       }
-      if (include.exists()) {
+      if (Files.exists(include)) {
         String includesType = artifact.getNarInfo().getIncludesType(null);
         if (includesType.equals("system")) {
-          task.createSysIncludePath().setPath(include.getPath());
+          task.createSysIncludePath().setPath(include.toString());
         }
         else {
-          task.createIncludePath().setPath(include.getPath());
+          task.createIncludePath().setPath(include.toString());
         }
       }
     }
 
     // add javah generated include path
-    final File jniIncludeDir = getJavah().getJniDirectory();
-    if (jniIncludeDir.exists()) {
-      task.createIncludePath().setPath(jniIncludeDir.getPath());
+    final Path jniIncludeDir = getJavah().getJniDirectory();
+    if (Files.exists(jniIncludeDir)) {
+      task.createIncludePath().setPath(jniIncludeDir.toString());
     }
 
     // add linker
@@ -210,58 +215,22 @@ public class NarTestCompileMojo extends AbstractCompileMojo {
     linkerDefinition.setDryRun(dryRun);
     task.addConfiguredLinker(linkerDefinition);
 
-    final File includeDir = getLayout().getIncludeDirectory(getTargetDirectory(), getMavenProject().getArtifactId(),
+    final Path includeDir = getLayout().getIncludeDirectory(getTargetDirectory(), getMavenProject().getArtifactId(),
         getMavenProject().getVersion());
 
     String linkType = test.getLink( getLibraries() );
-    final File libDir = getLayout().getLibDirectory(getTargetDirectory(), getMavenProject().getArtifactId(),
+    final Path libDir = getLayout().getLibDirectory(getTargetDirectory(), getMavenProject().getArtifactId(),
         getMavenProject().getVersion(), getAOL().toString(), linkType);
 
-    // copy shared library
-    // FIXME why do we do this ?
-    /*
-     * Removed in alpha-10 if (test.getLink().equals(Library.SHARED)) { try { //
-     * defaults are Unix String libPrefix
-     * = NarUtil.getDefaults().getProperty( getAOLKey() + "shared.prefix",
-     * "lib"); String libExt =
-     * NarUtil.getDefaults().getProperty( getAOLKey() + "shared.extension",
-     * "so"); File copyDir = new
-     * File(getTargetDirectory(), (getOS().equals( "Windows") ? "bin" : "lib") +
-     * "/" + getAOL() + "/" +
-     * test.getLink()); FileUtils.copyFileToDirectory(new File(libDir, libPrefix
-     * + libName + "." + libExt),
-     * copyDir); if (!getOS().equals(OS.WINDOWS)) { libDir = copyDir; } } catch
-     * (IOException e) { throw new
-     * MojoExecutionException( "NAR: Could not copy shared library", e); } }
-     */
-    // FIXME what about copying the other shared libs?
-
     // add include of this package
-    if (includeDir.exists()) {
-      task.createIncludePath().setLocation(includeDir);
+    if (Files.exists(includeDir)) {
+      task.createIncludePath().setLocation(includeDir.toFile());
     }
 
     // add library of this package
-    if (libDir.exists()) {
+    if (Files.exists(libDir)) {
       final LibrarySet libSet = new LibrarySet();
       libSet.setProject(antProject);
-
-      // String libs = getNarInfo().getLibs( getAOL() );
-      // using getNarInfo().getLibs( getAOL() ); forces to execute the goal
-      // nar-prepare-package prior to
-      // nar-testCompile in order to set the "output" property in narInfo with
-      // the call :
-      // narInfo.setOutput( null, mojo.getOutput(true) ); (set in
-      // NarLayout21.prepareNarInfo(...))
-
-      // narInfo.getLibs(aol) call in fact narInfo.getProperty( aol,
-      // "libs.names", getOutput( aol, artifactId + "-" + version ) );
-      // where getOutput is the getOutput method in narInfo (which needs the
-      // "output" property).
-      // We call then directly narInfo.getProperty( aol, "libs.names", <output
-      // value>); but we set <output value>
-      // with AbstractCompileMojo.getOutput( boolean versioned ) as it is done
-      // during nar-prepare-package
       final String libs = getNarInfo().getProperty(getAOL(), "libs.names", getOutput(true));
 
       getLog().debug("Searching for parent to link with " + libs);
@@ -274,21 +243,19 @@ public class NarTestCompileMojo extends AbstractCompileMojo {
     }
 
     // add dependency libraries
-    final List depLibOrder = getDependencyLibOrder();
+    final List<String> depLibOrder = getDependencyLibOrder();
 
     // reorder the libraries that come from the nar dependencies
     // to comply with the order specified by the user
     if (depLibOrder != null && !depLibOrder.isEmpty()) {
 
-      final List tmp = new LinkedList();
+      final List<NarArtifact> tmp = new LinkedList<>();
 
-      for (final Object aDepLibOrder : depLibOrder) {
+      for (final String depToOrderName : depLibOrder) {
 
-        final String depToOrderName = (String) aDepLibOrder;
+        for (final Iterator<NarArtifact> j = dependencies.iterator(); j.hasNext(); ) {
 
-        for (final Iterator j = dependencies.iterator(); j.hasNext(); ) {
-
-          final NarArtifact dep = (NarArtifact) j.next();
+          final NarArtifact dep = j.next();
           final String depName = dep.getGroupId() + ":" + dep.getArtifactId();
 
           if (depName.equals(depToOrderName)) {
@@ -305,9 +272,7 @@ public class NarTestCompileMojo extends AbstractCompileMojo {
     
     Set<SysLib> dependencySysLibs = new LinkedHashSet<>();
 
-    for (final Object depLib : dependencies) {
-      final NarArtifact dependency = (NarArtifact) depLib;
-
+    for (final NarArtifact dependency : dependencies) {
       // FIXME no handling of "local"
 
       final String binding = getBinding(test, dependency);
@@ -325,11 +290,11 @@ public class NarTestCompileMojo extends AbstractCompileMojo {
       // use methods or classes defined in them.
       if (!binding.equals(Library.JNI) && !binding.equals(Library.NONE) && !binding.equals(Library.EXECUTABLE)) {
         // check if it exists in the normal unpack directory
-        File dir = getLayout()
+        Path dir = getLayout()
             .getLibDirectory(getUnpackDirectory(), dependency.getArtifactId(), dependency.getBaseVersion(),
                 aol.toString(), binding);
         getLog().debug("Looking for Library Directory: " + dir);
-        if (!dir.exists()) {
+        if (Files.notExists(dir)) {
           getLog().debug("Library Directory " + dir + " does NOT exist.");
 
           // otherwise try the test unpack directory
@@ -338,12 +303,12 @@ public class NarTestCompileMojo extends AbstractCompileMojo {
                   aol.toString(), binding);
           getLog().debug("Looking for Library Directory: " + dir);
         }
-        if (dir.exists()) {
+        if (Files.exists(dir)) {
           final LibrarySet libSet = new LibrarySet();
           libSet.setProject(antProject);
 
           // Load nar properties file from aol specific directory
-          final File aolNarInfoFile = getLayout()
+          final Path aolNarInfoFile = getLayout()
                   .getNarInfoDirectory(getUnpackDirectory(), dependency.getGroupId(), dependency.getArtifactId(),
                           dependency.getBaseVersion(), aol.toString(), binding);
 
@@ -428,7 +393,7 @@ public class NarTestCompileMojo extends AbstractCompileMojo {
   }
 
   @Override
-  protected File getUnpackDirectory() {
+  protected Path getUnpackDirectory() {
     return getTestUnpackDirectory() == null ? super.getUnpackDirectory() : getTestUnpackDirectory();
   }
 
@@ -439,17 +404,21 @@ public class NarTestCompileMojo extends AbstractCompileMojo {
     } else {
 
       // make sure destination is there
-      getTestTargetDirectory().mkdirs();
+      try {
+        Files.createDirectories(getTestTargetDirectory());
+      } catch (IOException e) {
+        throw new MojoExecutionException(e);
+      }
 
-      for (final Object o : getTests()) {
-        createTest(getAntProject(), (Test) o);
+      for (final Test test : getTests()) {
+        createTest(getAntProject(), test);
       }
       
       if (replay != null) {
-        File compileCommandFile = new File(replay.getOutputDirectory(), NarConstants.REPLAY_TEST_COMPILE_NAME);
+        Path compileCommandFile = replay.getOutputDirectory().resolve(NarConstants.REPLAY_TEST_COMPILE_NAME);
         NarUtil.writeCommandFile(compileCommandFile, testCompileCommands);
         
-        File linkCommandFile = new File(replay.getOutputDirectory(), NarConstants.REPLAY_TEST_LINK_NAME);
+        Path linkCommandFile = replay.getOutputDirectory().resolve(NarConstants.REPLAY_TEST_LINK_NAME);
         NarUtil.writeCommandFile(linkCommandFile, testLinkCommands);
       }
     }

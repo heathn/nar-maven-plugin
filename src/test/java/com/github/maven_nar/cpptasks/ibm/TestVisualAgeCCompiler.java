@@ -21,6 +21,8 @@ package com.github.maven_nar.cpptasks.ibm;
 
 import junit.framework.TestCase;
 
+import java.nio.file.Path;
+
 import com.github.maven_nar.cpptasks.compiler.AbstractProcessor;
 
 /**
@@ -36,36 +38,36 @@ public class TestVisualAgeCCompiler extends TestCase {
 
   public void testBidAssembly() {
     final VisualAgeCCompiler compiler = VisualAgeCCompiler.getInstance();
-    assertEquals(AbstractProcessor.DEFAULT_PROCESS_BID, compiler.bid("foo.s"));
+    assertEquals(AbstractProcessor.DEFAULT_PROCESS_BID, compiler.bid(Path.of("foo.s")));
   }
 
   public void testBidC() {
     final VisualAgeCCompiler compiler = VisualAgeCCompiler.getInstance();
-    assertEquals(AbstractProcessor.DEFAULT_PROCESS_BID, compiler.bid("foo.c"));
+    assertEquals(AbstractProcessor.DEFAULT_PROCESS_BID, compiler.bid(Path.of("foo.c")));
   }
 
   public void testBidCpp() {
     final VisualAgeCCompiler compiler = VisualAgeCCompiler.getInstance();
-    assertEquals(AbstractProcessor.DEFAULT_PROCESS_BID, compiler.bid("foo.C"));
+    assertEquals(AbstractProcessor.DEFAULT_PROCESS_BID, compiler.bid(Path.of("foo.C")));
   }
 
   public void testBidCpp2() {
     final VisualAgeCCompiler compiler = VisualAgeCCompiler.getInstance();
-    assertEquals(AbstractProcessor.DEFAULT_PROCESS_BID, compiler.bid("foo.cc"));
+    assertEquals(AbstractProcessor.DEFAULT_PROCESS_BID, compiler.bid(Path.of("foo.cc")));
   }
 
   public void testBidCpp3() {
     final VisualAgeCCompiler compiler = VisualAgeCCompiler.getInstance();
-    assertEquals(AbstractProcessor.DEFAULT_PROCESS_BID, compiler.bid("foo.cxx"));
+    assertEquals(AbstractProcessor.DEFAULT_PROCESS_BID, compiler.bid(Path.of("foo.cxx")));
   }
 
   public void testBidCpp4() {
     final VisualAgeCCompiler compiler = VisualAgeCCompiler.getInstance();
-    assertEquals(AbstractProcessor.DEFAULT_PROCESS_BID, compiler.bid("foo.cpp"));
+    assertEquals(AbstractProcessor.DEFAULT_PROCESS_BID, compiler.bid(Path.of("foo.cpp")));
   }
 
   public void testBidPreprocessed() {
     final VisualAgeCCompiler compiler = VisualAgeCCompiler.getInstance();
-    assertEquals(AbstractProcessor.DEFAULT_PROCESS_BID, compiler.bid("foo.i"));
+    assertEquals(AbstractProcessor.DEFAULT_PROCESS_BID, compiler.bid(Path.of("foo.i")));
   }
 }

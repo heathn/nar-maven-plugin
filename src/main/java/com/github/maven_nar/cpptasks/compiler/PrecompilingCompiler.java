@@ -19,7 +19,7 @@
  */
 package com.github.maven_nar.cpptasks.compiler;
 
-import java.io.File;
+import java.nio.file.Path;
 
 /**
  * A compiler that can utilize precompilation of header files
@@ -48,6 +48,6 @@ public interface PrecompilingCompiler {
    *          consuming configuration
    * 
    */
-  CompilerConfiguration[] createPrecompileConfigurations(CompilerConfiguration config, File prototype,
-      String[] nonPrecompiledFiles);
+  CompilerConfiguration[] createPrecompileConfigurations(CompilerConfiguration config, Path prototype,
+      Path[] nonPrecompiledFiles);
 }

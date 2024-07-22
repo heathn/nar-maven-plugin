@@ -19,7 +19,10 @@
  */
 package com.github.maven_nar.cpptasks.compiler;
 
-import java.io.File;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 
 import org.apache.tools.ant.BuildException;
 
@@ -42,36 +45,36 @@ public final class CommandLineCompilerConfiguration implements CompilerConfigura
   //
   // include path from environment variable not
   // explicitly stated in Ant script
-  private/* final */File[] envIncludePath;
-  private String[] exceptFiles;
-  private final/* final */String identifier;
-  private/* final */File[] includePath;
-  private final/* final */String includePathIdentifier;
+  private final List<Path> envIncludePath;
+  private Path[] exceptFiles;
+  private final String identifier;
+  private final List<Path> includePath;
+  private final String includePathIdentifier;
   private final boolean isPrecompiledHeaderGeneration;
-  private/* final */ProcessorParam[] params;
-  private final/* final */boolean rebuild;
-  private/* final */File[] sysIncludePath;
+  private final List<ProcessorParam> params;
+  private final boolean rebuild;
+  private final List<Path> sysIncludePath;
   private/* final */String commandPath;
 
   public CommandLineCompilerConfiguration(final CommandLineCompiler compiler, final String identifier,
-      final File[] includePath, final File[] sysIncludePath, final File[] envIncludePath,
-      final String includePathIdentifier, final String[] args, final ProcessorParam[] params, final boolean rebuild,
+      final List<Path> includePath, final List<Path> sysIncludePath, final List<Path> envIncludePath,
+      final String includePathIdentifier, final String[] args, final List<ProcessorParam> params, final boolean rebuild,
       final String[] endArgs) {
     this(compiler, identifier, includePath, sysIncludePath, envIncludePath, includePathIdentifier, args, params,
         rebuild, endArgs, null);
   }
 
   public CommandLineCompilerConfiguration(final CommandLineCompiler compiler, final String identifier,
-      final File[] includePath, final File[] sysIncludePath, final File[] envIncludePath,
-      final String includePathIdentifier, final String[] args, final ProcessorParam[] params, final boolean rebuild,
+      final List<Path> includePath, final List<Path> sysIncludePath, final List<Path> envIncludePath,
+      final String includePathIdentifier, final String[] args, final List<ProcessorParam> params, final boolean rebuild,
       final String[] endArgs, final String commandPath) {
     this(compiler, identifier, includePath, sysIncludePath, envIncludePath, includePathIdentifier, args, params,
         rebuild, endArgs, commandPath, false);
   }
 
   public CommandLineCompilerConfiguration(final CommandLineCompiler compiler, final String identifier,
-      final File[] includePath, final File[] sysIncludePath, final File[] envIncludePath,
-      final String includePathIdentifier, final String[] args, final ProcessorParam[] params, final boolean rebuild,
+      final List<Path> includePath, final List<Path> sysIncludePath, final List<Path> envIncludePath,
+      final String includePathIdentifier, final String[] args, final List<ProcessorParam> params, final boolean rebuild,
       final String[] endArgs, final String commandPath, final boolean useCcache) {
     if (compiler == null) {
       throw new NullPointerException("compiler");
@@ -88,23 +91,27 @@ public final class CommandLineCompilerConfiguration implements CompilerConfigura
       this.args = args.clone();
     }
     if (includePath == null) {
-      this.includePath = new File[0];
+      this.includePath = Collections.emptyList();
     } else {
-      this.includePath = includePath.clone();
+      this.includePath = new ArrayList<>(includePath);
     }
     if (sysIncludePath == null) {
-      this.sysIncludePath = new File[0];
+      this.sysIncludePath = Collections.emptyList();
     } else {
-      this.sysIncludePath = sysIncludePath.clone();
+      this.sysIncludePath = new ArrayList<>(sysIncludePath);
     }
     if (envIncludePath == null) {
-      this.envIncludePath = new File[0];
+      this.envIncludePath = Collections.emptyList();
     } else {
-      this.envIncludePath = envIncludePath.clone();
+      this.envIncludePath = new ArrayList<>(envIncludePath);
     }
     this.useCcache = useCcache;
     this.compiler = compiler;
-    this.params = params.clone();
+    if (params == null) {
+      this.params = Collections.emptyList();
+    } else {
+      this.params = new ArrayList<>(params);
+    }
     this.rebuild = rebuild;
     this.identifier = identifier;
     this.includePathIdentifier = includePathIdentifier;
@@ -115,14 +122,14 @@ public final class CommandLineCompilerConfiguration implements CompilerConfigura
   }
 
   public CommandLineCompilerConfiguration(final CommandLineCompilerConfiguration base, final String[] additionalArgs,
-      final String[] exceptFiles, final boolean isPrecompileHeaderGeneration) {
+      final Path[] exceptFiles, final boolean isPrecompileHeaderGeneration) {
     this.compiler = base.compiler;
     this.identifier = base.identifier;
     this.rebuild = base.rebuild;
-    this.includePath = base.includePath.clone();
-    this.sysIncludePath = base.sysIncludePath.clone();
+    this.includePath = new ArrayList<>(base.includePath);
+    this.sysIncludePath = new ArrayList<>(base.sysIncludePath);
     this.endArgs = base.endArgs.clone();
-    this.envIncludePath = base.envIncludePath.clone();
+    this.envIncludePath = new ArrayList<>(base.envIncludePath);
     this.includePathIdentifier = base.includePathIdentifier;
     if (exceptFiles != null) {
       this.exceptFiles = exceptFiles.clone();
@@ -138,14 +145,15 @@ public final class CommandLineCompilerConfiguration implements CompilerConfigura
     } else {
       this.args = base.args.clone();
     }
+    this.params = new ArrayList<>(base.params);
     this.commandPath = base.commandPath;
   }
 
   @Override
-  public int bid(final String inputFile) {
+  public int bid(final Path inputFile) {
     final int compilerBid = this.compiler.bid(inputFile);
     if (compilerBid > 0 && this.exceptFiles != null) {
-      for (final String exceptFile : this.exceptFiles) {
+      for (final Path exceptFile : this.exceptFiles) {
         if (inputFile.equals(exceptFile)) {
           return 0;
         }
@@ -155,7 +163,7 @@ public final class CommandLineCompilerConfiguration implements CompilerConfigura
   }
 
   @Override
-  public void compile(final CCTask task, final File outputDir, final String[] sourceFiles, final boolean relentless,
+  public void compile(final CCTask task, final Path outputDir, final Path[] sourceFiles, final boolean relentless,
       final ProgressMonitor monitor) throws BuildException {
     if (monitor != null) {
       monitor.start(this);
@@ -194,7 +202,7 @@ public final class CommandLineCompilerConfiguration implements CompilerConfigura
    */
   @Override
   public CompilerConfiguration[]
-      createPrecompileConfigurations(final File prototype, final String[] nonPrecompiledFiles) {
+      createPrecompileConfigurations(final Path prototype, final Path[] nonPrecompiledFiles) {
     if (this.compiler instanceof PrecompilingCompiler) {
       return ((PrecompilingCompiler) this.compiler)
           .createPrecompileConfigurations(this, prototype, nonPrecompiledFiles);
@@ -228,8 +236,8 @@ public final class CommandLineCompilerConfiguration implements CompilerConfigura
     return this.identifier;
   }
 
-  public File[] getIncludePath() {
-    return this.includePath.clone();
+  public List<Path> getIncludePath() {
+    return Collections.unmodifiableList(this.includePath);
   }
 
   @Override
@@ -238,7 +246,7 @@ public final class CommandLineCompilerConfiguration implements CompilerConfigura
   }
 
   @Override
-  public String[] getOutputFileNames(final String inputFile, final VersionInfo versionInfo) {
+  public Path[] getOutputFileNames(final Path inputFile, final VersionInfo versionInfo) {
     return this.compiler.getOutputFileNames(inputFile, versionInfo);
   }
 
@@ -253,7 +261,7 @@ public final class CommandLineCompilerConfiguration implements CompilerConfigura
   }
 
   @Override
-  public ProcessorParam[] getParams() {
+  public List<ProcessorParam> getParams() {
     return this.params;
   }
 
@@ -276,7 +284,7 @@ public final class CommandLineCompilerConfiguration implements CompilerConfigura
   }
 
   @Override
-  public DependencyInfo parseIncludes(final CCTask task, final File baseDir, final File source) {
+  public DependencyInfo parseIncludes(final CCTask task, final Path baseDir, final Path source) {
     return this.compiler.parseIncludes(task, source, this.includePath, this.sysIncludePath, this.envIncludePath,
         baseDir, getIncludePathIdentifier());
   }

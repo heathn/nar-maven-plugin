@@ -48,7 +48,7 @@ public class ConditionalFileSet extends FileSet {
    */
   @Override
   protected AbstractFileSet getRef(final Project p) {
-    return (AbstractFileSet) this.ref.getReferencedObject(p);
+    return (AbstractFileSet) this.getRefid().getReferencedObject(p);
   }
 
   /**

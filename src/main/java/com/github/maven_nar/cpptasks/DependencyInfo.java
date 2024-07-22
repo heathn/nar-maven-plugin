@@ -19,7 +19,11 @@
  */
 package com.github.maven_nar.cpptasks;
 
-import java.util.Vector;
+import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 
 /**
  * @author Curt Arnold
@@ -33,16 +37,16 @@ public final class DependencyInfo {
    */
   // FREEHEP
   // private long compositeLastModified;
-  private final/* final */String includePathIdentifier;
-  private final/* final */String[] includes;
-  private final/* final */String source;
-  private final/* final */long sourceLastModified;
-  private final/* final */String[] sysIncludes;
+  private final String includePathIdentifier;
+  private final List<Path> includes;
+  private final Path source;
+  private final FileTime sourceLastModified;
+  private final List<Path> sysIncludes;
   // FREEHEP
   private Object tag = null;
 
-  public DependencyInfo(final String includePathIdentifier, final String source, final long sourceLastModified,
-      final Vector includes, final Vector sysIncludes) {
+  public DependencyInfo(final String includePathIdentifier, final Path source, final FileTime sourceLastModified,
+      final List<Path> includes, final List<Path> sysIncludes) {
     if (source == null) {
       throw new NullPointerException("source");
     }
@@ -52,7 +56,7 @@ public final class DependencyInfo {
     this.source = source;
     this.sourceLastModified = sourceLastModified;
     this.includePathIdentifier = includePathIdentifier;
-    this.includes = new String[includes.size()];
+    this.includes = new ArrayList<>(includes);
     // BEGINFREEHEP
     // if (includes.size() == 0) {
     // compositeLastModified = sourceLastModified;
@@ -61,10 +65,8 @@ public final class DependencyInfo {
     // compositeLastModified = Long.MIN_VALUE;
     // }
     // ENDFREEHEP
-    this.sysIncludes = new String[sysIncludes.size()];
+    this.sysIncludes = new ArrayList<>(sysIncludes);
     // FREEHEP
-    includes.copyInto(this.includes);
-    sysIncludes.copyInto(this.sysIncludes);
   }
 
   // ENDFREEHEP
@@ -72,22 +74,20 @@ public final class DependencyInfo {
     return this.includePathIdentifier;
   }
 
-  public String[] getIncludes() {
-    final String[] includesClone = this.includes.clone();
-    return includesClone;
+  public List<Path> getIncludes() {
+    return Collections.unmodifiableList(this.includes);
   }
 
-  public String getSource() {
+  public Path getSource() {
     return this.source;
   }
 
-  public long getSourceLastModified() {
+  public FileTime getSourceLastModified() {
     return this.sourceLastModified;
   }
 
-  public String[] getSysIncludes() {
-    final String[] sysIncludesClone = this.sysIncludes.clone();
-    return sysIncludesClone;
+  public List<Path> getSysIncludes() {
+    return Collections.unmodifiableList(this.sysIncludes);
   }
 
   // BEGINFREEHEP

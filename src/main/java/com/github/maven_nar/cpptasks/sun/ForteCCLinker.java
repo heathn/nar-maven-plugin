@@ -19,7 +19,10 @@
  */
 package com.github.maven_nar.cpptasks.sun;
 
-import java.io.File;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Vector;
 
 import com.github.maven_nar.cpptasks.CUtil;
@@ -47,7 +50,7 @@ public final class ForteCCLinker extends AbstractLdLinker {
     return instance;
   }
 
-  private File[] libDirs;
+  private List<Path> libDirs;
 
   private ForteCCLinker(final String command, final String[] extensions, final String[] ignoredExtensions,
       final String outputPrefix, final String outputSuffix) {
@@ -82,21 +85,18 @@ public final class ForteCCLinker extends AbstractLdLinker {
    * 
    */
   @Override
-  public File[] getLibraryPath() {
+  public List<Path> getLibraryPath() {
     if (this.libDirs == null) {
-      final File CCloc = CUtil.getExecutableLocation("CC");
+      this.libDirs = new ArrayList<>();
+      final Path CCloc = CUtil.getExecutableLocation("CC");
       if (CCloc != null) {
-        final File compilerLib = new File(new File(CCloc, "../lib").getAbsolutePath());
-        if (compilerLib.exists()) {
-          this.libDirs = new File[2];
-          this.libDirs[0] = compilerLib;
+        final Path compilerLib = CCloc.resolveSibling("lib").toAbsolutePath();
+        if (Files.exists(compilerLib)) {
+          this.libDirs.add(compilerLib);
         }
       }
-      if (this.libDirs == null) {
-        this.libDirs = new File[1];
-      }
+      this.libDirs.add(Path.of("/usr/lib"));
     }
-    this.libDirs[this.libDirs.length - 1] = new File("/usr/lib");
     return this.libDirs;
   }
 

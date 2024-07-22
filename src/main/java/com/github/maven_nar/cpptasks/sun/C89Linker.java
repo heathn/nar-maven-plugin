@@ -19,7 +19,8 @@
  */
 package com.github.maven_nar.cpptasks.sun;
 
-import java.io.File;
+import java.nio.file.Path;
+import java.util.List;
 import java.util.Vector;
 
 import com.github.maven_nar.cpptasks.CCTask;
@@ -72,16 +73,16 @@ public final class C89Linker extends CommandLineLinker {
   }
 
   @Override
-  public String[] addLibrarySets(final CCTask task, final LibrarySet[] libsets, final Vector<String> preargs,
-      final Vector<String> midargs, final Vector<String> endargs) {
+  public String[] addLibrarySets(final CCTask task, final List<LibrarySet> libsets, final List<String> preargs,
+      final List<String> midargs, final List<String> endargs) {
     super.addLibrarySets(task, libsets, preargs, midargs, endargs);
     final StringBuffer buf = new StringBuffer("-l");
     for (final LibrarySet set : libsets) {
-      final File libdir = set.getDir(null);
-      final String[] libs = set.getLibs();
+      final Path libdir = set.getDir(null);
+      final List<String> libs = set.getLibs();
       if (libdir != null) {
-        endargs.addElement("-L");
-        endargs.addElement(libdir.getAbsolutePath());
+        endargs.add("-L");
+        endargs.add(libdir.toAbsolutePath().toString());
       }
       for (final String lib : libs) {
         //
@@ -93,7 +94,7 @@ public final class C89Linker extends CommandLineLinker {
         buf.append(lib);
         //
         // add the argument to the list
-        endargs.addElement(buf.toString());
+        endargs.add(buf.toString());
       }
     }
     return null;
@@ -106,12 +107,12 @@ public final class C89Linker extends CommandLineLinker {
   }
 
   @Override
-  public String getCommandFileSwitch(final String commandFile) {
+  public String getCommandFileSwitch(final Path commandFile) {
     return "@" + commandFile;
   }
 
   @Override
-  public File[] getLibraryPath() {
+  public List<Path> getLibraryPath() {
     return CUtil.getPathFromEnvironment("LIB", ";");
   }
 
@@ -138,20 +139,20 @@ public final class C89Linker extends CommandLineLinker {
   }
 
   @Override
-  public String[] getOutputFileNames(final String baseName, final VersionInfo versionInfo) {
-    final String[] baseNames = super.getOutputFileNames(baseName, versionInfo);
+  public Path[] getOutputFileNames(final Path baseName, final VersionInfo versionInfo) {
+    final Path[] baseNames = super.getOutputFileNames(baseName, versionInfo);
     if (this.outputPrefix.length() > 0) {
       for (int i = 0; i < baseNames.length; i++) {
-        baseNames[i] = this.outputPrefix + baseNames[i];
+        baseNames[i] = Path.of(this.outputPrefix + baseNames[i]);
       }
     }
     return baseNames;
   }
 
   @Override
-  public String[] getOutputFileSwitch(final String outputFile) {
+  public String[] getOutputFileSwitch(final Path outputFile) {
     return new String[] {
-        "-o", outputFile
+        "-o", outputFile.toString()
     };
   }
 

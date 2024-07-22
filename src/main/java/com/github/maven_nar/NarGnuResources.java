@@ -20,6 +20,7 @@
 package com.github.maven_nar;
 
 import java.io.IOException;
+import java.nio.file.Files;
 
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
@@ -35,7 +36,7 @@ import org.apache.maven.plugins.annotations.Mojo;
 public class NarGnuResources extends AbstractGnuMojo {
   @Override
   public final void narExecute() throws MojoExecutionException, MojoFailureException {
-    if (getGnuSourceDirectory().exists()) {
+    if (Files.exists(getGnuSourceDirectory())) {
       int copied = 0;
 
       try {

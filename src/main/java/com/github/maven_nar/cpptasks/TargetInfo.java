@@ -19,7 +19,15 @@
  */
 package com.github.maven_nar.cpptasks;
 
-import java.io.File;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.stream.Collectors;
+
+import org.apache.maven.surefire.shared.lang3.function.Failable;
 
 import com.github.maven_nar.cpptasks.compiler.ProcessorConfiguration;
 
@@ -27,15 +35,14 @@ import com.github.maven_nar.cpptasks.compiler.ProcessorConfiguration;
  * A description of a file built or to be built
  */
 public final class TargetInfo {
-  private static final File[] emptyFileArray = new File[0];
-  private final/* final */ProcessorConfiguration config;
-  private final/* final */File output;
+  private final ProcessorConfiguration config;
+  private final Path output;
   private boolean rebuild;
-  private final/* final */File[] sources;
-  private File[] sysSources;
+  private final List<Path> sources;
+  private List<Path> sysSources;
 
-  public TargetInfo(final ProcessorConfiguration config, final File[] sources, final File[] sysSources,
-      final File output, boolean rebuild) {
+  public TargetInfo(final ProcessorConfiguration config, final List<Path> sources, final List<Path> sysSources,
+      final Path output, boolean rebuild) {
     if (config == null) {
       throw new NullPointerException("config");
     }
@@ -46,39 +53,33 @@ public final class TargetInfo {
       throw new NullPointerException("output");
     }
     this.config = config;
-    this.sources = sources.clone();
+    this.sources = new ArrayList<>(sources);
     if (sysSources == null) {
-      this.sysSources = emptyFileArray;
+      this.sysSources = Collections.emptyList();
     } else {
-      this.sysSources = sysSources.clone();
+      this.sysSources = new ArrayList<>(sysSources);
     }
     this.output = output;
     this.rebuild = rebuild;
     //
     // if the output doesn't exist, must rebuild it
     //
-    if (!output.exists()) {
+    if (Files.notExists(output)) {
       rebuild = true;
     }
   }
 
-  public String[] getAllSourcePaths() {
-    final String[] paths = new String[this.sysSources.length + this.sources.length];
-    for (int i = 0; i < this.sysSources.length; i++) {
-      paths[i] = this.sysSources[i].toString();
-    }
-    final int offset = this.sysSources.length;
-    for (int i = 0; i < this.sources.length; i++) {
-      paths[offset + i] = this.sources[i].toString();
-    }
+  public List<Path> getAllSourcePaths() {
+    List<Path> paths = new ArrayList<>();
+    paths.addAll(this.sysSources);
+    paths.addAll(this.sources);
     return paths;
   }
 
-  public File[] getAllSources() {
-    final File[] allSources = new File[this.sources.length + this.sysSources.length];
-    System.arraycopy(this.sysSources, 0, allSources, 0, this.sysSources.length);
-    final int offset = this.sysSources.length;
-    System.arraycopy(this.sources, 0, allSources, 0 + offset, this.sources.length);
+  public List<Path> getAllSources() {
+    List<Path> allSources = new ArrayList<>();
+    allSources.addAll(this.sysSources);
+    allSources.addAll(this.sources);
     return allSources;
   }
 
@@ -86,7 +87,7 @@ public final class TargetInfo {
     return this.config;
   }
 
-  public File getOutput() {
+  public Path getOutput() {
     return this.output;
   }
 
@@ -98,40 +99,34 @@ public final class TargetInfo {
    * Returns an array of SourceHistory objects (contains relative path and
    * last modified time) for the source[s] of this target
    */
-  public SourceHistory[] getSourceHistories(final String basePath) {
-    final SourceHistory[] histories = new SourceHistory[this.sources.length];
-    for (int i = 0; i < this.sources.length; i++) {
-      final String relativeName = CUtil.getRelativePath(basePath, this.sources[i]);
-      final long lastModified = this.sources[i].lastModified();
-      histories[i] = new SourceHistory(relativeName, lastModified);
-    }
-    return histories;
+  public List<SourceHistory> getSourceHistories(final Path basePath) {
+    return this.sources.stream()
+        .map(Failable.asFunction(source -> {
+          Path relativePath = basePath.relativize(source);
+          FileTime lastModified = Files.getLastModifiedTime(source);
+          return new SourceHistory(relativePath, lastModified);
+        }))
+        .collect(Collectors.toList());
   }
 
-  public String[] getSourcePaths() {
-    final String[] paths = new String[this.sources.length];
-    for (int i = 0; i < this.sources.length; i++) {
-      paths[i] = this.sources[i].toString();
-    }
-    return paths;
+  public List<String> getSourcePaths() {
+    return this.sources.stream()
+        .map(Path::toString)
+        .collect(Collectors.toList());
   }
 
-  public File[] getSources() {
-    final File[] clone = this.sources.clone();
-    return clone;
+  public List<Path> getSources() {
+    return Collections.unmodifiableList(this.sources);
   }
 
-  public String[] getSysSourcePaths() {
-    final String[] paths = new String[this.sysSources.length];
-    for (int i = 0; i < this.sysSources.length; i++) {
-      paths[i] = this.sysSources[i].toString();
-    }
-    return paths;
+  public List<String> getSysSourcePaths() {
+    return this.sysSources.stream()
+        .map(Path::toString)
+        .collect(Collectors.toList());
   }
 
-  public File[] getSysSources() {
-    final File[] clone = this.sysSources.clone();
-    return clone;
+  public List<Path> getSysSources() {
+    return Collections.unmodifiableList(this.sysSources);
   }
 
   public void mustRebuild() {

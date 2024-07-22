@@ -19,7 +19,7 @@
  */
 package com.github.maven_nar.cpptasks.ibm;
 
-import java.util.Vector;
+import java.util.List;
 
 import com.github.maven_nar.cpptasks.CCTask;
 import com.github.maven_nar.cpptasks.compiler.LinkType;
@@ -54,12 +54,12 @@ public final class VisualAgeLinker extends AbstractLdLinker {
 
   @Override
   public void
-      addImpliedArgs(final CCTask task, final boolean debug, final LinkType linkType, final Vector<String> args) {
+      addImpliedArgs(final CCTask task, final boolean debug, final LinkType linkType, final List<String> args) {
     if (debug) {
       // args.addElement("-g");
     }
     if (linkType.isSharedLibrary()) {
-      args.addElement("-qmkshrobj");
+      args.add("-qmkshrobj");
     }
   }
 

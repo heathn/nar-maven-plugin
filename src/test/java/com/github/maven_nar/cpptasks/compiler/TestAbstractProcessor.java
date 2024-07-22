@@ -21,6 +21,8 @@ package com.github.maven_nar.cpptasks.compiler;
 
 import junit.framework.TestCase;
 
+import java.nio.file.Path;
+
 import com.github.maven_nar.cpptasks.CCTask;
 import com.github.maven_nar.cpptasks.ProcessorDef;
 import com.github.maven_nar.cpptasks.VersionInfo;
@@ -58,8 +60,8 @@ public class TestAbstractProcessor extends TestCase {
     }
 
     @Override
-    public String[] getOutputFileNames(final String sourceFile, final VersionInfo versionInfo) {
-      return new String[0];
+    public Path[] getOutputFileNames(final Path sourceFile, final VersionInfo versionInfo) {
+      return new Path[0];
     }
 
     public String[][] getRuntimeLibraries(final boolean debug, final boolean multithreaded, final boolean staticLink) {
@@ -77,17 +79,17 @@ public class TestAbstractProcessor extends TestCase {
 
   public void failingtestBid() {
     final AbstractProcessor compiler = create();
-    int bid = compiler.bid("c:/foo\\bar\\hello.c");
+    int bid = compiler.bid(Path.of("c:/foo\\bar\\hello.c"));
     assertEquals(100, bid);
-    bid = compiler.bid("c:/foo\\bar/hello.c");
+    bid = compiler.bid(Path.of("c:/foo\\bar/hello.c"));
     assertEquals(100, bid);
-    bid = compiler.bid("c:/foo\\bar\\hello.h");
+    bid = compiler.bid(Path.of("c:/foo\\bar\\hello.h"));
     assertEquals(1, bid);
-    bid = compiler.bid("c:/foo\\bar/hello.h");
+    bid = compiler.bid(Path.of("c:/foo\\bar/hello.h"));
     assertEquals(1, bid);
-    bid = compiler.bid("c:/foo\\bar/hello.pas");
+    bid = compiler.bid(Path.of("c:/foo\\bar/hello.pas"));
     assertEquals(0, bid);
-    bid = compiler.bid("c:/foo\\bar/hello.java");
+    bid = compiler.bid(Path.of("c:/foo\\bar/hello.java"));
     assertEquals(0, bid);
   }
 

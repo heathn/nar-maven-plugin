@@ -19,6 +19,7 @@
  */
 package com.github.maven_nar.cpptasks.sun;
 
+import java.nio.file.Path;
 import java.util.Vector;
 
 import junit.framework.TestCase;
@@ -38,42 +39,42 @@ public class TestForteCCCompiler extends TestCase {
 
   public void testBidAssembly() {
     final ForteCCCompiler compiler = ForteCCCompiler.getInstance();
-    assertEquals(AbstractProcessor.DEFAULT_PROCESS_BID, compiler.bid("foo.s"));
+    assertEquals(AbstractProcessor.DEFAULT_PROCESS_BID, compiler.bid(Path.of("foo.s")));
   }
 
   public void testBidC() {
     final ForteCCCompiler compiler = ForteCCCompiler.getInstance();
-    assertEquals(AbstractProcessor.DEFAULT_PROCESS_BID, compiler.bid("foo.c"));
+    assertEquals(AbstractProcessor.DEFAULT_PROCESS_BID, compiler.bid(Path.of("foo.c")));
   }
 
   public void testBidCpp() {
     final ForteCCCompiler compiler = ForteCCCompiler.getInstance();
-    assertEquals(AbstractProcessor.DEFAULT_PROCESS_BID, compiler.bid("foo.C"));
+    assertEquals(AbstractProcessor.DEFAULT_PROCESS_BID, compiler.bid(Path.of("foo.C")));
   }
 
   public void testBidCpp2() {
     final ForteCCCompiler compiler = ForteCCCompiler.getInstance();
-    assertEquals(AbstractProcessor.DEFAULT_PROCESS_BID, compiler.bid("foo.cc"));
+    assertEquals(AbstractProcessor.DEFAULT_PROCESS_BID, compiler.bid(Path.of("foo.cc")));
   }
 
   public void testBidCpp3() {
     final ForteCCCompiler compiler = ForteCCCompiler.getInstance();
-    assertEquals(AbstractProcessor.DEFAULT_PROCESS_BID, compiler.bid("foo.cxx"));
+    assertEquals(AbstractProcessor.DEFAULT_PROCESS_BID, compiler.bid(Path.of("foo.cxx")));
   }
 
   public void testBidCpp4() {
     final ForteCCCompiler compiler = ForteCCCompiler.getInstance();
-    assertEquals(AbstractProcessor.DEFAULT_PROCESS_BID, compiler.bid("foo.cpp"));
+    assertEquals(AbstractProcessor.DEFAULT_PROCESS_BID, compiler.bid(Path.of("foo.cpp")));
   }
 
   public void testBidCpp5() {
     final ForteCCCompiler compiler = ForteCCCompiler.getInstance();
-    assertEquals(AbstractProcessor.DEFAULT_PROCESS_BID, compiler.bid("foo.c++"));
+    assertEquals(AbstractProcessor.DEFAULT_PROCESS_BID, compiler.bid(Path.of("foo.c++")));
   }
 
   public void testBidPreprocessed() {
     final ForteCCCompiler compiler = ForteCCCompiler.getInstance();
-    assertEquals(AbstractProcessor.DEFAULT_PROCESS_BID, compiler.bid("foo.i"));
+    assertEquals(AbstractProcessor.DEFAULT_PROCESS_BID, compiler.bid(Path.of("foo.i")));
   }
 
   /**

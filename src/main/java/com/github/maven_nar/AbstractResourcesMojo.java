@@ -20,18 +20,15 @@
 package com.github.maven_nar;
 
 import java.io.File;
-import java.io.FilenameFilter;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 import org.apache.maven.model.FileSet;
 import org.apache.maven.plugin.MojoExecutionException;
@@ -54,7 +51,7 @@ public abstract class AbstractResourcesMojo extends AbstractNarMojo {
    * Binary directory
    */
   @Parameter(defaultValue = "bin", required = true)
-  protected String resourceBinDir;
+  private String resourceBinDir;
 
   /**
    * Include directory
@@ -66,7 +63,7 @@ public abstract class AbstractResourcesMojo extends AbstractNarMojo {
    * Library directory
    */
   @Parameter(defaultValue = "lib", required = true)
-  protected String resourceLibDir;
+  private String resourceLibDir;
 
   /**
    * To look up Archiver/UnArchiver implementations
@@ -82,14 +79,14 @@ public abstract class AbstractResourcesMojo extends AbstractNarMojo {
     defaultIncludes.addExclude(NarUtil.DEFAULT_EXCLUDES);
   }
 
-  protected final int copyBinaries(final File srcDir, final String aol)
+  protected final int copyBinaries(final Path srcDir, final String aol)
       throws IOException, MojoExecutionException, MojoFailureException {
     int copied = 0;
 
     // copy binaries
-    final File binDir = new File(srcDir, this.resourceBinDir);
-    if (binDir.exists()) {
-      final File binDstDir = getLayout().getBinDirectory(getTargetDirectory(), getMavenProject().getArtifactId(),
+    final Path binDir = srcDir.resolve(getResourceBinDir());
+    if (Files.exists(binDir)) {
+      final Path binDstDir = getLayout().getBinDirectory(getTargetDirectory(), getMavenProject().getArtifactId(),
           getMavenProject().getVersion(), aol);
       getLog().debug("Copying binaries from " + binDir + " to " + binDstDir);
       copied += NarUtil.copyDirectoryStructure(binDir, binDstDir, null, NarUtil.DEFAULT_EXCLUDES);
@@ -98,13 +95,13 @@ public abstract class AbstractResourcesMojo extends AbstractNarMojo {
     return copied;
   }
 
-  protected final int copyIncludes(final File srcDir) throws IOException, MojoExecutionException, MojoFailureException {
+  protected final int copyIncludes(final Path srcDir) throws IOException, MojoExecutionException, MojoFailureException {
     if (resourceIncludes == null) {
       resourceIncludes = defaultIncludes;
     }
     int copied = 0;
-    String sourcePath = srcDir.getAbsolutePath();
-    final File includeDstDir = getLayout().getIncludeDirectory(
+    String sourcePath = srcDir.toAbsolutePath().toString();
+    final Path includeDstDir = getLayout().getIncludeDirectory(
         getTargetDirectory(), getMavenProject().getArtifactId(),
         getMavenProject().getVersion());
 
@@ -119,9 +116,9 @@ public abstract class AbstractResourcesMojo extends AbstractNarMojo {
       for (File file : files) {
         String dest = file.getAbsolutePath();
         dest = dest.substring(sourcePath.length() + 1);
-        File destination = new File(includeDstDir, dest);
+        Path destination = includeDstDir.resolve(dest);
         getLog().debug("Copying " + file + " to " + destination);
-        FileUtils.copyFile(file, destination);
+        FileUtils.copyFile(file, destination.toFile());
         copied++;
       }
     }
@@ -129,13 +126,13 @@ public abstract class AbstractResourcesMojo extends AbstractNarMojo {
     return copied;
   }
 
-  protected final int copyLibraries(final File srcDir, final String aol)
+  protected final int copyLibraries(final Path srcDir, final String aol)
       throws MojoFailureException, IOException, MojoExecutionException {
     int copied = 0;
 
     // copy libraries
-    File baseLibDir = new File(srcDir, this.resourceLibDir);
-    if (baseLibDir.exists()) {
+    Path baseLibDir = srcDir.resolve(this.resourceLibDir);
+    if (Files.exists(baseLibDir)) {
       // TODO: copyLibraries is used on more than just this artifact - this
       // check needs to be placed elsewhere
       if (getLibraries().isEmpty()) {
@@ -146,13 +143,13 @@ public abstract class AbstractResourcesMojo extends AbstractNarMojo {
         final Library library = (Library) element;
         final String type = library.getType();
 
-        File libDir = baseLibDir;
-        final File typedLibDir = new File(libDir, type);
-        if (typedLibDir.exists()) {
+        Path libDir = baseLibDir;
+        final Path typedLibDir = libDir.resolve(type);
+        if (Files.exists(typedLibDir)) {
           libDir = typedLibDir;
         }
 
-        final File libDstDir = getLayout().getLibDirectory(getTargetDirectory(), getMavenProject().getArtifactId(),
+        final Path libDstDir = getLayout().getLibDirectory(getTargetDirectory(), getMavenProject().getArtifactId(),
             getMavenProject().getVersion(), aol, type);
         getLog().debug("Copying libraries from " + libDir + " to " + libDstDir);
 
@@ -171,14 +168,14 @@ public abstract class AbstractResourcesMojo extends AbstractNarMojo {
           // is an import library.  Second, running "lib /list <.lib file>"
           // will print a list of object files if the lib file is a static
           // library.
-          Set<String> dllFiles = Files.list(Paths.get(libDir.getAbsolutePath()))
+          Set<String> dllFiles = Files.list(libDir)
             .filter(path -> path.toString().endsWith(".dll"))
             .map(path -> {
               String s = path.getFileName().toString();
               return s.substring(0, s.length() - 4);
             })
             .collect(Collectors.toSet());
-          Set<String> libFiles = Files.list(Paths.get(libDir.getAbsolutePath()))
+          Set<String> libFiles = Files.list(libDir)
             .filter(path -> path.toString().endsWith(".lib"))
             .map(path -> {
               String s = path.getFileName().toString();
@@ -223,7 +220,7 @@ public abstract class AbstractResourcesMojo extends AbstractNarMojo {
     return copied;
   }
 
-  protected final void copyResources(final File srcDir, final String aol)
+  protected final void copyResources(final Path srcDir, final String aol)
       throws MojoExecutionException, MojoFailureException {
     int copied = 0;
     try {
@@ -234,15 +231,15 @@ public abstract class AbstractResourcesMojo extends AbstractNarMojo {
       copied += copyLibraries(srcDir, aol);
 
       // unpack jar files
-      final File classesDirectory = new File(getOutputDirectory(), "classes");
-      classesDirectory.mkdirs();
-      final List<File> jars = FileUtils.getFiles(srcDir, "**/*.jar", null);
+      final Path classesDirectory = getOutputDirectory().resolve("classes");
+      Files.createDirectories(classesDirectory);
+      final List<File> jars = FileUtils.getFiles(srcDir.toFile(), "**/*.jar", null);
       for (final File jar : jars) {
         getLog().debug("Unpacking jar " + jar);
         UnArchiver unArchiver;
         unArchiver = this.archiverManager.getUnArchiver(NarConstants.NAR_ROLE_HINT);
         unArchiver.setSourceFile(jar);
-        unArchiver.setDestDirectory(classesDirectory);
+        unArchiver.setDestDirectory(classesDirectory.toFile());
         unArchiver.extract();
       }
     } catch (final IOException e) {
@@ -255,4 +252,11 @@ public abstract class AbstractResourcesMojo extends AbstractNarMojo {
     getLog().info("Copied " + copied + " resources for " + aol);
   }
 
+  public String getResourceBinDir() {
+    return resourceBinDir;
+  }
+
+  public String getResourceLibDir() {
+    return resourceLibDir;
+  }
 }

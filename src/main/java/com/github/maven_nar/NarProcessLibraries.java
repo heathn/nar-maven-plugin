@@ -20,8 +20,8 @@
 package com.github.maven_nar;
 
 import java.io.BufferedInputStream;
-import java.io.File;
 import java.io.IOException;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -66,16 +66,16 @@ public class NarProcessLibraries extends AbstractCompileMojo {
     for (final Library library : getLibraries()) {
       this.log.info("Processing library " + library);
       final String type = library.getType();
-      File outFile;
+      Path outFile;
       // Find what the output directory is
       if (type.equalsIgnoreCase(Library.EXECUTABLE)) {
-        final File outDir = getLayout().getBinDirectory(getTargetDirectory(), getMavenProject().getArtifactId(),
+        final Path outDir = getLayout().getBinDirectory(getTargetDirectory(), getMavenProject().getArtifactId(),
             getMavenProject().getVersion(), getAOL().toString());
-        outFile = new File(outDir, getOutput(false));
+        outFile = outDir.resolve(getOutput(false));
       } else {
-        final File outDir = getLayout().getLibDirectory(getTargetDirectory(), getMavenProject().getArtifactId(),
+        final Path outDir = getLayout().getLibDirectory(getTargetDirectory(), getMavenProject().getArtifactId(),
             getMavenProject().getVersion(), getAOL().toString(), type);
-        outFile = new File(outDir, getOutput(true));
+        outFile = outDir.resolve(getOutput(true));
       }
 
       // Then run the commands that are applicable for this library type
@@ -89,7 +89,7 @@ public class NarProcessLibraries extends AbstractCompileMojo {
 
   }
 
-  private void runCommand(final ProcessLibraryCommand command, final File outputFile)
+  private void runCommand(final ProcessLibraryCommand command, final Path outputFile)
       throws MojoFailureException, MojoExecutionException {
     final ProcessBuilder p = new ProcessBuilder(command.getCommandList());
     p.command().add(outputFile.toString());

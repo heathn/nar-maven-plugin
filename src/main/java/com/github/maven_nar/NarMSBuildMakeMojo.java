@@ -20,11 +20,15 @@
 package com.github.maven_nar;
 
 import java.io.BufferedReader;
-import java.io.File;
-import java.io.FileOutputStream;
-import java.io.FileReader;
 import java.io.IOException;
+import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.List;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
@@ -32,7 +36,6 @@ import org.apache.maven.plugins.annotations.LifecyclePhase;
 import org.apache.maven.plugins.annotations.Mojo;
 import org.apache.maven.plugins.annotations.Parameter;
 import org.apache.maven.plugins.annotations.ResolutionScope;
-import org.codehaus.plexus.util.FileUtils;
 
 /**
  * Runs MSBuild
@@ -87,20 +90,20 @@ public class NarMSBuildMakeMojo extends AbstractGnuMojo {
       return;
     }
 
-    File targetDir = new File(getTargetDirectory() + File.separator + "msbuild");
+    Path targetDir = getTargetDirectory().resolve("msbuild");
     // Copy everything under src/main to target
     getLog().info("Copying sources");
 
     try {
-      FileUtils.mkdir(targetDir.getPath());
+      Files.createDirectories(targetDir);
       NarUtil.copyDirectoryStructure(getGnuSourceDirectory(), targetDir, null, null);
     } catch (IOException e) {
       throw new MojoExecutionException("Failed to copy GNU sources", e);
     }
 
-    final String[] env = new String[] {
+    final List<String> env = List.of(
       "PATH=" + getMsvc().getPathVariable().getValue()
-    };
+    );
 
     Linker linker = getLinker();
     String strVersion = linker.getVersion(this);
@@ -112,7 +115,7 @@ public class NarMSBuildMakeMojo extends AbstractGnuMojo {
       // really does need to run
       boolean isValidMsBuildFile = false;
       try {
-        projectContents = readFile(new File(targetDir, msProjectFile));
+        projectContents = readFile(targetDir.resolve(msProjectFile));
         if (projectContents.indexOf("msbuild/2003") > 0) {
           isValidMsBuildFile = true;
         }
@@ -128,19 +131,16 @@ public class NarMSBuildMakeMojo extends AbstractGnuMojo {
         // Reading in the project file has automatically performed the
         // conversion as a convenience write out the project file.  It
         // may not be necessary but it's nice to be sure.
-        try {
-          FileOutputStream fos = new FileOutputStream(new File(targetDir, msProjectFile));
-          fos.write(projectContents.toString().getBytes());
-          fos.close();
+        try (OutputStream os = Files.newOutputStream(targetDir.resolve(msProjectFile))) {
+          os.write(projectContents.toString().getBytes());
         } catch (Exception e) {
           throw new MojoExecutionException(
               "Unable to update project file: " + e.getMessage(), e);
         }
 
         getLog().info("Running VCUpgrade");
-        final int result = NarUtil.runCommand("vcupgrade", new String[] {
-            msProjectFile
-        }, targetDir, env, getLog());
+        final int result = NarUtil.runCommand("vcupgrade",
+            List.of(msProjectFile), targetDir, env, getLog());
         if (result != 0) {
           throw new MojoExecutionException("'VCUpgrade' errcode: " + result);
         }
@@ -148,7 +148,7 @@ public class NarMSBuildMakeMojo extends AbstractGnuMojo {
 
         // Reread converted project file
         try {
-          projectContents = readFile(new File(targetDir, msProjectFile));
+          projectContents = readFile(targetDir.resolve(msProjectFile));
         } catch (Exception e) {
           throw new MojoExecutionException(
               "Unable to read project file: " + e.getMessage(), e);
@@ -206,11 +206,11 @@ public class NarMSBuildMakeMojo extends AbstractGnuMojo {
         }
       }
 
-      List<File> libDirs = getLibDirs();
+      List<Path> libDirs = getLibDirs();
       if (libDirs.size() > 0) {
         StringBuffer sb = new StringBuffer();
         for (int i = 0; i < libDirs.size(); i++) {
-          sb.append(libDirs.get(i)).append(";");
+          sb.append(libDirs.get(i).toAbsolutePath()).append(";");
         }
         int idx = projectContents.indexOf(linkDirTag);
         if (idx == -1) {
@@ -263,26 +263,19 @@ public class NarMSBuildMakeMojo extends AbstractGnuMojo {
       }
 
       // Write out updated project file
-      try {
-        FileOutputStream fos = new FileOutputStream(new File(targetDir, msProjectFile));
-        fos.write(projectContents.toString().getBytes());
-        fos.close();
+      try (OutputStream os = Files.newOutputStream(targetDir.resolve(msProjectFile))) {
+        os.write(projectContents.toString().getBytes(StandardCharsets.UTF_8));
       } catch (Exception e) {
         throw new MojoExecutionException(
             "Unable to update project file: " + e.getMessage(), e);
       }
 
       getLog().info("Running MSBuild");
-      String[] args = null;
-      if (msProjectArgs != null) {
-        args = msProjectArgs.split(" ");
-        String[] newArgs = new String[args.length+1];
-        System.arraycopy(args, 0, newArgs, 1, args.length);
-        args = newArgs;
-      } else {
-        args = new String[1];
-      }
-      args[0] = msProjectFile;
+      List<String> args = Stream.ofNullable(msProjectArgs)
+          .map(s -> s.split(" "))
+          .flatMap(Arrays::stream)
+          .collect(Collectors.toList());
+      args.add(0, msProjectFile);
       final int result = NarUtil.runCommand(getMsvc().getMSBuild().toString(),
         args, targetDir, env, getLog());
       if (result != 0) {
@@ -293,16 +286,14 @@ public class NarMSBuildMakeMojo extends AbstractGnuMojo {
     copyResources(targetDir, getAOL().toString());
   }
 
-  private StringBuffer readFile(File file) throws Exception {
+  private StringBuffer readFile(Path file) throws Exception {
     StringBuffer projectContents = null;
-    try {
+    try (BufferedReader reader = Files.newBufferedReader(file)) {
       projectContents = new StringBuffer();
-      BufferedReader reader = new BufferedReader(new FileReader(file));
       String text = null;
       while ((text = reader.readLine()) != null) {
         projectContents.append(text).append(System.getProperty("line.separator"));
       }
-      reader.close();
     } catch (Exception e) {
       throw new MojoExecutionException(
           "Unable to read project file: " + e.getMessage(), e);

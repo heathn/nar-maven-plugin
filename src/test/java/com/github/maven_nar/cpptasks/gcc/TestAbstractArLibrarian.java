@@ -19,6 +19,8 @@
  */
 package com.github.maven_nar.cpptasks.gcc;
 
+import java.nio.file.Path;
+
 import com.github.maven_nar.cpptasks.compiler.AbstractProcessor;
 import com.github.maven_nar.cpptasks.compiler.TestAbstractLinker;
 
@@ -57,7 +59,7 @@ public class TestAbstractArLibrarian extends TestAbstractLinker {
   @Override
   public void testBid() {
     final AbstractProcessor compiler = create();
-    final int bid = compiler.bid("c:/foo\\bar\\hello.o");
+    final int bid = compiler.bid(Path.of("c:/foo\\bar\\hello.o"));
     assertEquals(AbstractProcessor.DEFAULT_PROCESS_BID, bid);
   }
 
@@ -87,7 +89,7 @@ public class TestAbstractArLibrarian extends TestAbstractLinker {
    * See bug [ 687732 ] Filenames for gcc static library does start with lib
    */
   public void testOutputFileName() {
-    final String[] outputFiles = GccLibrarian.getInstance().getOutputFileNames("x", null);
-    assertEquals("libx.a", outputFiles[0]);
+    final Path[] outputFiles = GccLibrarian.getInstance().getOutputFileNames(Path.of("x"), null);
+    assertEquals(Path.of("libx.a"), outputFiles[0]);
   }
 }

@@ -21,8 +21,12 @@ package com.github.maven_nar;
 
 import java.io.File;
 import java.io.IOException;
-import java.util.Arrays;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Set;
+import java.util.stream.Collectors;
 
+import org.apache.commons.lang3.function.Failable;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
 import org.apache.maven.plugins.annotations.LifecyclePhase;
@@ -56,9 +60,9 @@ public class NarResourcesMojo extends AbstractResourcesMojo {
     // noarch resources
     try {
       int copied = 0;
-      final File noarchDir = new File(this.resourceDirectory, NarConstants.NAR_NO_ARCH);
-      if (noarchDir.exists()) {
-        final File noarchDstDir = getLayout().getNoArchDirectory(getTargetDirectory(),
+      final Path noarchDir = this.resourceDirectory.toPath().resolve(NarConstants.NAR_NO_ARCH);
+      if (Files.exists(noarchDir)) {
+        final Path noarchDstDir = getLayout().getNoArchDirectory(getTargetDirectory(),
             getMavenProject().getArtifactId(), getMavenProject().getVersion());
         getLog().debug("Copying noarch from " + noarchDir + " to " + noarchDstDir);
         copied += NarUtil.copyDirectoryStructure(noarchDir, noarchDstDir, null, NarUtil.DEFAULT_EXCLUDES);
@@ -69,27 +73,20 @@ public class NarResourcesMojo extends AbstractResourcesMojo {
     }
 
     // scan resourceDirectory for AOLs
-    final File aolDir = new File(this.resourceDirectory, NarConstants.NAR_AOL);
-    if (aolDir.exists()) {
-      final String[] aol = aolDir.list();
-      for (final String anAol : aol) {
-        // copy only resources of current AOL
-        if (this.resourcesCopyAOL && !anAol.equals(getAOL().toString())) {
-          continue;
-        }
-
-        boolean ignore = false;
-        for (final Object element : FileUtils.getDefaultExcludesAsList()) {
-          final String exclude = (String) element;
-          if (SelectorUtils.matchPath(exclude.replace('/', File.separatorChar), anAol)) {
-            ignore = true;
-            break;
-          }
-        }
-        if (!ignore) {
-          final File aolFile = new File(aolDir, anAol);
-          copyResources(aolFile, aolFile.getName());
-        }
+    final Path aolDir = this.resourceDirectory.toPath().resolve(NarConstants.NAR_AOL);
+    Set<String> excludes = FileUtils.getDefaultExcludesAsList().stream()
+      .map(str -> str.replace('/', File.separatorChar))
+      .collect(Collectors.toSet());
+      
+    if (Files.exists(aolDir)) {
+      try {
+        Files.list(aolDir)
+          // copy only resources of current AOL
+          .filter(dir -> !this.resourcesCopyAOL || dir.getFileName().toString().equals(getAOL().toString()))
+          .filter(dir -> excludes.stream().noneMatch(pattern -> SelectorUtils.matchPath(pattern, dir.getFileName().toString())))
+          .forEach(Failable.asConsumer(dir -> copyResources(dir, dir.getFileName().toString())));
+      } catch (IOException | RuntimeException e) {
+        throw new MojoExecutionException(e);
       }
     }
     

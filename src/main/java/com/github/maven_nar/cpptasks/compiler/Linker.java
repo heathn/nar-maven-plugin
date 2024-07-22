@@ -19,8 +19,9 @@
  */
 package com.github.maven_nar.cpptasks.compiler;
 
-import java.io.File;
 import java.io.IOException;
+import java.nio.file.Path;
+import java.util.List;
 
 import com.github.maven_nar.cpptasks.TargetMatcher;
 import com.github.maven_nar.cpptasks.VersionInfo;
@@ -49,19 +50,19 @@ public interface Linker extends Processor {
    * @param matcher
    *          bidded fileset
    */
-  void addVersionFiles(final VersionInfo versionInfo, final LinkType linkType, final File outputFile,
-      final boolean isDebug, final File objDir, final TargetMatcher matcher) throws IOException;
+  void addVersionFiles(final VersionInfo versionInfo, final LinkType linkType, final Path outputFile,
+      final boolean isDebug, final Path objDir, final TargetMatcher matcher) throws IOException;
 
   /**
    * Extracts the significant part of a library name to ensure there aren't
    * collisions
    */
-  String getLibraryKey(File libname);
+  String getLibraryKey(Path libname);
 
   /**
    * returns the library path for the linker
    */
-  File[] getLibraryPath();
+  List<Path> getLibraryPath();
 
   /**
    * Returns a set of filename patterns corresponding to library names.

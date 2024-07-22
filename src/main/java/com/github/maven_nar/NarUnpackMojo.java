@@ -21,7 +21,6 @@ package com.github.maven_nar;
 
 import java.util.List;
 
-import org.apache.maven.artifact.Artifact;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
 import org.apache.maven.plugins.annotations.LifecyclePhase;
@@ -29,6 +28,7 @@ import org.apache.maven.plugins.annotations.Mojo;
 import org.apache.maven.plugins.annotations.Parameter;
 import org.apache.maven.plugins.annotations.ResolutionScope;
 import org.apache.maven.shared.artifact.filter.collection.ScopeFilter;
+import org.eclipse.aether.artifact.Artifact;
 
 /**
  * Unpacks NAR files needed for compilation. Unpacking happens in the project
@@ -45,19 +45,19 @@ public class NarUnpackMojo extends AbstractDependencyMojo {
    * List of tests to create
    */
   @Parameter
-  private List tests;
+  private List<Test> tests;
   
   /**
    * List the dependencies needed for compilation.
    */
   @Override
   protected ScopeFilter getArtifactScopeFilter() {
-    return new ScopeFilter( Artifact.SCOPE_COMPILE, null );
+    return new ScopeFilter( org.apache.maven.artifact.Artifact.SCOPE_COMPILE, null );
   }
 
   @Override
   public final void narExecute() throws MojoExecutionException, MojoFailureException {
-    final List<AttachedNarArtifact> attachedNarArtifacts = getAttachedNarArtifacts(libraries);
+    final List<Artifact> attachedNarArtifacts = getAttachedNarArtifacts(libraries);
     unpackAttachedNars(attachedNarArtifacts);
   }
 }

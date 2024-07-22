@@ -19,7 +19,9 @@
  */
 package com.github.maven_nar.cpptasks.msvc;
 
-import java.io.File;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.List;
 
 /**
  * Test for Microsoft Developer Studio linker
@@ -32,11 +34,11 @@ public class TestInstalledMsvcLinker extends TestMsvcLinker {
   }
 
   public void failingtestGetLibraryPath() {
-    final File[] libpath = MsvcLinker.getInstance().getLibraryPath();
+    final List<Path> libpath = MsvcLinker.getInstance().getLibraryPath();
     //
     // unless you tweak the library path
     // it should have more thean three entries
-    assertTrue(libpath.length >= 2);
+    assertTrue(libpath.size() >= 2);
     //
     // check if these files can be found
     //
@@ -44,10 +46,10 @@ public class TestInstalledMsvcLinker extends TestMsvcLinker {
         "kernel32.lib", "advapi32.lib", "msvcrt.lib", "mfc42.lib", "mfc70.lib"
     };
     final boolean[] libfound = new boolean[libnames.length];
-    for (final File element : libpath) {
+    for (final Path element : libpath) {
       for (int j = 0; j < libnames.length; j++) {
-        final File libfile = new File(element, libnames[j]);
-        if (libfile.exists()) {
+        final Path libfile = element.resolve(libnames[j]);
+        if (Files.exists(libfile)) {
           libfound[j] = true;
         }
       }

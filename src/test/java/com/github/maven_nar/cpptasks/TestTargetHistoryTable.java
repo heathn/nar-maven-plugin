@@ -19,9 +19,11 @@
  */
 package com.github.maven_nar.cpptasks;
 
-import java.io.File;
-import java.io.FileOutputStream;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Collections;
+import java.util.List;
 
 import com.github.maven_nar.cpptasks.compiler.ProcessorConfiguration;
 
@@ -36,7 +38,7 @@ public class TestTargetHistoryTable extends TestXMLConsumer {
     }
 
     @Override
-    public int bid(final String fileName) {
+    public int bid(final Path fileName) {
       return 100;
     }
 
@@ -46,15 +48,15 @@ public class TestTargetHistoryTable extends TestXMLConsumer {
     }
 
     @Override
-    public String[] getOutputFileNames(final String baseName, final VersionInfo versionInfo) {
-      return new String[] {
+    public Path[] getOutputFileNames(final Path baseName, final VersionInfo versionInfo) {
+      return new Path[] {
         baseName
       };
     }
 
     @Override
-    public ProcessorParam[] getParams() {
-      return new ProcessorParam[0];
+    public List<ProcessorParam> getParams() {
+      return Collections.emptyList();
     }
 
     @Override
@@ -84,7 +86,7 @@ public class TestTargetHistoryTable extends TestXMLConsumer {
       copyResourceToTmpDir("openshore/history.xml", "history.xml");
       final CCTask task = new CCTask();
       final String tmpDir = System.getProperty("java.io.tmpdir");
-      final TargetHistoryTable history = new TargetHistoryTable(task, new File(tmpDir));
+      final TargetHistoryTable history = new TargetHistoryTable(task, Path.of(tmpDir));
     } finally {
       deleteTmpFile("history.xml");
     }
@@ -100,7 +102,7 @@ public class TestTargetHistoryTable extends TestXMLConsumer {
       copyResourceToTmpDir("xerces-c/history.xml", "history.xml");
       final CCTask task = new CCTask();
       final String tmpDir = System.getProperty("java.io.tmpdir");
-      final TargetHistoryTable history = new TargetHistoryTable(task, new File(tmpDir));
+      final TargetHistoryTable history = new TargetHistoryTable(task, Path.of(tmpDir));
     } finally {
       deleteTmpFile("history.xml");
     }
@@ -112,36 +114,27 @@ public class TestTargetHistoryTable extends TestXMLConsumer {
    * @throws IOException
    */
   public void testUpdateTimeResolution() throws IOException {
-    File compiledFile = null;
-
+    Path compiledFile = null;
+    Path historyFile = null;
     try {
       //
       // delete any history file that might exist
       // in the test output directory
-      final String tempDir = System.getProperty("java.io.tmpdir");
-      File historyFile = new File(tempDir, "history.xml");
-      historyFile.deleteOnExit();
-      if (historyFile.exists()) {
-        historyFile.delete();
-      }
-      final TargetHistoryTable table = new TargetHistoryTable(null, new File(tempDir));
+      final Path tempDir = Path.of(System.getProperty("java.io.tmpdir"));
+      historyFile = tempDir.resolve("history.xml");
+      Files.deleteIfExists(historyFile);
+      final TargetHistoryTable table = new TargetHistoryTable(null, tempDir);
       //
       // create a dummy compiled unit
       //
-      compiledFile = new File(tempDir, "dummy.o");
-      final FileOutputStream compiledStream = new FileOutputStream(compiledFile);
-      compiledStream.close();
-      //
-      // lastModified times can be slightly less than
-      // task start time due to file system resolution.
-      // Mimic this by slightly incrementing the last modification time.
-      //
-      final long startTime = compiledFile.lastModified() + 1;
+      compiledFile = tempDir.resolve("dummy.o");
+      Files.createFile(compiledFile);
+  
       //
       // update the table
       //
-      table.update(new MockProcessorConfiguration(), new String[] {
-        "dummy.o"
+      table.update(new MockProcessorConfiguration(), new Path[] {
+        Path.of("dummy.o")
       }, null);
       //
       // commit. If "compiled" file was judged to be
@@ -149,13 +142,11 @@ public class TestTargetHistoryTable extends TestXMLConsumer {
       //
       table.commit();
       historyFile = table.getHistoryFile();
-      assertTrue("History file was not created", historyFile.exists());
-      assertTrue("History file was empty", historyFile.length() > 10);
+      assertTrue("History file was not created", Files.exists(historyFile));
+      assertTrue("History file was empty", Files.size(historyFile) > 10);
     } finally {
-      if (compiledFile != null && compiledFile.exists()) {
-        compiledFile.delete();
-      }
-
+      Files.deleteIfExists(compiledFile);
+      Files.deleteIfExists(historyFile);
     }
   }
 }

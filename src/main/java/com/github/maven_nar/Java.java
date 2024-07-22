@@ -19,7 +19,8 @@
  */
 package com.github.maven_nar;
 
-import java.io.File;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 
 import org.apache.maven.plugin.MojoExecutionException;
@@ -51,7 +52,7 @@ public class Java {
    * "${java.home}/include/<i>os-specific</i>".
    */
   @Parameter
-  private List includePaths;
+  private List<String> includePaths;
 
   /**
    * Add Java Runtime to linker
@@ -80,11 +81,10 @@ public class Java {
 
   public final void addIncludePaths(final CCTask task, final String outType)
       throws MojoFailureException, MojoExecutionException {
-    if (this.include || this.mojo.getJavah().getJniDirectory().exists()) {
+    if (this.include || Files.exists(this.mojo.getJavah().getJniDirectory())) {
       if (this.includePaths != null) {
-        for (final Object includePath : this.includePaths) {
-          final String path = (String) includePath;
-          task.createIncludePath().setPath(new File(this.mojo.getJavaHome(this.mojo.getAOL()), path).getPath());
+        for (final String includePath : this.includePaths) {
+          task.createIncludePath().setPath(this.mojo.getJavaHome(this.mojo.getAOL()).resolve(includePath).toString());
         }
       } else {
         final String prefix = this.mojo.getAOL().getKey() + ".java.";
@@ -92,14 +92,14 @@ public class Java {
         if (includes != null) {
           final String[] path = includes.split(";");
           for (final String element : path) {
-            task.createIncludePath().setPath(new File(this.mojo.getJavaHome(this.mojo.getAOL()), element).getPath());
+            task.createIncludePath().setPath(this.mojo.getJavaHome(this.mojo.getAOL()).resolve(element).toString());
           }
         }
       }
     }
   }
 
-  public final void addRuntime(final CCTask task, final File javaHome, final String os, final String prefix)
+  public final void addRuntime(final CCTask task, final Path javaHome, final String os, final String prefix)
       throws MojoFailureException {
     if (this.link) {
       if (os.equals(OS.MACOSX)) {
@@ -129,7 +129,7 @@ public class Java {
         final LibrarySet libset = new LibrarySet();
         libset.setProject(this.mojo.getAntProject());
         libset.setLibs(new CUtil.StringArrayBuilder(this.runtime));
-        libset.setDir(new File(javaHome, this.runtimeDirectory));
+        libset.setDir(javaHome.resolve(this.runtimeDirectory));
         task.addLibset(libset);
       }
     }

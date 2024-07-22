@@ -19,7 +19,9 @@
  */
 package com.github.maven_nar.cpptasks.gcc;
 
-import java.io.File;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Vector;
 
 import junit.framework.TestCase;
@@ -131,18 +133,19 @@ public class TestAbstractLdLinker extends TestCase {
   public void testAddLibrarySetDirSwitch() {
     final AbstractLdLinker linker = getLinker();
     final CCTask task = new CCTask();
-    final LibrarySet[] sets = new LibrarySet[] {
-      new LibrarySet()
-    };
+
     /* throws an Exception in setLibs otherwise */
-    sets[0].setProject(new org.apache.tools.ant.Project());
-    sets[0].setDir(new File("/foo"));
-    sets[0].setLibs(new CUtil.StringArrayBuilder("bart,cart,dart"));
-    final Vector preargs = new Vector();
-    final Vector midargs = new Vector();
-    final Vector endargs = new Vector();
+    LibrarySet set = new LibrarySet();
+    set.setProject(new org.apache.tools.ant.Project());
+    set.setDir(Path.of("/foo"));
+    set.setLibs(new CUtil.StringArrayBuilder("bart,cart,dart"));
+    final List<LibrarySet> sets = List.of(set);
+
+    final List<String> preargs = new ArrayList<>();
+    final List<String> midargs = new ArrayList<>();
+    final List<String> endargs = new ArrayList<>();
     final String[] rc = linker.addLibrarySets(task, sets, preargs, midargs, endargs);
-    final String libdirSwitch = (String) endargs.elementAt(0);
+    final String libdirSwitch = endargs.get(0);
     assertEquals(libdirSwitch.substring(0, 2), "-L");
     //
     // can't have space after -L or will break Mac OS X
@@ -155,19 +158,20 @@ public class TestAbstractLdLinker extends TestCase {
     System.setProperty("os.name", "Mac OS X");
     final AbstractLdLinker linker = getLinker();
     final CCTask task = new CCTask();
-    final LibrarySet[] sets = new LibrarySet[] {
-      new LibrarySet()
-    };
+
     /* throws an Exception in setLibs otherwise */
-    sets[0].setProject(new org.apache.tools.ant.Project());
-    sets[0].setDir(new File("/foo"));
+    LibrarySet set = new LibrarySet();
+    set.setProject(new org.apache.tools.ant.Project());
+    set.setDir(Path.of("/foo"));
     final LibraryTypeEnum libType = new LibraryTypeEnum();
     libType.setValue("framework");
-    sets[0].setType(libType);
-    sets[0].setLibs(new CUtil.StringArrayBuilder("bart,cart,dart"));
-    final Vector preargs = new Vector();
-    final Vector midargs = new Vector();
-    final Vector endargs = new Vector();
+    set.setType(libType);
+    set.setLibs(new CUtil.StringArrayBuilder("bart,cart,dart"));
+    final List<LibrarySet> sets = List.of(set);
+
+    final List<String> preargs = new ArrayList<>();
+    final List<String> midargs = new ArrayList<>();
+    final List<String> endargs = new ArrayList<>();
     final String[] rc = linker.addLibrarySets(task, sets, preargs, midargs, endargs);
     // FIXME NAR-103
     // BEGINFREEHEP
@@ -178,11 +182,11 @@ public class TestAbstractLdLinker extends TestCase {
      * assertEquals("-framework dart", (String) endargs.elementAt(3));
      * assertEquals(endargs.size(), 4);
      */
-    assertEquals("-F", ((String) endargs.elementAt(0)).substring(0, 2));
-    assertEquals("-framework", (String) endargs.elementAt(1));
-    assertEquals("bart", (String) endargs.elementAt(2));
-    assertEquals("cart", (String) endargs.elementAt(3));
-    assertEquals("dart", (String) endargs.elementAt(4));
+    assertEquals("-F", endargs.get(0).substring(0, 2));
+    assertEquals("-framework", endargs.get(1));
+    assertEquals("bart", endargs.get(2));
+    assertEquals("cart", endargs.get(3));
+    assertEquals("dart", endargs.get(4));
     assertEquals(endargs.size(), 5);
     // ENDFREEHEP
   }
@@ -191,27 +195,28 @@ public class TestAbstractLdLinker extends TestCase {
     System.setProperty("os.name", "VAX/VMS");
     final AbstractLdLinker linker = getLinker();
     final CCTask task = new CCTask();
-    final LibrarySet[] sets = new LibrarySet[] {
-      new LibrarySet()
-    };
+
     /* throws an Exception in setLibs otherwise */
-    sets[0].setProject(new org.apache.tools.ant.Project());
-    sets[0].setDir(new File("/foo"));
+    LibrarySet set = new LibrarySet();
+    set.setProject(new org.apache.tools.ant.Project());
+    set.setDir(Path.of("/foo"));
     final LibraryTypeEnum libType = new LibraryTypeEnum();
     libType.setValue("framework");
-    sets[0].setType(libType);
-    sets[0].setLibs(new CUtil.StringArrayBuilder("bart,cart,dart"));
-    final Vector preargs = new Vector();
-    final Vector midargs = new Vector();
-    final Vector endargs = new Vector();
+    set.setType(libType);
+    set.setLibs(new CUtil.StringArrayBuilder("bart,cart,dart"));
+    final List<LibrarySet> sets = List.of(set);
+
+    final List<String> preargs = new ArrayList<>();
+    final List<String> midargs = new ArrayList<>();
+    final List<String> endargs = new ArrayList<>();
     final String[] rc = linker.addLibrarySets(task, sets, preargs, midargs, endargs);
-    assertEquals("-L", ((String) endargs.elementAt(0)).substring(0, 2));
+    assertEquals("-L", endargs.get(0).substring(0, 2));
     // FIXME NAR-103
     // BEGINFREEHEP
     // assertEquals("-Bdynamic", (String) endargs.elementAt(1));
-    assertEquals("-lbart", (String) endargs.elementAt(1));
-    assertEquals("-lcart", (String) endargs.elementAt(2));
-    assertEquals("-ldart", (String) endargs.elementAt(3));
+    assertEquals("-lbart", endargs.get(1));
+    assertEquals("-lcart", endargs.get(2));
+    assertEquals("-ldart", endargs.get(3));
     assertEquals(endargs.size(), 4);
     // ENDFREEHEP
   }
@@ -219,58 +224,65 @@ public class TestAbstractLdLinker extends TestCase {
   public void testAddLibrarySetLibSwitch() {
     final AbstractLdLinker linker = getLinker();
     final CCTask task = new CCTask();
-    final LibrarySet[] sets = new LibrarySet[] {
-      new LibrarySet()
-    };
+
     /* throws an Exception in setLibs otherwise */
-    sets[0].setProject(new org.apache.tools.ant.Project());
-    sets[0].setDir(new File("/foo"));
-    sets[0].setLibs(new CUtil.StringArrayBuilder("bart,cart,dart"));
-    final Vector preargs = new Vector();
-    final Vector midargs = new Vector();
-    final Vector endargs = new Vector();
+    LibrarySet set = new LibrarySet();
+    set.setProject(new org.apache.tools.ant.Project());
+    set.setDir(Path.of("/foo"));
+    set.setLibs(new CUtil.StringArrayBuilder("bart,cart,dart"));
+    final List<LibrarySet> sets = List.of(set);
+
+    final List<String> preargs = new ArrayList<>();
+    final List<String> midargs = new ArrayList<>();
+    final List<String> endargs = new ArrayList<>();
     final String[] rc = linker.addLibrarySets(task, sets, preargs, midargs, endargs);
-    assertEquals("-lbart", (String) endargs.elementAt(1));
-    assertEquals("-lcart", (String) endargs.elementAt(2));
-    assertEquals("-ldart", (String) endargs.elementAt(3));
+    assertEquals("-lbart", endargs.get(1));
+    assertEquals("-lcart", endargs.get(2));
+    assertEquals("-ldart", endargs.get(3));
     assertEquals(endargs.size(), 4);
   }
 
   public void testAddLibraryStatic() {
     final AbstractLdLinker linker = getLinker();
     final CCTask task = new CCTask();
-    final LibrarySet[] sets = new LibrarySet[] {
-        new LibrarySet(), new LibrarySet(), new LibrarySet()
-    };
+
     /* throws an Exception in setLibs otherwise */
-    sets[0].setProject(new org.apache.tools.ant.Project());
-    sets[0].setLibs(new CUtil.StringArrayBuilder("bart"));
-    sets[1].setProject(new org.apache.tools.ant.Project());
-    sets[1].setLibs(new CUtil.StringArrayBuilder("cart"));
+    final List<LibrarySet> sets = new ArrayList<>();
+    LibrarySet set = new LibrarySet();
+    set.setProject(new org.apache.tools.ant.Project());
+    set.setLibs(new CUtil.StringArrayBuilder("bart"));
+    sets.add(set);
+    set = new LibrarySet();
+    set.setProject(new org.apache.tools.ant.Project());
+    set.setLibs(new CUtil.StringArrayBuilder("cart"));
     final LibraryTypeEnum libType = new LibraryTypeEnum();
     libType.setValue("static");
-    sets[1].setType(libType);
-    sets[2].setProject(new org.apache.tools.ant.Project());
-    sets[2].setLibs(new CUtil.StringArrayBuilder("dart"));
-    final Vector preargs = new Vector();
-    final Vector midargs = new Vector();
-    final Vector endargs = new Vector();
+    set.setType(libType);
+    sets.add(set);
+    set = new LibrarySet();
+    set.setProject(new org.apache.tools.ant.Project());
+    set.setLibs(new CUtil.StringArrayBuilder("dart"));
+    sets.add(set);
+
+    final List<String> preargs = new ArrayList<>();
+    final List<String> midargs = new ArrayList<>();
+    final List<String> endargs = new ArrayList<>();
     final String[] rc = linker.addLibrarySets(task, sets, preargs, midargs, endargs);
     // for (int i=0; i<endargs.size(); i++) System.err.println(endargs.get( i
     // ));
     // NAR-103
     // BEGINFREEHEP
     if (System.getProperty("os.name").equals("Mac OS X")) {
-      assertEquals("-lbart", (String) endargs.elementAt(0));
-      assertEquals("-lcart", (String) endargs.elementAt(1));
-      assertEquals("-ldart", (String) endargs.elementAt(2));
+      assertEquals("-lbart", endargs.get(0));
+      assertEquals("-lcart", endargs.get(1));
+      assertEquals("-ldart", endargs.get(2));
       assertEquals(endargs.size(), 3);
     } else {
-      assertEquals("-lbart", (String) endargs.elementAt(0));
-      assertEquals("-Bstatic", (String) endargs.elementAt(1));
-      assertEquals("-lcart", (String) endargs.elementAt(2));
-      assertEquals("-Bdynamic", (String) endargs.elementAt(3));
-      assertEquals("-ldart", (String) endargs.elementAt(4));
+      assertEquals("-lbart", endargs.get(0));
+      assertEquals("-Bstatic", endargs.get(1));
+      assertEquals("-lcart", endargs.get(2));
+      assertEquals("-Bdynamic", endargs.get(3));
+      assertEquals("-ldart", endargs.get(4));
       assertEquals(endargs.size(), 5);
     }
     // ENDFREEHEP
@@ -279,16 +291,17 @@ public class TestAbstractLdLinker extends TestCase {
   public void testLibReturnValue() {
     final AbstractLdLinker linker = getLinker();
     final CCTask task = new CCTask();
-    final LibrarySet[] sets = new LibrarySet[] {
-      new LibrarySet()
-    };
+
     /* throws an Exception in setLibs otherwise */
-    sets[0].setProject(new org.apache.tools.ant.Project());
-    sets[0].setDir(new File("/foo"));
-    sets[0].setLibs(new CUtil.StringArrayBuilder("bart,cart,dart"));
-    final Vector preargs = new Vector();
-    final Vector midargs = new Vector();
-    final Vector endargs = new Vector();
+    LibrarySet set = new LibrarySet();
+    set.setProject(new org.apache.tools.ant.Project());
+    set.setDir(Path.of("/foo"));
+    set.setLibs(new CUtil.StringArrayBuilder("bart,cart,dart"));
+    final List<LibrarySet> sets = List.of(set);
+
+    final List<String> preargs = new ArrayList<>();
+    final List<String> midargs = new ArrayList<>();
+    final List<String> endargs = new ArrayList<>();
     final String[] rc = linker.addLibrarySets(task, sets, preargs, midargs, endargs);
     assertEquals(3, rc.length);
     assertEquals("bart", rc[0]);

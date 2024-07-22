@@ -21,13 +21,17 @@ package com.github.maven_nar.cpptasks;
 
 import java.io.BufferedWriter;
 import java.io.File;
-import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.io.OutputStreamWriter;
 import java.io.UnsupportedEncodingException;
-import java.util.Enumeration;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
+import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Hashtable;
-import java.util.Vector;
+import java.util.List;
 
 import javax.xml.parsers.ParserConfigurationException;
 import javax.xml.parsers.SAXParser;
@@ -50,13 +54,13 @@ public final class DependencyTable {
    * SAX parse events
    */
   private class DependencyTableHandler extends DefaultHandler {
-    private final File baseDir;
+    private final Path baseDir;
     private final DependencyTable dependencyTable;
     private String includePath;
-    private final Vector includes;
-    private String source;
-    private long sourceLastModified;
-    private final Vector sysIncludes;
+    private final List<Path> includes;
+    private Path source;
+    private FileTime sourceLastModified;
+    private final List<Path> sysIncludes;
 
     /**
      * Constructor
@@ -66,11 +70,11 @@ public final class DependencyTable {
      * @param outputFiles
      *          existing files in output directory
      */
-    private DependencyTableHandler(final DependencyTable dependencyTable, final File baseDir) {
+    private DependencyTableHandler(final DependencyTable dependencyTable, final Path baseDir) {
       this.dependencyTable = dependencyTable;
       this.baseDir = baseDir;
-      this.includes = new Vector();
-      this.sysIncludes = new Vector();
+      this.includes = new ArrayList<>();
+      this.sysIncludes = new ArrayList<>();
       this.source = null;
     }
 
@@ -84,17 +88,22 @@ public final class DependencyTable {
       //
       if (qName.equals("source")) {
         if (this.source != null && this.includePath != null) {
-          final File existingFile = new File(this.baseDir, this.source);
+          final Path existingFile = this.baseDir.resolve(this.source);
           //
           // if the file exists and the time stamp is right
           // preserve the dependency info
-          if (existingFile.exists()) {
+          if (Files.exists(existingFile)) {
             //
             // would have expected exact matches
             // but was seeing some unexpected difference by
             // a few tens of milliseconds, as long
             // as the times are within a second
-            final long existingLastModified = existingFile.lastModified();
+            FileTime existingLastModified;
+            try {
+              existingLastModified = Files.getLastModifiedTime(existingFile);
+            } catch (IOException e) {
+              existingLastModified = this.sourceLastModified;
+            }
             if (!CUtil.isSignificantlyAfter(existingLastModified, this.sourceLastModified)
                 && !CUtil.isSignificantlyBefore(existingLastModified, this.sourceLastModified)) {
               final DependencyInfo dependInfo = new DependencyInfo(this.includePath, this.source,
@@ -103,7 +112,7 @@ public final class DependencyTable {
             }
           }
           this.source = null;
-          this.includes.setSize(0);
+          this.includes.clear();
         }
       } else {
         //
@@ -126,10 +135,10 @@ public final class DependencyTable {
       // if includes, then add relative file name to vector
       //
       if (qName.equals("include")) {
-        this.includes.addElement(atts.getValue("file"));
+        this.includes.add(Path.of(atts.getValue("file")));
       } else {
         if (qName.equals("sysinclude")) {
-          this.sysIncludes.addElement(atts.getValue("file"));
+          this.sysIncludes.add(Path.of(atts.getValue("file")));
         } else {
           //
           // if source then
@@ -137,10 +146,10 @@ public final class DependencyTable {
           // modification time and reset includes vector
           //
           if (qName.equals("source")) {
-            this.source = atts.getValue("file");
-            this.sourceLastModified = Long.parseLong(atts.getValue("lastModified"), 16);
-            this.includes.setSize(0);
-            this.sysIncludes.setSize(0);
+            this.source = Path.of(atts.getValue("file"));
+            this.sourceLastModified = FileTime.from(Instant.parse(atts.getValue("lastModified")));
+            this.includes.clear();
+            this.sysIncludes.clear();
           } else {
             if (qName.equals("includePath")) {
               this.includePath = atts.getValue("signature");
@@ -177,10 +186,10 @@ public final class DependencyTable {
 
   public class TimestampChecker extends DependencyVisitor {
     private boolean noNeedToRebuild;
-    private final long outputLastModified;
+    private final FileTime outputLastModified;
     private final boolean rebuildOnStackExhaustion;
 
-    public TimestampChecker(final long outputLastModified, final boolean rebuildOnStackExhaustion) {
+    public TimestampChecker(final FileTime outputLastModified, final boolean rebuildOnStackExhaustion) {
       this.outputLastModified = outputLastModified;
       this.noNeedToRebuild = true;
       this.rebuildOnStackExhaustion = rebuildOnStackExhaustion;
@@ -253,14 +262,14 @@ public final class DependencyTable {
     }
   }
 
-  private final/* final */File baseDir;
-  private String baseDirPath;
+  private final Path baseDir;
+
   /**
    * a hashtable of DependencyInfo[] keyed by output file name
    */
-  private final Hashtable dependencies = new Hashtable();
+  private final Hashtable<Path, DependencyInfo[]> dependencies = new Hashtable<>();
   /** The file the cache was loaded from. */
-  private final/* final */File dependenciesFile;
+  private final Path dependenciesFile;
   /** Flag indicating whether the cache should be written back to file. */
   private boolean dirty;
 
@@ -271,20 +280,15 @@ public final class DependencyTable {
    * @param baseDir
    *          output directory for task
    */
-  public DependencyTable(final File baseDir) {
+  public DependencyTable(final Path baseDir) {
     if (baseDir == null) {
       throw new NullPointerException("baseDir");
     }
     this.baseDir = baseDir;
-    try {
-      this.baseDirPath = baseDir.getCanonicalPath();
-    } catch (final IOException ex) {
-      this.baseDirPath = baseDir.toString();
-    }
     this.dirty = false;
     //
     // load any existing dependencies from file
-    this.dependenciesFile = new File(baseDir, "dependencies.xml");
+    this.dependenciesFile = baseDir.resolve("dependencies.xml");
   }
 
   public void commit(final CCTask task) {
@@ -296,13 +300,13 @@ public final class DependencyTable {
       // walk through dependencies to get vector of include paths
       // identifiers
       //
-      final Vector includePaths = getIncludePaths();
+      final List<String> includePaths = getIncludePaths();
       //
       //
       // write dependency file
       //
       try {
-        final FileOutputStream outStream = new FileOutputStream(this.dependenciesFile);
+        final OutputStream outStream = Files.newOutputStream(this.dependenciesFile);
         OutputStreamWriter streamWriter;
         //
         // Early VM's may not have UTF-8 support
@@ -322,9 +326,8 @@ public final class DependencyTable {
         writer.write("'?>\n");
         writer.write("<dependencies>\n");
         final StringBuffer buf = new StringBuffer();
-        final Enumeration includePathEnum = includePaths.elements();
-        while (includePathEnum.hasMoreElements()) {
-          writeIncludePathDependencies((String) includePathEnum.nextElement(), writer, buf);
+        for (String includePath : includePaths) {
+          writeIncludePathDependencies(includePath, writer, buf);
         }
         writer.write("</dependencies>\n");
         writer.close();
@@ -336,18 +339,11 @@ public final class DependencyTable {
   }
 
   /**
-   * Returns an enumerator of DependencyInfo's
-   */
-  public Enumeration elements() {
-    return this.dependencies.elements();
-  }
-
-  /**
    * This method returns a DependencyInfo for the specific source file and
    * include path identifier
    *
    */
-  public DependencyInfo getDependencyInfo(final String sourceRelativeName, final String includePathIdentifier) {
+  public DependencyInfo getDependencyInfo(final Path sourceRelativeName, final String includePathIdentifier) {
     DependencyInfo dependInfo = null;
     final DependencyInfo[] dependInfos = (DependencyInfo[]) this.dependencies.get(sourceRelativeName);
     if (dependInfos != null) {
@@ -361,24 +357,20 @@ public final class DependencyTable {
     return null;
   }
 
-  private Vector getIncludePaths() {
-    final Vector includePaths = new Vector();
-    DependencyInfo[] dependInfos;
-    final Enumeration dependenciesEnum = this.dependencies.elements();
-    while (dependenciesEnum.hasMoreElements()) {
-      dependInfos = (DependencyInfo[]) dependenciesEnum.nextElement();
-      for (final DependencyInfo dependInfo : dependInfos) {
+  private List<String> getIncludePaths() {
+    final List<String> includePaths = new ArrayList<>();
+    for (DependencyInfo[] dependencyInfos : this.dependencies.values()) {
+      for (final DependencyInfo dependInfo : dependencyInfos) {
         boolean matchesExisting = false;
         final String dependIncludePath = dependInfo.getIncludePathIdentifier();
-        final Enumeration includePathEnum = includePaths.elements();
-        while (includePathEnum.hasMoreElements()) {
-          if (dependIncludePath.equals(includePathEnum.nextElement())) {
+        for (String includePath : includePaths) {
+          if (dependIncludePath.equals(includePath)) {
             matchesExisting = true;
             break;
           }
         }
         if (!matchesExisting) {
-          includePaths.addElement(dependIncludePath);
+          includePaths.add(dependIncludePath);
         }
       }
     }
@@ -387,11 +379,11 @@ public final class DependencyTable {
 
   public void load() throws IOException, ParserConfigurationException, SAXException {
     this.dependencies.clear();
-    if (this.dependenciesFile.exists()) {
+    if (Files.exists(this.dependenciesFile)) {
       final SAXParserFactory factory = SAXParserFactory.newInstance();
       factory.setValidating(false);
       final SAXParser parser = factory.newSAXParser();
-      parser.parse(this.dependenciesFile, new DependencyTableHandler(this, this.baseDir));
+      parser.parse(Files.newInputStream(this.dependenciesFile), new DependencyTableHandler(this, this.baseDir));
       this.dirty = false;
     }
   }
@@ -409,9 +401,14 @@ public final class DependencyTable {
     boolean mustRebuild = false;
     final CompilerConfiguration compiler = (CompilerConfiguration) target.getConfiguration();
     final String includePathIdentifier = compiler.getIncludePathIdentifier();
-    final File[] sources = target.getSources();
-    final DependencyInfo[] dependInfos = new DependencyInfo[sources.length];
-    final long outputLastModified = target.getOutput().lastModified();
+    final List<Path> sources = target.getSources();
+    final DependencyInfo[] dependInfos = new DependencyInfo[sources.size()];
+    FileTime outputLastModified;
+    try {
+      outputLastModified = Files.getLastModifiedTime(target.getOutput());
+    } catch (IOException e) {
+      throw new RuntimeException(e);
+    }
     //
     // try to solve problem using existing dependency info
     // (not parsing any new files)
@@ -425,9 +422,9 @@ public final class DependencyTable {
       rebuildOnStackExhaustion = false;
     }
     final TimestampChecker checker = new TimestampChecker(outputLastModified, rebuildOnStackExhaustion);
-    for (int i = 0; i < sources.length && !mustRebuild; i++) {
-      final File source = sources[i];
-      final String relative = CUtil.getRelativePath(this.baseDirPath, source);
+    for (int i = 0; i < sources.size() && !mustRebuild; i++) {
+      final Path source = sources.get(i);
+      final Path relative = this.baseDir.relativize(source);
       DependencyInfo dependInfo = getDependencyInfo(relative, includePathIdentifier);
       if (dependInfo == null) {
         task.log("Parsing " + relative, Project.MSG_VERBOSE);
@@ -439,18 +436,18 @@ public final class DependencyTable {
     return mustRebuild;
   }
 
-  public DependencyInfo parseIncludes(final CCTask task, final CompilerConfiguration compiler, final File source) {
+  public DependencyInfo parseIncludes(final CCTask task, final CompilerConfiguration compiler, final Path source) {
     final DependencyInfo dependInfo = compiler.parseIncludes(task, this.baseDir, source);
-    final String relativeSource = CUtil.getRelativePath(this.baseDirPath, source);
+    final Path relativeSource = this.baseDir.relativize(source);
     putDependencyInfo(relativeSource, dependInfo);
     return dependInfo;
   }
 
-  private void putDependencyInfo(final String key, final DependencyInfo dependInfo) {
+  private void putDependencyInfo(final Path key, final DependencyInfo dependInfo) {
     //
     // optimistic, add new value
     //
-    final DependencyInfo[] old = (DependencyInfo[]) this.dependencies.put(key, new DependencyInfo[] {
+    final DependencyInfo[] old = this.dependencies.put(key, new DependencyInfo[] {
       dependInfo
     });
     this.dirty = true;
@@ -523,13 +520,11 @@ public final class DependencyTable {
       //
       // locate dependency infos
       //
-      final String[] includes = dependInfo.getIncludes();
+      final List<Path> includes = dependInfo.getIncludes();
       final String includePathIdentifier = compiler.getIncludePathIdentifier();
-      final DependencyInfo[] includeInfos = new DependencyInfo[includes.length];
-      for (int i = 0; i < includes.length; i++) {
-        final DependencyInfo includeInfo = getDependencyInfo(includes[i], includePathIdentifier);
-        includeInfos[i] = includeInfo;
-      }
+      final DependencyInfo[] includeInfos = includes.stream()
+          .map(path -> getDependencyInfo(path, includePathIdentifier))
+          .toArray(DependencyInfo[]::new);
       //
       // preview with only the already available dependency infos
       //
@@ -538,16 +533,16 @@ public final class DependencyTable {
         // now need to fill in the missing DependencyInfos
         //
         int missingCount = 0;
-        for (int i = 0; i < includes.length; i++) {
+        for (int i = 0; i < includes.size(); i++) {
           if (includeInfos[i] == null) {
             missingCount++;
-            task.log("Parsing " + includes[i], Project.MSG_VERBOSE);
+            task.log("Parsing " + includes.get(i), Project.MSG_VERBOSE);
             //
             // If the include filepath is relative
             // then anchor it the base directory
-            File src = new File(includes[i]);
+            Path src = includes.get(i);
             if (!src.isAbsolute()) {
-              src = new File(this.baseDir, includes[i]);
+              src = this.baseDir.resolve(includes.get(i));
             }
             final DependencyInfo includeInfo = parseIncludes(task, compiler, src);
             includeInfos[i] = includeInfo;
@@ -564,8 +559,8 @@ public final class DependencyTable {
             // Darren Sargent 23Oct2008
             // only recurse for direct includes of current source
             // file
-            if (includeInfo.getSource().contains(File.separatorChar + "src" + File.separatorChar + "main")
-                || includeInfo.getSource().contains(File.separatorChar + "src" + File.separatorChar + "test")) {
+            if (includeInfo.getSource().toString().contains(File.separatorChar + "src" + File.separatorChar + "main")
+                || includeInfo.getSource().toString().contains(File.separatorChar + "src" + File.separatorChar + "test")) {
               task.log("Walking dependencies for " + includeInfo.getSource(), Project.MSG_VERBOSE);
               walkDependencies(task, includeInfo, compiler, stack, visitor);
             }
@@ -580,8 +575,8 @@ public final class DependencyTable {
   private void
       writeDependencyInfo(final BufferedWriter writer, final StringBuffer buf, final DependencyInfo dependInfo)
           throws IOException {
-    final String[] includes = dependInfo.getIncludes();
-    final String[] sysIncludes = dependInfo.getSysIncludes();
+    final List<Path> includes = dependInfo.getIncludes();
+    final List<Path> sysIncludes = dependInfo.getSysIncludes();
     //
     // if the includes have not been evaluted then
     // it is not worth our time saving it
@@ -589,22 +584,22 @@ public final class DependencyTable {
     // no dependencies and those with undetermined dependencies
     buf.setLength(0);
     buf.append("      <source file=\"");
-    buf.append(CUtil.xmlAttribEncode(dependInfo.getSource()));
+    buf.append(CUtil.xmlAttribEncode(dependInfo.getSource().toString()));
     buf.append("\" lastModified=\"");
-    buf.append(Long.toHexString(dependInfo.getSourceLastModified()));
+    buf.append(dependInfo.getSourceLastModified());
     buf.append("\">\n");
     writer.write(buf.toString());
-    for (final String include : includes) {
+    for (final Path include : includes) {
       buf.setLength(0);
       buf.append("         <include file=\"");
-      buf.append(CUtil.xmlAttribEncode(include));
+      buf.append(CUtil.xmlAttribEncode(include.toString()));
       buf.append("\"/>\n");
       writer.write(buf.toString());
     }
-    for (final String sysInclude : sysIncludes) {
+    for (final Path sysInclude : sysIncludes) {
       buf.setLength(0);
       buf.append("         <sysinclude file=\"");
-      buf.append(CUtil.xmlAttribEncode(sysInclude));
+      buf.append(CUtil.xmlAttribEncode(sysInclude.toString()));
       buf.append("\"/>\n");
       writer.write(buf.toString());
     }
@@ -622,9 +617,7 @@ public final class DependencyTable {
     buf.append(CUtil.xmlAttribEncode(includePathIdentifier));
     buf.append("\">\n");
     writer.write(buf.toString());
-    final Enumeration dependenciesEnum = this.dependencies.elements();
-    while (dependenciesEnum.hasMoreElements()) {
-      final DependencyInfo[] dependInfos = (DependencyInfo[]) dependenciesEnum.nextElement();
+    for (final DependencyInfo[] dependInfos : this.dependencies.values()) {
       for (final DependencyInfo dependInfo : dependInfos) {
         //
         // if this is for the same include path

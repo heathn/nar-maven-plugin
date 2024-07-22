@@ -19,11 +19,11 @@
  */
 package com.github.maven_nar;
 
-import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 
-import org.apache.maven.artifact.Artifact;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
 import org.apache.maven.plugins.annotations.LifecyclePhase;
@@ -31,6 +31,7 @@ import org.apache.maven.plugins.annotations.Mojo;
 import org.apache.maven.plugins.annotations.ResolutionScope;
 import org.apache.maven.shared.artifact.filter.collection.ScopeFilter;
 import org.codehaus.plexus.util.FileUtils;
+import org.eclipse.aether.artifact.Artifact;
 
 /**
  * Assemble libraries of NAR files.
@@ -47,7 +48,7 @@ public class NarAssemblyMojo extends AbstractDependencyMojo {
   protected ScopeFilter getArtifactScopeFilter() {
     // Was Artifact.SCOPE_RUNTIME  + provided?
     // Think Provided isn't appropriate in Assembly - otherwise it isn't provided.
-    return new ScopeFilter( Artifact.SCOPE_RUNTIME, null );
+    return new ScopeFilter( org.apache.maven.artifact.Artifact.SCOPE_RUNTIME, null );
   }
 
   /**
@@ -56,7 +57,7 @@ public class NarAssemblyMojo extends AbstractDependencyMojo {
   @Override
   public final void narExecute() throws MojoExecutionException, MojoFailureException {
     // download the dependencies if needed in local maven repository.
-    List<AttachedNarArtifact> attachedNarArtifacts = getAttachedNarArtifacts(libraries);
+    List<Artifact> attachedNarArtifacts = getAttachedNarArtifacts(libraries);
     downloadAttachedNars(attachedNarArtifacts);
 
     // Warning, for SNAPSHOT artifacts that were not in the local maven
@@ -82,19 +83,19 @@ public class NarAssemblyMojo extends AbstractDependencyMojo {
       // of getBaseVersion, called in pathOf.
       dependency.isSnapshot();
 
-      final File srcDir = getLayout().getNarUnpackDirectory(getUnpackDirectory(),
+      final Path srcDir = getLayout().getNarUnpackDirectory(getUnpackDirectory(),
           getNarManager().getNarFile(dependency));
       // File srcDir = new File( getLocalRepository().pathOf( dependency ) );
       // srcDir = new File( getLocalRepository().getBasedir(),
       // srcDir.getParent() );
       // srcDir = new File( srcDir, "nar/" );
 
-      final File dstDir = getTargetDirectory();
+      final Path dstDir = getTargetDirectory();
       try {
-        FileUtils.mkdir(dstDir.getPath());
+        Files.createDirectories(dstDir);
         getLog().debug("SrcDir: " + srcDir);
-        if (srcDir.exists()) {
-          FileUtils.copyDirectoryStructureIfModified(srcDir, dstDir);
+        if (Files.exists(srcDir)) {
+          FileUtils.copyDirectoryStructureIfModified(srcDir.toFile(), dstDir.toFile());
         }
       } catch (final IOException ioe) {
         throw new MojoExecutionException("Failed to copy directory for dependency " + dependency + " from " + srcDir

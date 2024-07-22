@@ -19,7 +19,9 @@
  */
 package com.github.maven_nar.cpptasks.compiler;
 
-import java.io.File;
+import java.nio.file.Path;
+import java.util.Collections;
+import java.util.List;
 
 import com.github.maven_nar.cpptasks.CCTask;
 import com.github.maven_nar.cpptasks.LinkerDef;
@@ -55,8 +57,8 @@ public class TestAbstractLinker extends TestAbstractProcessor {
     }
 
     @Override
-    public File[] getLibraryPath() {
-      return new File[0];
+    public List<Path> getLibraryPath() {
+      return Collections.emptyList();
     }
 
     @Override
@@ -70,8 +72,8 @@ public class TestAbstractLinker extends TestAbstractProcessor {
     }
 
     @Override
-    public String[] getOutputFileNames(final String sourceFile, final VersionInfo versionInfo) {
-      return new String[0];
+    public Path[] getOutputFileNames(final Path sourceFile, final VersionInfo versionInfo) {
+      return new Path[0];
     }
 
     public String[][] getRuntimeLibraries(final boolean debug, final boolean multithreaded, final boolean staticLink) {
@@ -95,17 +97,17 @@ public class TestAbstractLinker extends TestAbstractProcessor {
 
   public void testBid() {
     final AbstractProcessor compiler = create();
-    int bid = compiler.bid("c:/foo\\bar\\hello.obj");
+    int bid = compiler.bid(Path.of("c:/foo\\bar\\hello.obj"));
     assertEquals(100, bid);
-    bid = compiler.bid("c:/foo\\bar/hello.lib");
+    bid = compiler.bid(Path.of("c:/foo\\bar/hello.lib"));
     assertEquals(100, bid);
-    bid = compiler.bid("c:/foo\\bar\\hello.map");
+    bid = compiler.bid(Path.of("c:/foo\\bar\\hello.map"));
     assertEquals(0, bid);
-    bid = compiler.bid("c:/foo\\bar/hello.map");
+    bid = compiler.bid(Path.of("c:/foo\\bar/hello.map"));
     assertEquals(0, bid);
-    bid = compiler.bid("c:/foo\\bar/hello.c");
+    bid = compiler.bid(Path.of("c:/foo\\bar/hello.c"));
     assertEquals(1, bid);
-    bid = compiler.bid("c:/foo\\bar/hello.cpp");
+    bid = compiler.bid(Path.of("c:/foo\\bar/hello.cpp"));
     assertEquals(1, bid);
   }
 }

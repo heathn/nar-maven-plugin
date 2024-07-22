@@ -19,7 +19,8 @@
  */
 package com.github.maven_nar.cpptasks.os400;
 
-import java.io.File;
+import java.nio.file.Path;
+import java.util.List;
 import java.util.Vector;
 
 import org.apache.tools.ant.types.Environment;
@@ -103,12 +104,12 @@ public class IccCompiler extends CommandLineCCompiler {
   }
 
   @Override
-  protected File[] getEnvironmentIncludePath() {
+  protected List<Path> getEnvironmentIncludePath() {
     return CUtil.getPathFromEnvironment("INCLUDE", ":");
   }
 
   @Override
-  protected String getIncludeDirSwitch(final String includeDir) {
+  protected String getIncludeDirSwitch(final Path includeDir) {
     return IccProcessor.getIncludeDirSwitch(includeDir);
   }
 

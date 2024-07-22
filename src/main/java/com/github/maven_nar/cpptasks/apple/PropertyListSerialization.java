@@ -19,9 +19,10 @@
  */
 package com.github.maven_nar.cpptasks.apple;
 
-import java.io.File;
-import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.OutputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -56,12 +57,12 @@ public final class PropertyListSerialization {
    * @throws TransformerConfigurationException
    *           if exception creating serializer.
    */
-  public static void serialize(final Map propertyList, final List comments, final File file)
+  public static void serialize(final Map propertyList, final List comments, final Path file)
       throws IOException, SAXException, TransformerConfigurationException {
     final SAXTransformerFactory sf = (SAXTransformerFactory) TransformerFactory.newInstance();
     final TransformerHandler handler = sf.newTransformerHandler();
 
-    final FileOutputStream os = new FileOutputStream(file);
+    final OutputStream os = Files.newOutputStream(file);
     final StreamResult result = new StreamResult(os);
     handler.setResult(result);
 

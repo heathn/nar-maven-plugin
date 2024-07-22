@@ -19,8 +19,11 @@
  */
 package com.github.maven_nar;
 
+import java.nio.file.attribute.PosixFilePermission;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 
 import org.apache.maven.plugin.MojoExecutionException;
 
@@ -28,7 +31,7 @@ public class Script {
   
   protected String id;
   protected String scriptType;
-  protected String mode;
+  protected Set<PosixFilePermission> mode;
   protected boolean compile;
   protected boolean link;
   protected boolean testCompile;
@@ -41,7 +44,7 @@ public class Script {
   
   public Script() {
     this.scriptType = "sh";
-    this.mode = "0755";
+    this.mode = PosixFilePermissions.fromString("rwxr-xr-x");
     this.compile = true;
     this.link = true;
     this.testCompile = false;
@@ -68,11 +71,11 @@ public class Script {
     this.scriptType = scriptType;
   }
 
-  public String getMode() {
+  public Set<PosixFilePermission> getMode() {
     return mode;
   }
 
-  public void setMode(String mode) {
+  public void setMode(Set<PosixFilePermission> mode) {
     this.mode = mode;
   }
 

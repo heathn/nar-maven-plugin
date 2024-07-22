@@ -19,7 +19,8 @@
  */
 package com.github.maven_nar.cpptasks.arm;
 
-import java.io.File;
+import java.nio.file.Path;
+import java.util.List;
 
 import com.github.maven_nar.cpptasks.compiler.CommandLineLinker;
 import com.github.maven_nar.cpptasks.compiler.LinkType;
@@ -46,13 +47,13 @@ public class ADSLibrarian extends CommandLineLinker {
   }
 
   @Override
-  protected String getCommandFileSwitch(final String commandFile) {
+  protected String getCommandFileSwitch(final Path commandFile) {
     // TODO Auto-generated method stub
     return null;
   }
 
   @Override
-  public File[] getLibraryPath() {
+  public List<Path> getLibraryPath() {
     // TODO Auto-generated method stub
     return null;
   }
@@ -75,7 +76,7 @@ public class ADSLibrarian extends CommandLineLinker {
   }
 
   @Override
-  protected String[] getOutputFileSwitch(final String outputFile) {
+  protected String[] getOutputFileSwitch(final Path outputFile) {
     // TODO Auto-generated method stub
     return null;
   }

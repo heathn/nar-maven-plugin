@@ -19,6 +19,8 @@
  */
 package com.github.maven_nar.cpptasks.compiler;
 
+import java.nio.file.Path;
+
 import org.apache.tools.ant.types.Environment;
 
 import com.github.maven_nar.cpptasks.CCTask;
@@ -40,7 +42,7 @@ public interface Processor {
    *          input file
    * @return 0 = no interest, 100 = high interest
    */
-  int bid(String inputFile);
+  int bid(Path inputFile);
 
   Processor changeEnvironment(boolean newEnvironment, Environment env);
 
@@ -80,5 +82,5 @@ public interface Processor {
    * @return output file name or null if no output file or name not
    *         determined by input file
    */
-  String[] getOutputFileNames(String inputFile, VersionInfo versionInfo);
+  Path[] getOutputFileNames(Path inputFile, VersionInfo versionInfo);
 }

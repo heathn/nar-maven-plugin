@@ -19,7 +19,7 @@
  */
 package com.github.maven_nar;
 
-import java.io.File;
+import java.nio.file.Path;
 import java.util.List;
 
 import org.apache.maven.plugins.annotations.Parameter;
@@ -34,27 +34,27 @@ public class Replay {
   public String[] scriptTypes = new String[] {"sh", "bash", "bat"};
   
   @Parameter
-  protected File outputDirectory;
+  protected Path outputDirectory;
   
   @Parameter 
-  protected File scriptDirectory; 
+  protected Path scriptDirectory; 
   
   @Parameter
   protected List<Script> scripts;
 
-  public File getOutputDirectory() {
+  public Path getOutputDirectory() {
     return outputDirectory;
   }
 
-  public void setOutputDirectory(File outputDirectory) {
+  public void setOutputDirectory(Path outputDirectory) {
     this.outputDirectory = outputDirectory;
   }
 
-  public File getScriptDirectory() {
+  public Path getScriptDirectory() {
     return scriptDirectory;
   }
 
-  public void setScriptDirectory(File scriptDirectory) {
+  public void setScriptDirectory(Path scriptDirectory) {
     this.scriptDirectory = scriptDirectory;
   }
 

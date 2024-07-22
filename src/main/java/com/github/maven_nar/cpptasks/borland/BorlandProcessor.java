@@ -19,12 +19,13 @@
  */
 package com.github.maven_nar.cpptasks.borland;
 
-import java.io.BufferedReader;
-import java.io.File;
-import java.io.FileReader;
-import java.io.FileWriter;
+import java.io.BufferedWriter;
 import java.io.IOException;
 import java.io.Reader;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Arrays;
+import java.util.List;
 import java.util.Vector;
 
 import com.github.maven_nar.cpptasks.CUtil;
@@ -71,7 +72,7 @@ public final class BorlandProcessor {
    *          default path relative to executable directory
    * @return path
    */
-  public static File[] getEnvironmentPath(final String toolName, final char switchChar,
+  public static List<Path> getEnvironmentPath(final String toolName, final char switchChar,
       final String[] defaultRelativePath) {
     if (toolName == null) {
       throw new NullPointerException("toolName");
@@ -80,15 +81,13 @@ public final class BorlandProcessor {
       throw new NullPointerException("defaultRelativePath");
     }
     String[] path = defaultRelativePath;
-    File exeDir = CUtil.getExecutableLocation(toolName + ".exe");
+    Path exeDir = CUtil.getExecutableLocation(toolName + ".exe");
     if (exeDir != null) {
-      final File cfgFile = new File(exeDir, toolName + ".cfg");
-      if (cfgFile.exists()) {
-        try {
-          final Reader reader = new BufferedReader(new FileReader(cfgFile));
+      final Path cfgFile = exeDir.resolve(toolName + ".cfg");
+      if (Files.exists(cfgFile)) {
+        try (final Reader reader = Files.newBufferedReader(cfgFile)) {
           final BorlandCfgParser cfgParser = new BorlandCfgParser(switchChar);
           path = cfgParser.parsePath(reader);
-          reader.close();
         } catch (final IOException ex) {
           //
           // could be logged
@@ -100,19 +99,19 @@ public final class BorlandProcessor {
       // if can't find the executable,
       // assume current directory to resolve relative paths
       //
-      exeDir = new File(System.getProperty("user.dir"));
+      exeDir = Path.of(System.getProperty("user.dir"));
     }
     int nonExistant = 0;
-    File[] resourcePath = new File[path.length];
+    Path[] resourcePath = new Path[path.length];
     for (int i = 0; i < path.length; i++) {
-      resourcePath[i] = new File(path[i]);
+      resourcePath[i] = Path.of(path[i]);
       if (!resourcePath[i].isAbsolute()) {
-        resourcePath[i] = new File(exeDir, path[i]);
+        resourcePath[i] = exeDir.resolve(path[i]);
       }
       //
       // if any of the entries do not exist or are
       // not directories, null them out
-      if (!(resourcePath[i].exists() && resourcePath[i].isDirectory())) {
+      if (!(Files.exists(resourcePath[i]) && Files.isDirectory(resourcePath[i]))) {
         resourcePath[i] = null;
         nonExistant++;
       }
@@ -122,19 +121,19 @@ public final class BorlandProcessor {
     // entries in the configuration file then
     // create a shorter array
     if (nonExistant > 0) {
-      final File[] culled = new File[resourcePath.length - nonExistant];
+      final Path[] culled = new Path[resourcePath.length - nonExistant];
       int index = 0;
-      for (final File element : resourcePath) {
+      for (final Path element : resourcePath) {
         if (element != null) {
           culled[index++] = element;
         }
       }
       resourcePath = culled;
     }
-    return resourcePath;
+    return Arrays.asList(resourcePath);
   }
 
-  public static String getIncludeDirSwitch(final String includeOption, final String includeDir) {
+  public static String getIncludeDirSwitch(final String includeOption, final Path includeDir) {
     final StringBuffer buf = new StringBuffer(includeOption);
     quoteFile(buf, includeDir);
     return buf.toString();
@@ -152,7 +151,7 @@ public final class BorlandProcessor {
     return patterns;
   }
 
-  public static String[] getOutputFileSwitch(final String outFile) {
+  public static String[] getOutputFileSwitch(final Path outFile) {
     return new String[0];
   }
 
@@ -174,33 +173,35 @@ public final class BorlandProcessor {
    *          output of prepareArguments
    * @return arguments for runTask
    */
-  public static String[] prepareResponseFile(final File outputFile, final String[] args, final String continuation)
+  public static String[] prepareResponseFile(final Path outputFile, final String[] args, final String continuation)
       throws IOException {
-    final String baseName = outputFile.getName();
-    final File commandFile = new File(outputFile.getParent(), baseName + ".rsp");
-    final FileWriter writer = new FileWriter(commandFile);
-    for (int i = 1; i < args.length - 1; i++) {
-      writer.write(args[i]);
+    final String baseName = outputFile.getFileName().toString();
+    final Path commandFile = outputFile.resolveSibling(baseName + ".rsp");
+
+    try (BufferedWriter writer = Files.newBufferedWriter(commandFile)) {
+      for (int i = 1; i < args.length - 1; i++) {
+        writer.write(args[i]);
+        //
+        // if either the current argument ends with
+        // or next argument starts with a comma then
+        // don't split the line
+        if (args[i].endsWith(",") || args[i + 1].startsWith(",")) {
+          writer.write(' ');
+        } else {
+          //
+          // split the line to make it more readable
+          //
+          writer.write(continuation);
+        }
+      }
       //
-      // if either the current argument ends with
-      // or next argument starts with a comma then
-      // don't split the line
-      if (args[i].endsWith(",") || args[i + 1].startsWith(",")) {
-        writer.write(' ');
-      } else {
-        //
-        // split the line to make it more readable
-        //
-        writer.write(continuation);
+      // write the last argument
+      //
+      if (args.length > 1) {
+        writer.write(args[args.length - 1]);
       }
     }
-    //
-    // write the last argument
-    //
-    if (args.length > 1) {
-      writer.write(args[args.length - 1]);
-    }
-    writer.close();
+
     final String[] execArgs = new String[2];
     execArgs[0] = args[0];
     //
@@ -209,9 +210,9 @@ public final class BorlandProcessor {
     return execArgs;
   }
 
-  public static void quoteFile(final StringBuffer buf, final String outPath) {
-    if (outPath.charAt(0) != '\"'
-        && (outPath.indexOf(' ') >= 0 || outPath.indexOf('-') >= 0 || outPath.indexOf('/') >= 0)) {
+  public static void quoteFile(final StringBuffer buf, final Path outPath) {
+    if (outPath.toString().charAt(0) != '\"'
+        && (outPath.toString().indexOf(' ') >= 0 || outPath.toString().indexOf('-') >= 0 || outPath.toString().indexOf('/') >= 0)) {
       buf.append('\"');
       buf.append(outPath);
       buf.append('\"');

@@ -19,15 +19,15 @@
  */
 package com.github.maven_nar.test;
 
-import java.io.File;
+import java.nio.file.Path;
 
-import junit.framework.Assert;
 import junit.framework.TestCase;
 
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
 import org.apache.maven.plugin.logging.Log;
 import org.apache.maven.plugin.logging.SystemStreamLog;
+import org.junit.Assert;
 
 import com.github.maven_nar.AbstractNarLayout;
 import com.github.maven_nar.Library;
@@ -46,7 +46,7 @@ public class TestNarLayout20 extends TestCase {
 
   private NarLayout layout;
 
-  private File baseDir;
+  private Path baseDir;
 
   private String aol;
 
@@ -62,7 +62,7 @@ public class TestNarLayout20 extends TestCase {
     this.log = new SystemStreamLog();
     this.fileLayout = new NarFileLayout10();
     this.layout = new NarLayout20(this.log);
-    this.baseDir = new File("/Users/maven");
+    this.baseDir = Path.of("/Users/maven");
     this.aol = "x86_64-MacOSX-g++";
     this.type = Library.SHARED;
   }
@@ -76,7 +76,7 @@ public class TestNarLayout20 extends TestCase {
    * @throws MojoExecutionException
    */
   public final void testGetBinDirectory() throws MojoExecutionException, MojoFailureException {
-    Assert.assertEquals(new File(this.baseDir, this.fileLayout.getBinDirectory(this.aol)),
+    Assert.assertEquals(this.baseDir.resolve(this.fileLayout.getBinDirectory(this.aol)),
         this.layout.getBinDirectory(this.baseDir, null, null, this.aol));
   }
 
@@ -88,7 +88,7 @@ public class TestNarLayout20 extends TestCase {
    * @throws MojoExecutionException
    */
   public final void testGetIncludeDirectory() throws MojoExecutionException, MojoFailureException {
-    Assert.assertEquals(new File(this.baseDir, this.fileLayout.getIncludeDirectory()),
+    Assert.assertEquals(this.baseDir.resolve(this.fileLayout.getIncludeDirectory()),
         this.layout.getIncludeDirectory(this.baseDir, null, null));
   }
 
@@ -105,7 +105,7 @@ public class TestNarLayout20 extends TestCase {
    * @throws MojoExecutionException
    */
   public final void testGetLibDirectory() throws MojoExecutionException, MojoFailureException {
-    Assert.assertEquals(new File(this.baseDir, this.fileLayout.getLibDirectory(this.aol, this.type)),
+    Assert.assertEquals(this.baseDir.resolve(this.fileLayout.getLibDirectory(this.aol, this.type)),
         this.layout.getLibDirectory(this.baseDir, null, null, this.aol, this.type));
   }
 }

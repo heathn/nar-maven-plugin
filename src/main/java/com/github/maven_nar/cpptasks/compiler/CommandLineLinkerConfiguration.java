@@ -19,6 +19,10 @@
  */
 package com.github.maven_nar.cpptasks.compiler;
 
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
+
 import org.apache.tools.ant.BuildException;
 
 import com.github.maven_nar.cpptasks.CCTask;
@@ -38,21 +42,21 @@ public final class CommandLineLinkerConfiguration implements LinkerConfiguration
   private String[] libraryNames;
   private final/* final */CommandLineLinker linker;
   private final/* final */boolean map;
-  private final/* final */ProcessorParam[] params;
+  private final List<ProcessorParam> params;
   private final/* final */boolean rebuild;
-  private/* final */String commandPath;
+  private String commandPath;
   private final boolean debug;
-  private final String startupObject;
+  private final Path startupObject;
 
   public CommandLineLinkerConfiguration(final CommandLineLinker linker, final String identifier, final String[][] args,
-      final ProcessorParam[] params, final boolean rebuild, final boolean map, final boolean debug,
-      final String[] libraryNames, final String startupObject) {
+      final List<ProcessorParam> params, final boolean rebuild, final boolean map, final boolean debug,
+      final String[] libraryNames, final Path startupObject) {
     this(linker, identifier, args, params, rebuild, map, debug, libraryNames, startupObject, null);
   }
 
   public CommandLineLinkerConfiguration(final CommandLineLinker linker, final String identifier, final String[][] args,
-      final ProcessorParam[] params, final boolean rebuild, final boolean map, final boolean debug,
-      final String[] libraryNames, final String startupObject, final String commandPath) {
+      final List<ProcessorParam> params, final boolean rebuild, final boolean map, final boolean debug,
+      final String[] libraryNames, final Path startupObject, final String commandPath) {
     if (linker == null) {
       throw new NullPointerException("linker");
     }
@@ -62,7 +66,7 @@ public final class CommandLineLinkerConfiguration implements LinkerConfiguration
       this.args = args.clone();
     }
     this.linker = linker;
-    this.params = params.clone();
+    this.params = new ArrayList<>(params);
     this.rebuild = rebuild;
     this.identifier = identifier;
     this.map = map;
@@ -77,7 +81,7 @@ public final class CommandLineLinkerConfiguration implements LinkerConfiguration
   }
 
   @Override
-  public int bid(final String filename) {
+  public int bid(final Path filename) {
     return this.linker.bid(filename);
   }
 
@@ -115,7 +119,7 @@ public final class CommandLineLinkerConfiguration implements LinkerConfiguration
   }
 
   @Override
-  public String[] getOutputFileNames(final String inputFile, final VersionInfo versionInfo) {
+  public Path[] getOutputFileNames(final Path inputFile, final VersionInfo versionInfo) {
     return this.linker.getOutputFileNames(inputFile, versionInfo);
   }
 
@@ -130,7 +134,7 @@ public final class CommandLineLinkerConfiguration implements LinkerConfiguration
   }
 
   @Override
-  public ProcessorParam[] getParams() {
+  public List<ProcessorParam> getParams() {
     return this.params;
   }
 
@@ -144,7 +148,7 @@ public final class CommandLineLinkerConfiguration implements LinkerConfiguration
     return this.rebuild;
   }
 
-  public String getStartupObject() {
+  public Path getStartupObject() {
     return this.startupObject;
   }
 
@@ -158,7 +162,7 @@ public final class CommandLineLinkerConfiguration implements LinkerConfiguration
     //
     // AllSourcePath's include any syslibsets
     //
-    final String[] sourcePaths = linkTarget.getAllSourcePaths();
+    final List<Path> sourcePaths = linkTarget.getAllSourcePaths();
     this.linker.link(task, linkTarget.getOutput(), sourcePaths, this);
   }
 

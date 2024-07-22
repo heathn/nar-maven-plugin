@@ -20,6 +20,11 @@
 package com.github.maven_nar.cpptasks.types;
 
 import java.io.File;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
 
 import org.apache.tools.ant.BuildException;
 import org.apache.tools.ant.DirectoryScanner;
@@ -52,13 +57,12 @@ public class LibrarySet extends DataType {
   private String dataset;
   private boolean explicitCaseSensitive;
   private String ifCond;
-  private String[] libnames;
+  private List<String> libnames = new ArrayList<>();
   private final FileSet set = new FileSet();
   private String unlessCond;
   private LibraryTypeEnum libraryType;
 
   public LibrarySet() {
-    this.libnames = new String[0];
   }
 
   public void execute() throws org.apache.tools.ant.BuildException {
@@ -78,12 +82,13 @@ public class LibrarySet extends DataType {
     return this.dataset;
   }
 
-  public File getDir(final Project project) {
+  public Path getDir(final Project project) {
     if (isReference()) {
       final LibrarySet master = (LibrarySet) getCheckedRef(LibrarySet.class, "LibrarySet");
       return master.getDir(project);
     }
-    return this.set.getDir(project);
+    File f = this.set.getDir(project);
+    return f != null ? f.toPath() : null;
   }
 
   protected FileSet getFileSet() {
@@ -94,13 +99,13 @@ public class LibrarySet extends DataType {
     return this.set;
   }
 
-  public String[] getLibs() {
+  public List<String> getLibs() {
     if (isReference()) {
       final LibrarySet master = (LibrarySet) getCheckedRef(LibrarySet.class, "LibrarySet");
       return master.getLibs();
     }
-    final String[] retval = this.libnames.clone();
-    return retval;
+  
+    return Collections.unmodifiableList(this.libnames);
   }
 
   /**
@@ -147,9 +152,9 @@ public class LibrarySet extends DataType {
     }
     if (isReference()) {
       final LibrarySet master = (LibrarySet) getCheckedRef(LibrarySet.class, "LibrarySet");
-      return master.isActive(this.project);
+      return master.isActive(this.getProject());
     }
-    if (this.libnames.length == 0) {
+    if (this.libnames.size() == 0) {
       p.log("libnames not specified or empty.", Project.MSG_WARN);
       return false;
     }
@@ -192,11 +197,11 @@ public class LibrarySet extends DataType {
    *          library directory
    * 
    */
-  public void setDir(final File dir) throws BuildException {
+  public void setDir(final Path dir) throws BuildException {
     if (isReference()) {
       throw tooManyAttributes();
     }
-    this.set.setDir(dir);
+    this.set.setDir(dir.toFile());
   }
 
   /**
@@ -266,7 +271,7 @@ public class LibrarySet extends DataType {
   }
 
   public void
-      visitLibraries(final Project project, final Linker linker, final File[] libpath, final FileVisitor visitor)
+      visitLibraries(final Project project, final Linker linker, final List<Path> libpath, final FileVisitor visitor)
           throws BuildException {
     if (isReference()) {
       final LibrarySet master = (LibrarySet) getCheckedRef(LibrarySet.class, "LibrarySet");
@@ -308,23 +313,23 @@ public class LibrarySet extends DataType {
             // scan libpath in reverse order
             // to give earlier entries priority
             //
-            for (int j = libpath.length - 1; j >= 0; j--) {
+            for (int j = libpath.size() - 1; j >= 0; j--) {
               final FileSet clone = (FileSet) localSet.clone();
-              clone.setDir(libpath[j]);
+              clone.setDir(libpath.get(j).toFile());
               final DirectoryScanner scanner = clone.getDirectoryScanner(project);
-              final File basedir = scanner.getBasedir();
-              final String[] files = scanner.getIncludedFiles();
+              final Path basedir = scanner.getBasedir().toPath();
+              final Path[] files = Arrays.stream(scanner.getIncludedFiles()).map(Path::of).toArray(Path[]::new);
               matches += files.length;
-              for (final String file : files) {
+              for (final Path file : files) {
                 visitor.visit(basedir, file);
               }
             }
           } else {
             final DirectoryScanner scanner = localSet.getDirectoryScanner(project);
-            final File basedir = scanner.getBasedir();
-            final String[] files = scanner.getIncludedFiles();
+            final Path basedir = scanner.getBasedir().toPath();
+            final Path[] files = Arrays.stream(scanner.getIncludedFiles()).map(Path::of).toArray(Path[]::new);
             matches += files.length;
-            for (final String file : files) {
+            for (final Path file : files) {
               visitor.visit(basedir, file);
             }
           }

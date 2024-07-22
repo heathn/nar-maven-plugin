@@ -26,7 +26,8 @@ import com.github.maven_nar.cpptasks.parser.CParser;
 import com.github.maven_nar.cpptasks.parser.Parser;
 import org.apache.tools.ant.types.Environment;
 
-import java.io.File;
+import java.nio.file.Path;
+import java.util.List;
 import java.util.Vector;
 
 /**
@@ -40,7 +41,6 @@ public final class Assembler64bitCompiler extends CommandLineCompiler {
     public static Assembler64bitCompiler getInstance() {
         return instance;
     }
-    private String identifier;
     private Assembler64bitCompiler(boolean newEnvironment, Environment env) {
         super("ml64", null, new String[]{".asm"}, new String[] {}, ".obj", false, null, newEnvironment, env);
     }
@@ -70,7 +70,7 @@ public final class Assembler64bitCompiler extends CommandLineCompiler {
      * The include parser for C will work just fine, but we didn't want to
      * inherit from CommandLineCCompiler
      */
-    protected Parser createParser(File source) {
+    protected Parser createParser(Path source) {
         return new CParser();
     }
     protected int getArgumentCountPerInputFile() {
@@ -80,21 +80,20 @@ public final class Assembler64bitCompiler extends CommandLineCompiler {
             String value) {
         MsvcProcessor.getDefineSwitch(buffer, define, value);
     }
-    protected File[] getEnvironmentIncludePath() {
+    protected List<Path> getEnvironmentIncludePath() {
         return CUtil.getPathFromEnvironment("INCLUDE", ";");
     }
-    protected String getIncludeDirSwitch(String includeDir) {
+    protected String getIncludeDirSwitch(Path includeDir) {
         return MsvcProcessor.getIncludeDirSwitch(includeDir);
     }
-    protected String getInputFileArgument(File outputDir, String filename,
+    protected String getInputFileArgument(Path outputDir, Path filename,
             int index) {
         if (index == 0) {
-            String outputFileName = getOutputFileNames(filename, null)[0];
-            String fullOutputName = new File(outputDir, outputFileName)
-                    .toString();
+            Path outputFileName = getOutputFileNames(filename, null)[0];
+            String fullOutputName = outputDir.resolve(outputFileName).toString();
             return "/Fo" + fullOutputName;
         }
-        return filename;
+        return filename.toString();
     }
     public Linker getLinker(LinkType type) {
         return MsvcLinker.getInstance().getLinker(type);
@@ -106,8 +105,8 @@ public final class Assembler64bitCompiler extends CommandLineCompiler {
     protected int getMaximumInputFilesPerCommand() {
         return 1;
     }
-    protected int getTotalArgumentLengthForInputFile(File outputDir,
-            String inputFile) {
+    protected int getTotalArgumentLengthForInputFile(Path outputDir,
+            Path inputFile) {
         String arg1 = getInputFileArgument(outputDir, inputFile, 0);
         String arg2 = getInputFileArgument(outputDir, inputFile, 1);
         return arg1.length() + arg2.length() + 2;
@@ -131,7 +130,7 @@ public final class Assembler64bitCompiler extends CommandLineCompiler {
      * @param includePathId
      * @param isSystem
      */
-    protected void addIncludes(String baseDirPath, File[] includeDirs,
+    protected void addIncludes(String baseDirPath, Path[] includeDirs,
                                Vector args, Vector relativeArgs, StringBuffer includePathId,
                                boolean isSystem) {
 

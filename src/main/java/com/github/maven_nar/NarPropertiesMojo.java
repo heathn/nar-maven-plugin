@@ -19,10 +19,9 @@
  */
 package com.github.maven_nar;
 
-import java.io.File;
+import java.nio.file.Path;
 import java.util.List;
 
-import org.apache.maven.artifact.Artifact;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
 import org.apache.maven.plugins.annotations.LifecyclePhase;
@@ -57,7 +56,7 @@ public class NarPropertiesMojo extends AbstractDependencyMojo {
     for (NarArtifact dependency : dependencies) {
 
       // Set the include property
-      File includePath = getIncludePath(dependency);
+      Path includePath = getIncludePath(dependency);
       String property = dependency.getGroupId() + ":"
           + dependency.getArtifactId() + ":include";
       getLog().debug(
@@ -88,12 +87,12 @@ public class NarPropertiesMojo extends AbstractDependencyMojo {
       } else {
         filename = prefix + libName + "." + ext;
       }
-      File libPath = new File(getLibraryPath(dependency), filename);
+      Path libPath = getLibraryPath(dependency).resolve(filename);
       getLog().debug("Setting " + property + " to: " + libPath.toString());
       getMavenProject().getProperties().setProperty(property,
           libPath.toString());
       getMavenProject().getProperties().setProperty(property + ":dir",
-          libPath.getParent());
+          libPath.getParent().toString());
     }
 
   }
@@ -103,7 +102,7 @@ public class NarPropertiesMojo extends AbstractDependencyMojo {
    */
   @Override
   protected ScopeFilter getArtifactScopeFilter() {
-    return new ScopeFilter(Artifact.SCOPE_COMPILE, null);
+    return new ScopeFilter(org.apache.maven.artifact.Artifact.SCOPE_COMPILE, null);
   }
 
 }

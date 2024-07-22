@@ -19,7 +19,7 @@
  */
 package com.github.maven_nar.cpptasks.compiler;
 
-import java.io.File;
+import java.nio.file.Path;
 
 import org.apache.tools.ant.BuildException;
 
@@ -33,7 +33,7 @@ import com.github.maven_nar.cpptasks.DependencyInfo;
  * @author Curt Arnold
  */
 public interface CompilerConfiguration extends ProcessorConfiguration {
-  void compile(CCTask task, File outputDir, String[] sourceFiles, boolean relentless, ProgressMonitor monitor)
+  void compile(CCTask task, Path outputDir, Path[] sourceFiles, boolean relentless, ProgressMonitor monitor)
       throws BuildException;
 
   /**
@@ -55,7 +55,7 @@ public interface CompilerConfiguration extends ProcessorConfiguration {
    *          consuming configuration
    * 
    */
-  CompilerConfiguration[] createPrecompileConfigurations(File prototype, String[] nonPrecompiledFiles);
+  CompilerConfiguration[] createPrecompileConfigurations(Path prototype, Path[] nonPrecompiledFiles);
 
   /**
    * Returns an digest for the include path for the configuration.
@@ -69,5 +69,5 @@ public interface CompilerConfiguration extends ProcessorConfiguration {
 
   boolean isPrecompileGeneration();
 
-  DependencyInfo parseIncludes(CCTask task, File baseDir, File source);
+  DependencyInfo parseIncludes(CCTask task, Path baseDir, Path source);
 }

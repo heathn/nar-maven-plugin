@@ -19,11 +19,12 @@
  */
 package com.github.maven_nar.cpptasks.trolltech;
 
-import java.io.BufferedReader;
-import java.io.File;
-import java.io.FileReader;
 import java.io.IOException;
 import java.io.Reader;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Collections;
+import java.util.List;
 import java.util.Vector;
 
 import org.apache.tools.ant.types.Environment;
@@ -117,7 +118,7 @@ public final class MetaObjectCompiler extends CommandLineCompiler {
    *         files, for example), 100 indicates strong interest
    */
   @Override
-  public int bid(final String inputFile) {
+  public int bid(final Path inputFile) {
     //
     // get base bid
     final int baseBid = super.bid(inputFile);
@@ -129,10 +130,8 @@ public final class MetaObjectCompiler extends CommandLineCompiler {
       // scan the file for Q_OBJECT
       // skip file if not present
       //
-      try {
-        final Reader reader = new BufferedReader(new FileReader(inputFile));
+      try (final Reader reader = Files.newBufferedReader(inputFile)) {
         final boolean hasQObject = MetaObjectParser.hasQObject(reader);
-        reader.close();
         if (hasQObject) {
           return baseBid;
         }
@@ -165,7 +164,7 @@ public final class MetaObjectCompiler extends CommandLineCompiler {
    * @return parser
    */
   @Override
-  protected Parser createParser(final File source) {
+  protected Parser createParser(final Path source) {
     return new CParser();
   }
 
@@ -199,8 +198,8 @@ public final class MetaObjectCompiler extends CommandLineCompiler {
    * @return File[] standard include paths
    */
   @Override
-  protected File[] getEnvironmentIncludePath() {
-    return new File[0];
+  protected List<Path> getEnvironmentIncludePath() {
+    return Collections.emptyList();
   }
 
   /**
@@ -211,7 +210,7 @@ public final class MetaObjectCompiler extends CommandLineCompiler {
    * @return String command switch to add specified directory to search path
    */
   @Override
-  protected String getIncludeDirSwitch(final String includeDir) {
+  protected String getIncludeDirSwitch(final Path includeDir) {
     return "";
   }
 
@@ -228,16 +227,16 @@ public final class MetaObjectCompiler extends CommandLineCompiler {
    * @return String input file argument
    */
   @Override
-  protected String getInputFileArgument(final File outputDir, final String filename, final int index) {
+  protected String getInputFileArgument(final Path outputDir, final Path filename, final int index) {
     switch (index) {
       case 0:
         return "-o";
       case 1:
-        final String outputFileName = getOutputFileNames(filename, null)[0];
-        return new File(outputDir, outputFileName).toString();
+        final Path outputFileName = getOutputFileNames(filename, null)[0];
+        return outputDir.resolve(outputFileName).toString();
 
       case 2:
-        return filename;
+        return filename.toString();
 
       default:
         return null;
@@ -286,7 +285,7 @@ public final class MetaObjectCompiler extends CommandLineCompiler {
    * @return String[] output file names
    */
   @Override
-  public String[] getOutputFileNames(final String inputFile, final VersionInfo versionInfo) {
+  public Path[] getOutputFileNames(final Path inputFile, final VersionInfo versionInfo) {
     if (inputFile.endsWith(".cpp")) {
       return super.getOutputFileNames(inputFile, versionInfo);
     }
@@ -294,8 +293,8 @@ public final class MetaObjectCompiler extends CommandLineCompiler {
     // if a recognized input file
     //
     final String baseName = getBaseOutputName(inputFile);
-    return new String[] {
-      "moc_" + baseName + ".cpp"
+    return new Path[] {
+      Path.of("moc_" + baseName + ".cpp")
     };
   }
 

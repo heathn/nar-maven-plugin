@@ -20,14 +20,19 @@
 package com.github.maven_nar;
 
 import java.io.File;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
-import org.apache.maven.artifact.repository.ArtifactRepository;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
+import org.apache.maven.plugins.annotations.Component;
 import org.apache.maven.plugins.annotations.Parameter;
+import org.eclipse.aether.RepositorySystem;
+import org.eclipse.aether.RepositorySystemSession;
+import org.eclipse.aether.repository.RemoteRepository;
 
 /**
  * Abstract GNU Mojo keeps configuration
@@ -52,17 +57,24 @@ public abstract class AbstractGnuMojo extends AbstractResourcesMojo {
    */
   @Parameter(defaultValue = "${project.build.directory}/nar/gnu")
   private File gnuTargetDirectory;
+  
+  @Component
+  private RepositorySystem repoSystem;
 
-  @Parameter(defaultValue = "${localRepository}", required = true, readonly = true)
-  private ArtifactRepository localRepository;
+  @Parameter(defaultValue="${repositorySystemSession}", readonly = true)
+  private RepositorySystemSession repoSession;
+
+  @Parameter(defaultValue = "${project.remoteProjectRepositories}", readonly = true)
+  private List<RemoteRepository> projectRepos;
+
 
   /**
    * @return
    * @throws MojoFailureException
    * @throws MojoExecutionException
    */
-  private File getGnuAOLDirectory() throws MojoFailureException, MojoExecutionException {
-    return new File(this.gnuTargetDirectory, getAOL().toString());
+  private Path getGnuAOLDirectory() throws MojoFailureException, MojoExecutionException {
+    return this.gnuTargetDirectory.toPath().resolve(getAOL().toString());
   }
 
   /**
@@ -70,8 +82,8 @@ public abstract class AbstractGnuMojo extends AbstractResourcesMojo {
    * @throws MojoFailureException
    * @throws MojoExecutionException
    */
-  protected final File getGnuAOLSourceDirectory() throws MojoFailureException, MojoExecutionException {
-    return new File(getGnuAOLDirectory(), "src");
+  protected final Path getGnuAOLSourceDirectory() throws MojoFailureException, MojoExecutionException {
+    return getGnuAOLDirectory().resolve("src");
   }
 
   /**
@@ -79,12 +91,12 @@ public abstract class AbstractGnuMojo extends AbstractResourcesMojo {
    * @throws MojoFailureException
    * @throws MojoExecutionException
    */
-  protected final File getGnuAOLTargetDirectory() throws MojoFailureException, MojoExecutionException {
-    return new File(getGnuAOLDirectory(), "target");
+  protected final Path getGnuAOLTargetDirectory() throws MojoFailureException, MojoExecutionException {
+    return getGnuAOLDirectory().resolve("target");
   }
 
-  protected final File getGnuSourceDirectory() {
-    return this.gnuSourceDirectory;
+  protected final Path getGnuSourceDirectory() {
+    return this.gnuSourceDirectory.toPath();
   }
 
   /**
@@ -97,7 +109,7 @@ public abstract class AbstractGnuMojo extends AbstractResourcesMojo {
   }
 
   protected final NarManager getNarManager() throws MojoFailureException, MojoExecutionException {
-    return new NarManager(getLog(), localRepository, getMavenProject(), getArchitecture(), getOS(), getLinker());
+    return new NarManager(getLog(), repoSystem, repoSession, projectRepos, getMavenProject(), getArchitecture(), getOS(), getLinker());
   }
 
   protected List<String> getIncludeDirs() throws MojoExecutionException, MojoFailureException {
@@ -109,12 +121,12 @@ public abstract class AbstractGnuMojo extends AbstractResourcesMojo {
       String binding = narDependency.getNarInfo().getBinding(getAOL(), Library.STATIC);
       getLog().debug("Looking for " + narDependency + " found binding " + binding);
       if (!binding.equals(Library.JNI)) {
-        File unpackDirectory = getUnpackDirectory();
-        File include = getLayout().getIncludeDirectory(unpackDirectory,
+        Path unpackDirectory = getUnpackDirectory();
+        Path include = getLayout().getIncludeDirectory(unpackDirectory,
             narDependency.getArtifactId(), narDependency.getVersion());
         getLog().debug("Looking for include directory: " + include);
-        if (include.exists()) {
-          includeDirs.add(include.getPath());
+        if (Files.exists(include)) {
+          includeDirs.add(include.toString());
         } else {
           throw new MojoExecutionException(
               "NAR: unable to locate include path: " + include);
@@ -124,11 +136,11 @@ public abstract class AbstractGnuMojo extends AbstractResourcesMojo {
     return includeDirs;
   }
 
-  protected List<File> getLibDirs() throws MojoExecutionException, MojoFailureException {
+  protected List<Path> getLibDirs() throws MojoExecutionException, MojoFailureException {
     // add dependency include paths (copied from NarCompileMojo.java)
-    List<File> libDirs = new ArrayList<File>();
-    for (Object dep : getNarManager().getNarDependencies("compile")) {
-      NarArtifact narDependency = (NarArtifact) dep;
+    Path unpackDirectory = getUnpackDirectory();
+    List<Path> libDirs = new ArrayList<>();
+    for (NarArtifact narDependency : getNarManager().getNarDependencies("compile")) {
       // FIXME, handle multiple includes from one NAR
       String binding = narDependency.getNarInfo().getBinding(getAOL(), Library.STATIC);
       getLog().debug("Looking for " + narDependency + " found binding " + binding);
@@ -136,12 +148,11 @@ public abstract class AbstractGnuMojo extends AbstractResourcesMojo {
         if (narDependency.getNarInfo().getBinding(getAOL(), Library.SHARED).equals(Library.EXECUTABLE))
           continue;
 
-        File unpackDirectory = getUnpackDirectory();
-        File libDir = getLayout().getLibDirectory(unpackDirectory,
+        Path libDir = getLayout().getLibDirectory(unpackDirectory,
             narDependency.getArtifactId(), narDependency.getVersion(),
             getAOL().toString(),
             narDependency.getNarInfo().getBinding(getAOL(), Library.SHARED));
-        if (libDir.exists()) {
+        if (Files.exists(libDir)) {
           libDirs.add(libDir);
         } else {
           throw new MojoExecutionException(
@@ -164,12 +175,12 @@ public abstract class AbstractGnuMojo extends AbstractResourcesMojo {
         if (narDependency.getNarInfo().getBinding(getAOL(), Library.SHARED).equals(Library.EXECUTABLE))
           continue;
 
-        File unpackDirectory = getUnpackDirectory();
-        File libDir = getLayout().getLibDirectory(unpackDirectory,
+        Path unpackDirectory = getUnpackDirectory();
+        Path libDir = getLayout().getLibDirectory(unpackDirectory,
             narDependency.getArtifactId(), narDependency.getVersion(),
             getAOL().toString(),
             narDependency.getNarInfo().getBinding(getAOL(), Library.SHARED));
-        if (libDir.exists()) {
+        if (Files.exists(libDir)) {
           List<String> libNames = Arrays.asList(narDependency.getNarInfo().getLibs(getAOL()).split(" "));
           for (int idx = 0; idx < libNames.size(); idx++) {
             String linkName = getLinkName(libDir, (String)libNames.get(idx));
@@ -186,11 +197,11 @@ public abstract class AbstractGnuMojo extends AbstractResourcesMojo {
     return libs;
   }
 
-  private String getLinkName(File libDir, String libName) throws MojoFailureException, MojoExecutionException {
+  private String getLinkName(Path libDir, String libName) throws MojoFailureException, MojoExecutionException {
     String linkerName = libName;
     if (getAOL().getOS() == OS.WINDOWS) {
-      File f = new File(libDir, linkerName + ".lib");
-      if (f.exists()) {
+      Path f = libDir.resolve(linkerName + ".lib");
+      if (Files.exists(f)) {
         linkerName += ".lib";
       } else {
         linkerName = null;

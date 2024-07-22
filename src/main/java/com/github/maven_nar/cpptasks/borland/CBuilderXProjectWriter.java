@@ -23,6 +23,7 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -36,7 +37,6 @@ import org.xml.sax.SAXException;
 import org.xml.sax.helpers.AttributesImpl;
 
 import com.github.maven_nar.cpptasks.CCTask;
-import com.github.maven_nar.cpptasks.CUtil;
 import com.github.maven_nar.cpptasks.TargetInfo;
 import com.github.maven_nar.cpptasks.compiler.CommandLineCompilerConfiguration;
 import com.github.maven_nar.cpptasks.compiler.CommandLineLinkerConfiguration;
@@ -130,7 +130,7 @@ public final class CBuilderXProjectWriter implements ProjectWriter {
    *          compilation targets
    * @return representative (hopefully) compiler configuration
    */
-  private CommandLineCompilerConfiguration getBaseCompilerConfiguration(final Map<String, TargetInfo> targets) {
+  private CommandLineCompilerConfiguration getBaseCompilerConfiguration(final Map<Path, TargetInfo> targets) {
     //
     // find first target with an gcc or bcc compilation
     //
@@ -140,7 +140,6 @@ public final class CBuilderXProjectWriter implements ProjectWriter {
     //
     for (final TargetInfo targetInfo : targets.values()) {
       final ProcessorConfiguration config = targetInfo.getConfiguration();
-      final String identifier = config.getIdentifier();
       //
       // for the first gcc or bcc compiler
       //
@@ -191,7 +190,7 @@ public final class CBuilderXProjectWriter implements ProjectWriter {
    * @throws SAXException
    *           if I/O error or illegal content
    */
-  private void writeCompileOptions(final String baseDir, final PropertyWriter writer,
+  private void writeCompileOptions(final Path baseDir, final PropertyWriter writer,
       final CommandLineCompilerConfiguration compilerConfig) throws SAXException {
     boolean isBcc = false;
     boolean isUnix = true;
@@ -202,17 +201,17 @@ public final class CBuilderXProjectWriter implements ProjectWriter {
       isBcc = true;
     }
 
-    final File[] includePath = compilerConfig.getIncludePath();
+    final List<Path> includePath = compilerConfig.getIncludePath();
     int includeIndex = 1;
     if (isUnix) {
       writer.write(compileID, "option.I.arg." + includeIndex++, "/usr/include");
       writer.write(compileID, "option.I.arg." + includeIndex++, "/usr/include/g++-3");
     }
-    for (final File element : includePath) {
-      final String relPath = CUtil.getRelativePath(baseDir, element);
-      writer.write(compileID, "option.I.arg." + includeIndex++, relPath);
+    for (final Path element : includePath) {
+      final Path relPath = baseDir.relativize(element);
+      writer.write(compileID, "option.I.arg." + includeIndex++, relPath.toString());
     }
-    if (includePath.length > 0) {
+    if (includePath.size() > 0) {
       writer.write(compileID, "option.I.enabled", "1");
     }
 
@@ -326,7 +325,7 @@ public final class CBuilderXProjectWriter implements ProjectWriter {
    * @throws SAXException
    *           if I/O error or illegal content
    */
-  private void writeLinkOptions(final String baseDir, final PropertyWriter writer, final TargetInfo linkTarget)
+  private void writeLinkOptions(final Path baseDir, final PropertyWriter writer, final TargetInfo linkTarget)
       throws SAXException {
     if (linkTarget != null) {
       final ProcessorConfiguration config = linkTarget.getConfiguration();
@@ -344,9 +343,9 @@ public final class CBuilderXProjectWriter implements ProjectWriter {
           for (final String libName : libNames) {
             writer.write(linkID, "param.libfiles." + libIndex++, libName);
           }
-          final String startup = linkConfig.getStartupObject();
+          final Path startup = linkConfig.getStartupObject();
           if (startup != null) {
-            writer.write(linkID, "param.objfiles.1", startup);
+            writer.write(linkID, "param.objfiles.1", startup.toString());
           }
         } else {
           final String linkID = "linux.Debug_Build.gnuc++.g++link";
@@ -378,15 +377,15 @@ public final class CBuilderXProjectWriter implements ProjectWriter {
    *           if XML serialization error
    */
   @Override
-  public void writeProject(final File fileName, final CCTask task, final ProjectDef projectDef,
-      final List<File> sources, final Map<String, TargetInfo> targets, final TargetInfo linkTarget)
+  public void writeProject(final Path fileName, final CCTask task, final ProjectDef projectDef,
+      final List<Path> sources, final Map<Path, TargetInfo> targets, final TargetInfo linkTarget)
       throws IOException, SAXException {
 
     String projectName = projectDef.getName();
     if (projectName == null) {
-      projectName = fileName.getName();
+      projectName = fileName.getFileName().toString();
     }
-    final String basePath = fileName.getAbsoluteFile().getParent();
+    final Path basePath = fileName.getParent();
 
     final File projectFile = new File(fileName + ".cbx");
     if (!projectDef.getOverwrite() && projectFile.exists()) {
@@ -467,10 +466,9 @@ public final class CBuilderXProjectWriter implements ProjectWriter {
     }
 
     for (final TargetInfo info : targets.values()) {
-      final File[] targetsources = info.getSources();
-      for (final File targetsource : targetsources) {
-        final String relativePath = CUtil.getRelativePath(basePath, targetsource);
-        fileAttributes.setValue(0, relativePath);
+      for (final Path targetsource : info.getSources()) {
+        final Path relativePath = basePath.relativize(targetsource);
+        fileAttributes.setValue(0, relativePath.toString());
         content.startElement(null, "file", "file", fileAttributes);
 
         //

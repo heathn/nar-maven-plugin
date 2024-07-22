@@ -19,9 +19,13 @@
  */
 package com.github.maven_nar.cpptasks;
 
-import java.io.File;
 import java.lang.reflect.Method;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 import java.util.Vector;
+import java.util.stream.Collectors;
 
 import org.apache.tools.ant.BuildException;
 import org.apache.tools.ant.DirectoryScanner;
@@ -86,11 +90,11 @@ public abstract class ProcessorDef extends DataType {
   /**
    * Collection of <compilerarg>or <linkerarg>contained by definition
    */
-  private final Vector processorArgs = new Vector();
+  private final List<CommandLineArgument> processorArgs = new ArrayList<>();
   /**
    * Collection of <compilerparam>or <linkerparam>contained by definition
    */
-  private final Vector processorParams = new Vector();
+  private final List<ProcessorParam> processorParams = new ArrayList<>();
   /**
    * if true, all targets will be unconditionally rebuilt
    */
@@ -98,7 +102,7 @@ public abstract class ProcessorDef extends DataType {
   /**
    * Collection of <fileset>contained by definition
    */
-  private final Vector srcSets = new Vector();
+  private final List<ConditionalFileSet> srcSets = new ArrayList<>();
   /**
    * Name of property that if present will cause definition to be ignored.
    * May be null.
@@ -130,7 +134,7 @@ public abstract class ProcessorDef extends DataType {
     if (isReference()) {
       throw noChildrenAllowed();
     }
-    this.processorArgs.addElement(arg);
+    this.processorArgs.add(arg);
   }
 
   /**
@@ -150,7 +154,7 @@ public abstract class ProcessorDef extends DataType {
     if (isReference()) {
       throw noChildrenAllowed();
     }
-    this.processorParams.addElement(param);
+    this.processorParams.add(param);
   }
 
   /**
@@ -185,7 +189,7 @@ public abstract class ProcessorDef extends DataType {
       throw noChildrenAllowed();
     }
     srcSet.setProject(getProject());
-    this.srcSets.addElement(srcSet);
+    this.srcSets.add(srcSet);
   }
 
   /**
@@ -213,7 +217,7 @@ public abstract class ProcessorDef extends DataType {
    * 
    * @return active compiler arguments
    */
-  public CommandLineArgument[] getActiveProcessorArgs() {
+  public List<CommandLineArgument> getActiveProcessorArgs() {
     final Project p = getProject();
     if (p == null) {
       throw new java.lang.IllegalStateException("project must be set");
@@ -221,16 +225,10 @@ public abstract class ProcessorDef extends DataType {
     if (isReference()) {
       return ((ProcessorDef) getCheckedRef(ProcessorDef.class, "ProcessorDef")).getActiveProcessorArgs();
     }
-    final Vector activeArgs = new Vector(this.processorArgs.size());
-    for (int i = 0; i < this.processorArgs.size(); i++) {
-      final CommandLineArgument arg = (CommandLineArgument) this.processorArgs.elementAt(i);
-      if (arg.isActive(p)) {
-        activeArgs.addElement(arg);
-      }
-    }
-    final CommandLineArgument[] array = new CommandLineArgument[activeArgs.size()];
-    activeArgs.copyInto(array);
-    return array;
+
+    return this.processorArgs.stream()
+        .filter(cmdArg -> cmdArg.isActive(p))
+        .collect(Collectors.toList());
   }
 
   /**
@@ -239,7 +237,7 @@ public abstract class ProcessorDef extends DataType {
    * 
    * @return active compiler arguments
    */
-  public ProcessorParam[] getActiveProcessorParams() {
+  public List<ProcessorParam> getActiveProcessorParams() {
     final Project p = getProject();
     if (p == null) {
       throw new java.lang.IllegalStateException("project must be set");
@@ -247,16 +245,10 @@ public abstract class ProcessorDef extends DataType {
     if (isReference()) {
       return ((ProcessorDef) getCheckedRef(ProcessorDef.class, "ProcessorDef")).getActiveProcessorParams();
     }
-    final Vector activeParams = new Vector(this.processorParams.size());
-    for (int i = 0; i < this.processorParams.size(); i++) {
-      final ProcessorParam param = (ProcessorParam) this.processorParams.elementAt(i);
-      if (param.isActive(p)) {
-        activeParams.addElement(param);
-      }
-    }
-    final ProcessorParam[] array = new ProcessorParam[activeParams.size()];
-    activeParams.copyInto(array);
-    return array;
+
+    return this.processorParams.stream()
+        .filter(param -> param.isActive(p))
+        .collect(Collectors.toList());
   }
 
   /**
@@ -476,12 +468,12 @@ public abstract class ProcessorDef extends DataType {
   public void setClassname(final String className) throws BuildException {
     Object proc = null;
     try {
-      final Class implClass = ProcessorDef.class.getClassLoader().loadClass(className);
+      final Class<?> implClass = ProcessorDef.class.getClassLoader().loadClass(className);
       try {
         final Method getInstance = implClass.getMethod("getInstance");
         proc = getInstance.invoke(null);
       } catch (final Exception ex) {
-        proc = implClass.newInstance();
+        proc = implClass.getDeclaredConstructor().newInstance();
       }
     } catch (final Exception ex) {
       throw new BuildException(ex);
@@ -696,14 +688,14 @@ public abstract class ProcessorDef extends DataType {
     }
 
     for (int i = 0; i < this.srcSets.size(); i++) {
-      final ConditionalFileSet srcSet = (ConditionalFileSet) this.srcSets.elementAt(i);
+      final ConditionalFileSet srcSet = this.srcSets.get(i);
       if (srcSet.isActive()) {
         // Find matching source files
         final DirectoryScanner scanner = srcSet.getDirectoryScanner(p);
         // Check each source file - see if it needs compilation
-        final String[] fileNames = scanner.getIncludedFiles();
-        final File parentDir = scanner.getBasedir();
-        for (final String currentFile : fileNames) {
+        final Path[] fileNames = Arrays.stream(scanner.getIncludedFiles()).map(Path::of).toArray(Path[]::new);
+        final Path parentDir = scanner.getBasedir().toPath();
+        for (final Path currentFile : fileNames) {
           visitor.visit(parentDir, currentFile);
         }
       }

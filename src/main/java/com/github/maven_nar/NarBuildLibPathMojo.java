@@ -20,6 +20,8 @@
 package com.github.maven_nar;
 
 import java.io.File;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
@@ -75,9 +77,9 @@ public class NarBuildLibPathMojo extends AbstractDependencyMojo {
       String binding = dependency.getNarInfo().getBinding(getAOL(), Library.SHARED);
       // Only interested in shared libraries
       if (binding.equals(Library.SHARED)) {
-        File depLibPathEntry = getLibraryPath(dependency);
-        if (depLibPathEntry.exists()) {
-          libs.add(depLibPathEntry);
+        Path depLibPathEntry = getLibraryPath(dependency);
+        if (Files.exists(depLibPathEntry)) {
+          libs.add(depLibPathEntry.toFile());
         }
       }
     }

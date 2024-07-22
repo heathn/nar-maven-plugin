@@ -19,7 +19,7 @@
  */
 package com.github.maven_nar.cpptasks.ide;
 
-import java.io.File;
+import java.nio.file.Path;
 import java.util.Collections;
 import java.util.List;
 
@@ -31,7 +31,7 @@ import org.apache.tools.ant.util.StringUtils;
  */
 public final class DependencyDef {
   private String id;
-  private File file;
+  private Path file;
   private String name;
   private String depends;
 
@@ -49,7 +49,7 @@ public final class DependencyDef {
     return Collections.emptyList();
   }
 
-  public File getFile() {
+  public Path getFile() {
     return this.file;
   }
 
@@ -64,7 +64,7 @@ public final class DependencyDef {
     if (this.name != null) {
       return this.name;
     } else if (this.file != null) {
-      return this.file.getName();
+      return this.file.getFileName().toString();
     }
     return "null";
   }
@@ -73,7 +73,7 @@ public final class DependencyDef {
     this.depends = val;
   }
 
-  public void setFile(final File val) {
+  public void setFile(final Path val) {
     this.file = val;
   }
 

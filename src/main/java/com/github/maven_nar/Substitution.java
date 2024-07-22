@@ -22,7 +22,6 @@ package com.github.maven_nar;
 import java.io.File;
 import java.util.regex.Pattern;
 
-import org.apache.maven.plugins.annotations.Parameter;
 
 /**
  * Substitutes matched strings in a replay script

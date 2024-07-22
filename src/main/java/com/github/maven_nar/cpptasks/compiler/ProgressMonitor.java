@@ -19,6 +19,8 @@
  */
 package com.github.maven_nar.cpptasks.compiler;
 
+import java.nio.file.Path;
+
 /**
  * Interface to receive notification of compile progress
  *
@@ -31,7 +33,7 @@ public interface ProgressMonitor {
    * Called to notify monitor of progress
    * 
    */
-  void progress(String[] sources);
+  void progress(Path[] sources);
 
   void start(ProcessorConfiguration config);
 }

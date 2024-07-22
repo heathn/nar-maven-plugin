@@ -21,6 +21,8 @@ package com.github.maven_nar.cpptasks.hp;
 
 import junit.framework.TestCase;
 
+import java.nio.file.Path;
+
 import com.github.maven_nar.cpptasks.compiler.AbstractProcessor;
 
 /**
@@ -36,61 +38,61 @@ public class TestaCCCompiler extends TestCase {
 
   public void testBidAssembly() {
     final aCCCompiler compiler = aCCCompiler.getInstance();
-    assertEquals(AbstractProcessor.DEFAULT_PROCESS_BID, compiler.bid("foo.s"));
+    assertEquals(AbstractProcessor.DEFAULT_PROCESS_BID, compiler.bid(Path.of("foo.s")));
   }
 
   public void testBidC() {
     final aCCCompiler compiler = aCCCompiler.getInstance();
-    assertEquals(AbstractProcessor.DEFAULT_PROCESS_BID, compiler.bid("foo.c"));
+    assertEquals(AbstractProcessor.DEFAULT_PROCESS_BID, compiler.bid(Path.of("foo.c")));
   }
 
   public void testBidCpp() {
     final aCCCompiler compiler = aCCCompiler.getInstance();
-    assertEquals(AbstractProcessor.DEFAULT_PROCESS_BID, compiler.bid("foo.C"));
+    assertEquals(AbstractProcessor.DEFAULT_PROCESS_BID, compiler.bid(Path.of("foo.C")));
   }
 
   public void testBidCpp2() {
     final aCCCompiler compiler = aCCCompiler.getInstance();
-    assertEquals(AbstractProcessor.DEFAULT_PROCESS_BID, compiler.bid("foo.cc"));
+    assertEquals(AbstractProcessor.DEFAULT_PROCESS_BID, compiler.bid(Path.of("foo.cc")));
   }
 
   public void testBidCpp3() {
     final aCCCompiler compiler = aCCCompiler.getInstance();
-    assertEquals(AbstractProcessor.DEFAULT_PROCESS_BID, compiler.bid("foo.CC"));
+    assertEquals(AbstractProcessor.DEFAULT_PROCESS_BID, compiler.bid(Path.of("foo.CC")));
   }
 
   public void testBidCpp4() {
     final aCCCompiler compiler = aCCCompiler.getInstance();
-    assertEquals(AbstractProcessor.DEFAULT_PROCESS_BID, compiler.bid("foo.cxx"));
+    assertEquals(AbstractProcessor.DEFAULT_PROCESS_BID, compiler.bid(Path.of("foo.cxx")));
   }
 
   public void testBidCpp5() {
     final aCCCompiler compiler = aCCCompiler.getInstance();
-    assertEquals(AbstractProcessor.DEFAULT_PROCESS_BID, compiler.bid("foo.CXX"));
+    assertEquals(AbstractProcessor.DEFAULT_PROCESS_BID, compiler.bid(Path.of("foo.CXX")));
   }
 
   public void testBidCpp6() {
     final aCCCompiler compiler = aCCCompiler.getInstance();
-    assertEquals(AbstractProcessor.DEFAULT_PROCESS_BID, compiler.bid("foo.cpp"));
+    assertEquals(AbstractProcessor.DEFAULT_PROCESS_BID, compiler.bid(Path.of("foo.cpp")));
   }
 
   public void testBidCpp7() {
     final aCCCompiler compiler = aCCCompiler.getInstance();
-    assertEquals(AbstractProcessor.DEFAULT_PROCESS_BID, compiler.bid("foo.CPP"));
+    assertEquals(AbstractProcessor.DEFAULT_PROCESS_BID, compiler.bid(Path.of("foo.CPP")));
   }
 
   public void testBidCpp8() {
     final aCCCompiler compiler = aCCCompiler.getInstance();
-    assertEquals(AbstractProcessor.DEFAULT_PROCESS_BID, compiler.bid("foo.c++"));
+    assertEquals(AbstractProcessor.DEFAULT_PROCESS_BID, compiler.bid(Path.of("foo.c++")));
   }
 
   public void testBidCpp9() {
     final aCCCompiler compiler = aCCCompiler.getInstance();
-    assertEquals(AbstractProcessor.DEFAULT_PROCESS_BID, compiler.bid("foo.C++"));
+    assertEquals(AbstractProcessor.DEFAULT_PROCESS_BID, compiler.bid(Path.of("foo.C++")));
   }
 
   public void testBidPreprocessed() {
     final aCCCompiler compiler = aCCCompiler.getInstance();
-    assertEquals(AbstractProcessor.DEFAULT_PROCESS_BID, compiler.bid("foo.i"));
+    assertEquals(AbstractProcessor.DEFAULT_PROCESS_BID, compiler.bid(Path.of("foo.i")));
   }
 }

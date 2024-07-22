@@ -20,6 +20,9 @@
 package com.github.maven_nar;
 
 import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
@@ -32,6 +35,7 @@ import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
 import org.apache.maven.plugins.annotations.Parameter;
 import org.apache.maven.project.MavenProject;
+
 
 /**
  * @author Mark Donszelmann
@@ -133,12 +137,12 @@ public abstract class AbstractNarMojo extends AbstractMojo implements NarConstan
   @Parameter
   private File testUnpackDirectory;
 
-    /**
-     * NARVersionInfo for Windows binaries
-     *
-     */
-    @Parameter
-    private NARVersionInfo versionInfo;
+  /**
+   * NARVersionInfo for Windows binaries
+   *
+   */
+  @Parameter
+  private NARVersionInfo versionInfo;
 
   /**
    * List of classifiers which you want download/unpack/assemble
@@ -206,7 +210,7 @@ public abstract class AbstractNarMojo extends AbstractMojo implements NarConstan
    * The home of the Java system. Defaults to a derived value from ${java.home}
    * which is OS specific.
    */
-  @Parameter(readonly = true)
+  @Parameter(defaultValue = "${java.home}", readonly = true)
   private File javaHome;
 
   @Parameter
@@ -256,6 +260,10 @@ public abstract class AbstractNarMojo extends AbstractMojo implements NarConstan
     return this.windowsSdkDir;
   }
 
+  protected Path getJavaHome() {
+    return this.javaHome != null ? this.javaHome.toPath() : null;
+  }
+
   @Override
   public final void execute() throws MojoExecutionException, MojoFailureException {
     if (this.skip) {
@@ -275,7 +283,7 @@ public abstract class AbstractNarMojo extends AbstractMojo implements NarConstan
     }
   }
 
-  protected final AOL getAOL() throws MojoFailureException, MojoExecutionException {
+  protected final AOL getAOL() {
     return this.aolId;
   }
 
@@ -283,8 +291,8 @@ public abstract class AbstractNarMojo extends AbstractMojo implements NarConstan
     return this.architecture;
   }
 
-  protected final File getBasedir() {
-    return this.baseDir;
+  protected final Path getBasedir() {
+    return this.baseDir.toPath();
   }
 
   protected final Javah getJavah() {
@@ -295,9 +303,9 @@ public abstract class AbstractNarMojo extends AbstractMojo implements NarConstan
     return this.javah;
   }
 
-  protected final File getJavaHome(final AOL aol) throws MojoExecutionException {
+  protected final Path getJavaHome(final AOL aol) throws MojoExecutionException {
     // FIXME should be easier by specifying default...
-    return getNarInfo().getProperty(aol, "javaHome", NarUtil.getJavaHome(this.javaHome, getOS()));
+    return getNarInfo().getProperty(aol, "javaHome", NarUtil.getJavaHome(getJavaHome(), getOS()));
   }
 
   protected final NarLayout getLayout() throws MojoExecutionException {
@@ -338,11 +346,12 @@ public abstract class AbstractNarMojo extends AbstractMojo implements NarConstan
     if (this.narInfo == null) {
       final String groupId = getMavenProject().getGroupId();
       final String artifactId = getMavenProject().getArtifactId();
-      final String path = "META-INF/nar/" + groupId + "/" + artifactId + "/" + NarInfo.NAR_PROPERTIES;
-      File propertiesFile = new File(this.classesDirectory, path);
+      Path path = Path.of("META-INF", "nar", groupId, artifactId, NarInfo.NAR_PROPERTIES);
+      Path propertiesFile = getClassesDirectory().resolve(path);
       // should not need to try and read from source.
-      if (!propertiesFile.exists()) {
-        propertiesFile = new File(getMavenProject().getBasedir(), "src/main/resources/" + path);
+      if (Files.notExists(propertiesFile)) {
+        Path resourcesPath = Path.of("src", "main", "resources").resolve(path);
+        propertiesFile = getMavenProject().getBasedir().toPath().resolve(resourcesPath);
       }
 
       this.narInfo = new NarInfo(groupId, artifactId, getMavenProject().getVersion(), getLog(), propertiesFile);
@@ -366,7 +375,7 @@ public abstract class AbstractNarMojo extends AbstractMojo implements NarConstan
     }
   }
 
-  protected final String getLibsName() throws MojoExecutionException {
+  protected final String getLibsName() {
     if (this.libsName != null && !this.libsName.trim().isEmpty()) {
       return this.libsName;
     } else {
@@ -382,24 +391,28 @@ public abstract class AbstractNarMojo extends AbstractMojo implements NarConstan
     return this.includesType;
   }
 
-  protected final File getOutputDirectory() {
-    return this.outputDirectory;
+  protected final Path getOutputDirectory() {
+    return this.outputDirectory.toPath();
   }
 
-  protected final File getTargetDirectory() {
-    return this.targetDirectory;
+  protected final Path getClassesDirectory() {
+    return this.classesDirectory.toPath();
   }
 
-  protected final File getTestTargetDirectory() {
-    return this.testTargetDirectory;
+  protected final Path getTargetDirectory() {
+    return this.targetDirectory.toPath();
   }
 
-  protected final File getTestUnpackDirectory() {
-    return this.testUnpackDirectory;
+  protected final Path getTestTargetDirectory() {
+    return this.testTargetDirectory.toPath();
   }
 
-  protected File getUnpackDirectory() {
-    return this.unpackDirectory;
+  protected final Path getTestUnpackDirectory() {
+    return this.testUnpackDirectory.toPath();
+  }
+
+  protected Path getUnpackDirectory() {
+    return this.unpackDirectory.toPath();
   }
 
   protected boolean isDryRun() {
@@ -428,11 +441,13 @@ public abstract class AbstractNarMojo extends AbstractMojo implements NarConstan
     properties.setProperty("nar.aol.key", this.aolId.getKey());
     model.setProperties(properties);
 
+    // TODO: Why is this not just set as the default value in the parameter declaration?
     if (this.targetDirectory == null) {
-      this.targetDirectory = new File(this.mavenProject.getBuild().getDirectory(), "nar");
+      this.targetDirectory = Path.of(this.mavenProject.getBuild().getDirectory(), "nar").toFile();
     }
+    // TODO: Why is this not just set as the default value in the parameter declaration?
     if (this.testTargetDirectory == null) {
-      this.testTargetDirectory = new File(this.mavenProject.getBuild().getDirectory(), "test-nar");
+      this.testTargetDirectory = Path.of(this.mavenProject.getBuild().getDirectory(), "test-nar").toFile();
     }
 
     if (this.unpackDirectory == null) {
@@ -443,10 +458,10 @@ public abstract class AbstractNarMojo extends AbstractMojo implements NarConstan
     }
     if (this.replay != null) {
       if (this.replay.getOutputDirectory() == null) {
-        this.replay.setOutputDirectory(new File(targetDirectory, "nar-replay"));
+        this.replay.setOutputDirectory(targetDirectory.toPath().resolve("nar-replay"));
       }
       if (this.replay.getScriptDirectory() == null) {
-        this.replay.setScriptDirectory(new File(this.replay.getOutputDirectory(), "scripts"));
+        this.replay.setScriptDirectory(this.replay.getOutputDirectory().resolve("scripts"));
       }
     }
 
@@ -467,11 +482,15 @@ public abstract class AbstractNarMojo extends AbstractMojo implements NarConstan
     this.replay = replay;
   }
 
-  protected void createReplayDirs() {
+  protected void createReplayDirs() throws MojoExecutionException {
     if (replay != null) {
       
-      replay.getOutputDirectory().mkdirs();
-      replay.getScriptDirectory().mkdirs();
+      try {
+        Files.createDirectories(replay.getOutputDirectory());
+        Files.createDirectories(replay.getScriptDirectory());
+      } catch (IOException e) {
+        throw new MojoExecutionException(e);
+      }
     }
   }
 }

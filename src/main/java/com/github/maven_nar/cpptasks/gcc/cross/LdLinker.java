@@ -20,6 +20,8 @@
 package com.github.maven_nar.cpptasks.gcc.cross;
 
 import java.io.File;
+import java.nio.file.Path;
+import java.util.List;
 
 import org.apache.tools.ant.BuildException;
 
@@ -76,7 +78,7 @@ public final class LdLinker extends AbstractLdLinker {
   }
 
   @Override
-  public void link(final CCTask task, final File outputFile, final String[] sourceFiles,
+  public void link(final CCTask task, final Path outputFile, final List<Path> sourceFiles,
       final CommandLineLinkerConfiguration config) throws BuildException {
     try {
       final LdLinker clone = (LdLinker) this.clone();
@@ -90,7 +92,7 @@ public final class LdLinker extends AbstractLdLinker {
     }
   }
 
-  private void superlink(final CCTask task, final File outputFile, final String[] sourceFiles,
+  private void superlink(final CCTask task, final Path outputFile, final List<Path> sourceFiles,
       final CommandLineLinkerConfiguration config) throws BuildException {
     super.link(task, outputFile, sourceFiles, config);
   }

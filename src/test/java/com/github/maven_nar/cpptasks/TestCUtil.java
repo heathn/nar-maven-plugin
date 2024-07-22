@@ -21,6 +21,8 @@ package com.github.maven_nar.cpptasks;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Path;
+import java.util.List;
 
 import junit.framework.TestCase;
 
@@ -33,7 +35,7 @@ public class TestCUtil extends TestCase {
   }
 
   public void testGetPathFromEnvironment() {
-    final File[] files = CUtil.getPathFromEnvironment("LIB", ";");
+    final List<Path> files = CUtil.getPathFromEnvironment("LIB", ";");
     assertNotNull(files);
   }
 
@@ -116,41 +118,41 @@ public class TestCUtil extends TestCase {
   }
 
   public void testParsePath1() {
-    final File[] files = CUtil.parsePath("", ";");
-    assertEquals(0, files.length);
+    final List<Path> files = CUtil.parsePath("", ";");
+    assertEquals(0, files.size());
   }
 
   public void testParsePath2() {
     final String workingDir = System.getProperty("user.dir");
-    final File[] files = CUtil.parsePath(workingDir, ";");
-    assertEquals(1, files.length);
-    final File workingDirFile = new File(workingDir);
-    assertEquals(workingDirFile, files[0]);
+    final List<Path> files = CUtil.parsePath(workingDir, ";");
+    assertEquals(1, files.size());
+    final Path workingDirFile = Path.of(workingDir);
+    assertEquals(workingDirFile, files.get(0));
   }
 
   public void testParsePath3() {
     final String workingDir = System.getProperty("user.dir");
-    final File[] files = CUtil.parsePath(workingDir + ";", ";");
-    assertEquals(1, files.length);
-    assertEquals(new File(workingDir), files[0]);
+    final List<Path> files = CUtil.parsePath(workingDir + ";", ";");
+    assertEquals(1, files.size());
+    assertEquals(Path.of(workingDir), files.get(0));
   }
 
   public void testParsePath4() {
     final String workingDir = System.getProperty("user.dir");
     final String javaHome = System.getProperty("java.home");
-    final File[] files = CUtil.parsePath(workingDir + ";" + javaHome, ";");
-    assertEquals(2, files.length);
-    assertEquals(new File(workingDir), files[0]);
-    assertEquals(new File(javaHome), files[1]);
+    final List<Path> files = CUtil.parsePath(workingDir + ";" + javaHome, ";");
+    assertEquals(2, files.size());
+    assertEquals(Path.of(workingDir), files.get(0));
+    assertEquals(Path.of(javaHome), files.get(1));
   }
 
   public void testParsePath5() {
     final String workingDir = System.getProperty("user.dir");
     final String javaHome = System.getProperty("java.home");
-    final File[] files = CUtil.parsePath(workingDir + ";" + javaHome + ";", ";");
-    assertEquals(2, files.length);
-    assertEquals(new File(workingDir), files[0]);
-    assertEquals(new File(javaHome), files[1]);
+    final List<Path> files = CUtil.parsePath(workingDir + ";" + javaHome + ";", ";");
+    assertEquals(2, files.size());
+    assertEquals(Path.of(workingDir), files.get(0));
+    assertEquals(Path.of(javaHome), files.get(1));
   }
 
   /**

@@ -19,6 +19,7 @@
  */
 package com.github.maven_nar.cpptasks.compaq;
 
+import java.nio.file.Path;
 import java.util.Vector;
 
 import com.github.maven_nar.cpptasks.compiler.LinkType;
@@ -73,9 +74,9 @@ public final class CompaqVisualFortranLinker extends MsvcCompatibleLinker {
   }
 
   @Override
-  public String[] getOutputFileSwitch(final String outputFile) {
+  public String[] getOutputFileSwitch(final Path outputFile) {
     final StringBuffer buf = new StringBuffer("/OUT:");
-    if (outputFile.indexOf(' ') >= 0) {
+    if (outputFile.toString().indexOf(' ') >= 0) {
       buf.append('"');
       buf.append(outputFile);
       buf.append('"');

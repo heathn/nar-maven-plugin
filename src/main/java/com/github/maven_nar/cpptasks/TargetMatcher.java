@@ -19,9 +19,10 @@
  */
 package com.github.maven_nar.cpptasks;
 
-import java.io.File;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
-import java.util.Vector;
 
 import org.apache.tools.ant.BuildException;
 
@@ -35,16 +36,16 @@ import com.github.maven_nar.cpptasks.compiler.ProcessorConfiguration;
  */
 public final class TargetMatcher implements FileVisitor {
   private final LinkerConfiguration linker;
-  private final Vector<File> objectFiles;
-  private final File outputDir;
+  private final List<Path> objectFiles;
+  private final Path outputDir;
   private final ProcessorConfiguration[] processors;
-  private final File sourceFiles[] = new File[1];
-  private final Map<String, TargetInfo> targets;
+  private final List<Path> sourceFiles = new ArrayList<>();
+  private final Map<Path, TargetInfo> targets;
   private final VersionInfo versionInfo;
   private final CCTask task;
 
-  public TargetMatcher(final CCTask task, final File outputDir, final ProcessorConfiguration[] processors,
-      final LinkerConfiguration linker, final Vector<File> objectFiles, final Map<String, TargetInfo> targets,
+  public TargetMatcher(final CCTask task, final Path outputDir, final ProcessorConfiguration[] processors,
+      final LinkerConfiguration linker, final List<Path> objectFiles, final Map<Path, TargetInfo> targets,
       final VersionInfo versionInfo) {
     this.task = task;
     this.outputDir = outputDir;
@@ -53,11 +54,12 @@ public final class TargetMatcher implements FileVisitor {
     this.linker = linker;
     this.objectFiles = objectFiles;
     this.versionInfo = versionInfo;
+    this.sourceFiles.add(Path.of("."));
   }
 
   @Override
-  public void visit(final File parentDir, final String filename) throws BuildException {
-    final File fullPath = new File(parentDir, filename);
+  public void visit(final Path parentDir, final Path filename) throws BuildException {
+    final Path fullPath = parentDir.resolve(filename);
     //
     // see if any processor wants to bid
     // on this one
@@ -65,7 +67,7 @@ public final class TargetMatcher implements FileVisitor {
     int bid = 0;
     if (this.processors != null) {
       for (final ProcessorConfiguration processor : this.processors) {
-        final int newBid = processor.bid(fullPath.toString());
+        final int newBid = processor.bid(fullPath);
         if (newBid > bid) {
           bid = newBid;
           selectedCompiler = processor;
@@ -79,7 +81,7 @@ public final class TargetMatcher implements FileVisitor {
       if (this.linker != null) {
         final int linkerbid = this.linker.bid(filename);
         if (linkerbid > 0) {
-          this.objectFiles.addElement(fullPath);
+          this.objectFiles.add(fullPath);
           if (linkerbid == 1) {
             this.task.log("Unrecognized file type " + fullPath.toString() + " will be passed to linker");
           }
@@ -90,25 +92,25 @@ public final class TargetMatcher implements FileVisitor {
       // get output file name
       // requires full path as output name may be changed based on location
       //
-      final String[] outputFileNames = selectedCompiler.getOutputFileNames(fullPath.getPath(), this.versionInfo);
-      this.sourceFiles[0] = fullPath;
+      final Path[] outputFileNames = selectedCompiler.getOutputFileNames(fullPath, this.versionInfo);
+      this.sourceFiles.set(0, fullPath);
       //
       // if there is some output for this task
       // (that is a source file and not an header file)
       //
-      for (final String outputFileName : outputFileNames) {
+      for (final Path outputFileName : outputFileNames) {
         //
         // see if the same output file has already been registered
         //
         final TargetInfo previousTarget = this.targets.get(outputFileName);
         if (previousTarget == null) {
-          this.targets.put(outputFileName, new TargetInfo(selectedCompiler, this.sourceFiles, null, new File(
-              this.outputDir, outputFileName), selectedCompiler.getRebuild()));
+          this.targets.put(outputFileName, new TargetInfo(selectedCompiler, this.sourceFiles, null,
+              this.outputDir.resolve(outputFileName), selectedCompiler.getRebuild()));
         } else {
-          if (!previousTarget.getSources()[0].equals(this.sourceFiles[0])) {
+          if (!previousTarget.getSources().get(0).equals(this.sourceFiles.get(0))) {
             final String builder = "Output filename conflict: " + outputFileName +
                 " would be produced from " +
-                previousTarget.getSources()[0].toString() +
+                previousTarget.getSources().get(0).toString() +
                 " and " +
                 filename;
             throw new BuildException(builder);

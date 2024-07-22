@@ -27,6 +27,7 @@ import org.apache.maven.plugins.annotations.LifecyclePhase;
 import org.apache.maven.plugins.annotations.Mojo;
 import org.apache.maven.plugins.annotations.Parameter;
 import org.apache.maven.plugins.annotations.ResolutionScope;
+import org.eclipse.aether.artifact.Artifact;
 
 /**
  * List all the dependencies of the project and downloads the NAR files in local
@@ -45,7 +46,7 @@ public class NarUnpackDependenciesMojo extends NarDownloadDependenciesMojo {
    * List of tests to create
    */
   @Parameter
-  private List tests;
+  private List<Test> tests;
   
   @Override
   public void narExecute() throws MojoFailureException, MojoExecutionException {
@@ -54,7 +55,7 @@ public class NarUnpackDependenciesMojo extends NarDownloadDependenciesMojo {
     super.narExecute();
 
     // unpack the nar files
-    final List<AttachedNarArtifact> attachedNarArtifacts = getAttachedNarArtifacts(tests);
+    final List<Artifact> attachedNarArtifacts = getAttachedNarArtifacts(tests);
     unpackAttachedNars(attachedNarArtifacts);
   }
 

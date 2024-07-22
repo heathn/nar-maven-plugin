@@ -19,8 +19,8 @@
  */
 package com.github.maven_nar.cpptasks;
 
-import java.io.File;
-import java.io.IOException;
+import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
 
 /**
  * The history of a source file used to build a target
@@ -28,13 +28,13 @@ import java.io.IOException;
  * @author Curt Arnold
  */
 public final class SourceHistory {
-  private final/* final */long lastModified;
-  private final/* final */String relativePath;
+  private final FileTime lastModified;
+  private final Path relativePath;
 
   /**
    * Constructor
    */
-  public SourceHistory(final String relativePath, final long lastModified) {
+  public SourceHistory(final Path relativePath, final FileTime lastModified) {
     if (relativePath == null) {
       throw new NullPointerException("relativePath");
     }
@@ -42,19 +42,15 @@ public final class SourceHistory {
     this.lastModified = lastModified;
   }
 
-  public String getAbsolutePath(final File baseDir) {
-    try {
-      return new File(baseDir, this.relativePath).getCanonicalPath();
-    } catch (final IOException ex) {
-    }
-    return this.relativePath;
+  public Path getAbsolutePath(final Path baseDir) {
+    return baseDir.resolve(this.relativePath).toAbsolutePath();
   }
 
-  public long getLastModified() {
+  public FileTime getLastModified() {
     return this.lastModified;
   }
 
-  public String getRelativePath() {
+  public Path getRelativePath() {
     return this.relativePath;
   }
 }

@@ -19,20 +19,26 @@
  */
 package com.github.maven_nar.cpptasks;
 
+import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+
 /**
  * A description of a file built or to be built
  */
 public final class TargetHistory {
-  private final/* final */String config;
-  private final/* final */String output;
-  private final/* final */long outputLastModified;
-  private final/* final */SourceHistory[] sources;
+  private final String config;
+  private final Path output;
+  private final FileTime outputLastModified;
+  private final List<SourceHistory> sources;
 
   /**
    * Constructor from build step
    */
-  public TargetHistory(final String config, final String output, final long outputLastModified,
-      final SourceHistory[] sources) {
+  public TargetHistory(final String config, final Path output, final FileTime outputLastModified,
+      final List<SourceHistory> sources) {
     if (config == null) {
       throw new NullPointerException("config");
     }
@@ -45,14 +51,14 @@ public final class TargetHistory {
     this.config = config;
     this.output = output;
     this.outputLastModified = outputLastModified;
-    this.sources = sources.clone();
+    this.sources = new ArrayList<>(sources);
   }
 
-  public String getOutput() {
+  public Path getOutput() {
     return this.output;
   }
 
-  public long getOutputLastModified() {
+  public FileTime getOutputLastModified() {
     return this.outputLastModified;
   }
 
@@ -60,8 +66,7 @@ public final class TargetHistory {
     return this.config;
   }
 
-  public SourceHistory[] getSources() {
-    final SourceHistory[] clone = this.sources.clone();
-    return clone;
+  public List<SourceHistory> getSources() {
+    return Collections.unmodifiableList(this.sources);
   }
 }

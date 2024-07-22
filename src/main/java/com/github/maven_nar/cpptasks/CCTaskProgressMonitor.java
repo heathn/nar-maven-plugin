@@ -20,6 +20,7 @@
 package com.github.maven_nar.cpptasks;
 
 import java.io.IOException;
+import java.nio.file.Path;
 
 import com.github.maven_nar.cpptasks.compiler.ProcessorConfiguration;
 import com.github.maven_nar.cpptasks.compiler.ProgressMonitor;
@@ -48,7 +49,7 @@ public class CCTaskProgressMonitor implements ProgressMonitor {
   }
 
   @Override
-  public void progress(final String[] sources) {
+  public void progress(final Path[] sources) {
     this.history.update(this.config, sources, this.versionInfo);
     final long current = System.currentTimeMillis();
     if (current - this.lastCommit > 120000) {

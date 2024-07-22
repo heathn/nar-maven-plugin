@@ -19,7 +19,7 @@
  */
 package com.github.maven_nar.cpptasks;
 
-import java.io.File;
+import java.nio.file.Path;
 
 import org.apache.tools.ant.BuildException;
 
@@ -28,5 +28,5 @@ import org.apache.tools.ant.BuildException;
  * ProcessorDef
  */
 public interface FileVisitor {
-  void visit(File parentDir, String filename) throws BuildException;
+  void visit(Path parentDir, Path filename) throws BuildException;
 }

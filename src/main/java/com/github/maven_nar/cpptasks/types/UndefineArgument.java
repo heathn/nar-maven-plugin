@@ -19,7 +19,8 @@
  */
 package com.github.maven_nar.cpptasks.types;
 
-import java.util.Vector;
+import java.util.ArrayList;
+import java.util.List;
 
 import org.apache.tools.ant.BuildException;
 
@@ -42,16 +43,14 @@ public class UndefineArgument {
    * list is suppressed. All entries in the override list are preserved
    * 
    */
-  public static UndefineArgument[] merge(final UndefineArgument[] base, final UndefineArgument[] override) {
-    if (base.length == 0) {
-      final UndefineArgument[] overrideClone = override.clone();
-      return overrideClone;
+  public static List<UndefineArgument> merge(final List<UndefineArgument> base, final List<UndefineArgument> override) {
+    if (base.size() == 0) {
+      return new ArrayList<>(override);
     }
-    if (override.length == 0) {
-      final UndefineArgument[] baseClone = base.clone();
-      return baseClone;
+    if (override.size() == 0) {
+      return new ArrayList<>(base);
     }
-    final Vector<UndefineArgument> unduplicated = new Vector<>(base.length);
+    final List<UndefineArgument> unduplicated = new ArrayList<>();
     for (final UndefineArgument current : base) {
       final String currentName = current.getName();
       boolean match = false;
@@ -67,14 +66,12 @@ public class UndefineArgument {
         }
       }
       if (!match) {
-        unduplicated.addElement(current);
+        unduplicated.add(current);
       }
     }
-    final UndefineArgument[] combined = new UndefineArgument[unduplicated.size() + override.length];
-    unduplicated.copyInto(combined);
-    final int offset = unduplicated.size();
-    System.arraycopy(override, 0, combined, offset + 0, override.length);
-    return combined;
+
+    unduplicated.addAll(override);
+    return unduplicated;
   }
 
   private boolean define = false;

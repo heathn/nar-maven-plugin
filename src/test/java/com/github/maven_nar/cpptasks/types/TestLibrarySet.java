@@ -19,8 +19,10 @@
  */
 package com.github.maven_nar.cpptasks.types;
 
-import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Collections;
 
 import junit.framework.TestCase;
 
@@ -70,7 +72,7 @@ public class TestLibrarySet extends TestCase {
     // collect all files visited
     final MockFileCollector collector = new MockFileCollector();
     try {
-      libset.visitLibraries(p, MsvcLinker.getInstance(), new File[0], collector);
+      libset.visitLibraries(p, MsvcLinker.getInstance(), Collections.emptyList(), collector);
     } catch (final BuildException ex) {
       return;
     }
@@ -299,39 +301,36 @@ public class TestLibrarySet extends TestCase {
     //
     // create temporary files named cpptasksXXXXX.lib
     //
-    final File lib1 = File.createTempFile("cpptasks", ".lib");
-    String lib1Name = lib1.getName();
-    lib1Name = lib1Name.substring(0, lib1Name.indexOf(".lib"));
-    final File lib2 = File.createTempFile("cpptasks", ".lib");
-    final File baseDir = lib1.getParentFile();
+    final Path lib1 = Files.createTempFile("cpptasks", ".lib");
+    final Path lib2 = Files.createTempFile("cpptasks", ".lib");
 
     // set the dir attribute to the temporary directory
-    libset.setDir(baseDir);
+    libset.setDir(lib1.getParent());
     // set libs to the file name without the suffix
+    String lib1Name = CUtil.getBasename(lib1);
     final CUtil.StringArrayBuilder libs = new CUtil.StringArrayBuilder(lib1Name);
     libset.setLibs(libs);
 
     //
     // collect all files visited
     final MockFileCollector collector = new MockFileCollector();
-    libset.visitLibraries(p, linker, new File[0], collector);
+    libset.visitLibraries(p, linker, Collections.emptyList(), collector);
 
     //
     // get the canonical paths for the initial and visited libraries
-    final String expectedCanonicalPath = lib1.getCanonicalPath();
-    String actualCanonicalPath = null;
+    Path actualCanonicalPath = null;
     if (collector.size() == 1) {
-      actualCanonicalPath = new File(collector.getBaseDir(0), collector.getFileName(0)).getCanonicalPath();
+      actualCanonicalPath = collector.getBaseDir(0).resolve(collector.getFileName(0)).toAbsolutePath();
     }
     //
     // delete the temporary files
-    lib1.delete();
-    lib2.delete();
+    Files.deleteIfExists(lib1);
+    Files.deleteIfExists(lib2);
     // was there only one match
     assertEquals(expected, collector.size());
     if (expected == 1) {
       // is its canonical path as expected
-      assertEquals(expectedCanonicalPath, actualCanonicalPath);
+      assertEquals(lib1.normalize(), actualCanonicalPath);
     }
   }
 

@@ -19,7 +19,8 @@
  */
 package com.github.maven_nar.cpptasks.msvc;
 
-import java.io.File;
+import java.nio.file.Path;
+import java.util.List;
 import java.util.Vector;
 
 import org.apache.tools.ant.types.Environment;
@@ -44,8 +45,6 @@ public final class MsvcResourceCompiler extends CommandLineCompiler {
   public static MsvcResourceCompiler getInstance() {
     return instance;
   }
-
-  private String identifier;
 
   private MsvcResourceCompiler(final boolean newEnvironment, final Environment env) {
     super("rc", null, new String[] {
@@ -82,7 +81,7 @@ public final class MsvcResourceCompiler extends CommandLineCompiler {
    * inherit from CommandLineCCompiler
    */
   @Override
-  protected Parser createParser(final File source) {
+  protected Parser createParser(final Path source) {
     return new CParser();
   }
 
@@ -97,7 +96,7 @@ public final class MsvcResourceCompiler extends CommandLineCompiler {
   }
 
   @Override
-  protected File[] getEnvironmentIncludePath() {
+  protected List<Path> getEnvironmentIncludePath() {
     return CUtil.getPathFromEnvironment("INCLUDE", ";");
   }
 
@@ -107,18 +106,18 @@ public final class MsvcResourceCompiler extends CommandLineCompiler {
   }
 
   @Override
-  protected String getIncludeDirSwitch(final String includeDir) {
+  protected String getIncludeDirSwitch(final Path includeDir) {
     return MsvcProcessor.getIncludeDirSwitch(includeDir);
   }
 
   @Override
-  protected String getInputFileArgument(final File outputDir, final String filename, final int index) {
+  protected String getInputFileArgument(final Path outputDir, final Path filename, final int index) {
     if (index == 0) {
-      final String outputFileName = getOutputFileNames(filename, null)[0];
-      final String fullOutputName = new File(outputDir, outputFileName).toString();
+      final Path outputFileName = getOutputFileNames(filename, null)[0];
+      final String fullOutputName = outputDir.resolve(outputFileName).toString();
       return "/fo" + fullOutputName;
     }
-    return filename;
+    return filename.toString();
   }
 
   @Override

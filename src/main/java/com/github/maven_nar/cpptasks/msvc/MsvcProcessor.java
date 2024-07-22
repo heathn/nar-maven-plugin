@@ -19,6 +19,7 @@
  */
 package com.github.maven_nar.cpptasks.msvc;
 
+import java.nio.file.Path;
 import java.util.Vector;
 
 /**
@@ -49,11 +50,11 @@ public class MsvcProcessor {
     }
   }
 
-  public static String getCommandFileSwitch(final String cmdFile) {
+  public static String getCommandFileSwitch(final Path cmdFile) {
     final StringBuffer buf = new StringBuffer("@");
-    if (cmdFile.indexOf(' ') >= 0) {
+    if (cmdFile.toString().indexOf(' ') >= 0) {
       buf.append('\"');
-      buf.append(cmdFile.replace('/', '\\'));
+      buf.append(cmdFile.toString().replace('/', '\\'));
       buf.append('\"');
     } else {
       buf.append(cmdFile);
@@ -70,8 +71,8 @@ public class MsvcProcessor {
     }
   }
 
-  public static String getIncludeDirSwitch(final String includeDir) {
-    return "/I" + includeDir.replace('/', '\\');
+  public static String getIncludeDirSwitch(final Path includeDir) {
+    return "/I" + includeDir;
   }
 
   public static String[] getOutputFileSwitch(final String outPath) {

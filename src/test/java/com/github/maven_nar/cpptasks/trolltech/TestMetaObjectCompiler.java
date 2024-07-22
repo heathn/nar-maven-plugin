@@ -19,6 +19,8 @@
  */
 package com.github.maven_nar.cpptasks.trolltech;
 
+import java.nio.file.Path;
+
 import com.github.maven_nar.cpptasks.compiler.AbstractProcessor;
 import com.github.maven_nar.cpptasks.compiler.TestAbstractCompiler;
 
@@ -53,15 +55,15 @@ public class TestMetaObjectCompiler extends TestAbstractCompiler {
   @Override
   public void failingtestGetOutputFileName1() {
     final AbstractProcessor compiler = MetaObjectCompiler.getInstance();
-    String[] output = compiler.getOutputFileNames("c:/foo\\bar\\hello.cpp", null);
+    Path[] output = compiler.getOutputFileNames(Path.of("c:/foo\\bar\\hello.cpp"), null);
     assertEquals("hello" + getObjectExtension(), output[0]);
-    output = compiler.getOutputFileNames("c:/foo\\bar/hello.cpp", null);
+    output = compiler.getOutputFileNames(Path.of("c:/foo\\bar/hello.cpp"), null);
     assertEquals("hello" + getObjectExtension(), output[0]);
-    output = compiler.getOutputFileNames("hello.cpp", null);
+    output = compiler.getOutputFileNames(Path.of("hello.cpp"), null);
     assertEquals("hello" + getObjectExtension(), output[0]);
-    output = compiler.getOutputFileNames("c:/foo\\bar\\hello.h", null);
+    output = compiler.getOutputFileNames(Path.of("c:/foo\\bar\\hello.h"), null);
     assertEquals("moc_hello.cpp", output[0]);
-    output = compiler.getOutputFileNames("c:/foo\\bar/hello.h", null);
+    output = compiler.getOutputFileNames(Path.of("c:/foo\\bar/hello.h"), null);
     assertNull("moc_hello.cpp", output[0]);
   }
 

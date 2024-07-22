@@ -21,6 +21,8 @@ package com.github.maven_nar.cpptasks;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Path;
+import java.util.List;
 
 import org.apache.tools.ant.BuildException;
 import org.apache.tools.ant.Project;
@@ -206,7 +208,7 @@ public final class TestCompilerDef extends TestProcessorDef {
     setCompilerName(extendedCompiler, "msvc");
     final CCTask cctask = new CCTask();
     final LinkType linkType = new LinkType();
-    final File objDir = new File("dummy");
+    final Path objDir = Path.of("dummy");
     cctask.setObjdir(objDir);
     linkType.setStaticRuntime(true);
     final CommandLineCompilerConfiguration config = (CommandLineCompilerConfiguration) extendedCompiler
@@ -282,16 +284,16 @@ public final class TestCompilerDef extends TestProcessorDef {
     //
     // Evaluate without "debug" set
     //
-    UndefineArgument[] activeArgs = def.getActiveDefines();
-    assertEquals(1, activeArgs.length);
-    assertEquals("NDEBUG", activeArgs[0].getName());
+    List<UndefineArgument> activeArgs = def.getActiveDefines();
+    assertEquals(1, activeArgs.size());
+    assertEquals("NDEBUG", activeArgs.get(0).getName());
     //
     // Set the "debug" property
     //
     project.setProperty("debug", "");
     activeArgs = def.getActiveDefines();
-    assertEquals(1, activeArgs.length);
-    assertEquals("DEBUG", activeArgs[0].getName());
+    assertEquals(1, activeArgs.size());
+    assertEquals("DEBUG", activeArgs.get(0).getName());
   }
 
   /**
@@ -313,14 +315,14 @@ public final class TestCompilerDef extends TestProcessorDef {
     //
     // Evaluate without "debug" set
     //
-    String[] includePaths = def.getActiveIncludePaths();
-    assertEquals(0, includePaths.length);
+    List<String> includePaths = def.getActiveIncludePaths();
+    assertEquals(0, includePaths.size());
     //
     // Set the "debug" property
     //
     project.setProperty("debug", "");
     includePaths = def.getActiveIncludePaths();
-    assertEquals(1, includePaths.length);
+    assertEquals(1, includePaths.size());
   }
 
   /**

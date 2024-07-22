@@ -19,8 +19,8 @@
  */
 package com.github.maven_nar.cpptasks;
 
-import java.io.File;
-import java.util.Vector;
+import java.nio.file.Path;
+import java.util.List;
 
 import org.apache.tools.ant.BuildException;
 
@@ -32,19 +32,19 @@ import com.github.maven_nar.cpptasks.compiler.Linker;
  * 
  */
 public final class ObjectFileCollector implements FileVisitor {
-  private final Vector<File> files;
+  private final List<Path> files;
   private final Linker linker;
 
-  public ObjectFileCollector(final Linker linker, final Vector<File> files) {
+  public ObjectFileCollector(final Linker linker, final List<Path> files) {
     this.linker = linker;
     this.files = files;
   }
 
   @Override
-  public void visit(final File parentDir, final String filename) throws BuildException {
+  public void visit(final Path parentDir, final Path filename) throws BuildException {
     final int bid = this.linker.bid(filename);
     if (bid >= 1) {
-      this.files.addElement(new File(parentDir, filename));
+      this.files.add(parentDir.resolve(filename));
     }
   }
 }

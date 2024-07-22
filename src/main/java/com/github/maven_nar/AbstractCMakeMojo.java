@@ -20,6 +20,11 @@
 package com.github.maven_nar;
 
 import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Arrays;
+import java.util.function.Predicate;
 
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
@@ -49,9 +54,7 @@ public abstract class AbstractCMakeMojo extends AbstractResourcesMojo {
   @Parameter(property = "nar.cmake.args")
   private String cmakeArgs;
 
-  private File cmakeHome = null;
-
-  private String cmakeExe = null;
+  private Path cmakeExe = null;
 
   /**
    * Returns true if we do want to use CMake
@@ -59,29 +62,34 @@ public abstract class AbstractCMakeMojo extends AbstractResourcesMojo {
    * @return
    */
   protected final boolean useCMake() {
-    if (NarUtil.isWindows()) {
-      try {
-        cmakeHome = new File(NarUtil.registryGet32StringValue(
-          com.sun.jna.platform.win32.WinReg.HKEY_LOCAL_MACHINE,
-          "SOFTWARE\\Kitware\\CMake", "InstallDir"), "bin");
-      } catch (com.sun.jna.platform.win32.Win32Exception e) {
-        // Registry key wasn't found.  Leave cmakeHome set to null.
-      }
-      cmakeExe = "cmake.exe";
-    } else {
-      String[] dirs = { "/usr/bin", "/usr/local/bin" };
-      for (String dir : dirs) {
-        // Use a startsWith because some Linux distros install the cmake
-        // executable as cmake3.
-        String[] res = new File(dir).list((dir1, name) -> name.startsWith("cmake"));
-        if (res.length > 0) {
-          cmakeHome = new File(dir);
-          cmakeExe = res[0];
-          break;
+    if (cmakeExe == null) {
+      if (NarUtil.isWindows()) {
+        try {
+          cmakeExe = Path.of(NarUtil.registryGet32StringValue(
+            com.sun.jna.platform.win32.WinReg.HKEY_LOCAL_MACHINE,
+            "SOFTWARE\\Kitware\\CMake", "InstallDir"), "bin", "cmake.exe");
+        } catch (com.sun.jna.platform.win32.Win32Exception e) {
+          // Registry key wasn't found.
+          cmakeExe = Path.of("cmake.exe");
         }
+      } else {
+        cmakeExe = Arrays.stream(System.getenv("PATH").split(File.pathSeparator))
+          .filter(Predicate.not(String::isEmpty))
+          .map(Path::of)
+          .filter(Files::exists)
+          .flatMap(p -> {
+            try {
+              return Files.list(p);
+            } catch (IOException e) {
+              getLog().error("Unable to get list of files", e);
+              throw new RuntimeException(e);
+            }})
+          .filter(p -> p.getFileName().toString().startsWith("cmake"))
+          .findFirst()
+          .orElse(null);
       }
     }
-    return cmakeHome != null;
+    return cmakeExe != null ? Files.exists(cmakeExe) : false;
   }
 
   /**
@@ -89,8 +97,8 @@ public abstract class AbstractCMakeMojo extends AbstractResourcesMojo {
    * @throws MojoFailureException
    * @throws MojoExecutionException
    */
-  private File getCMakeAOLDirectory() throws MojoFailureException, MojoExecutionException {
-    return new File(cmakeTargetDirectory, getAOL().toString());
+  private Path getCMakeAOLDirectory() throws MojoFailureException, MojoExecutionException {
+    return cmakeTargetDirectory.toPath().resolve(getAOL().toString());
   }
 
   /**
@@ -98,8 +106,8 @@ public abstract class AbstractCMakeMojo extends AbstractResourcesMojo {
    * @throws MojoFailureException
    * @throws MojoExecutionException
    */
-  protected final File getCMakeAOLSourceDirectory() throws MojoFailureException, MojoExecutionException {
-    return new File(getCMakeAOLDirectory(), "src");
+  protected final Path getCMakeAOLSourceDirectory() throws MojoFailureException, MojoExecutionException {
+    return getCMakeAOLDirectory().resolve("src");
   }
 
   /**
@@ -107,16 +115,16 @@ public abstract class AbstractCMakeMojo extends AbstractResourcesMojo {
    * @throws MojoFailureException
    * @throws MojoExecutionException
    */
-  protected final File getCMakeAOLTargetDirectory() throws MojoFailureException, MojoExecutionException {
-    return new File(getCMakeAOLDirectory(), "build");
+  protected final Path getCMakeAOLTargetDirectory() throws MojoFailureException, MojoExecutionException {
+    return getCMakeAOLDirectory().resolve("build");
   }
 
-  protected final File getCMakeSourceDirectory() {
-    return cmakeSourceDirectory;
+  protected final Path getCMakeSourceDirectory() {
+    return cmakeSourceDirectory.toPath();
   }
 
-  protected final File getCMakeExeFile() {
-    return new File(cmakeHome, cmakeExe);
+  protected final Path getCMakeExeFile() {
+    return cmakeExe;
   }
 
 }

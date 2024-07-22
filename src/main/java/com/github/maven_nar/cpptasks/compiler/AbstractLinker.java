@@ -19,8 +19,8 @@
  */
 package com.github.maven_nar.cpptasks.compiler;
 
-import java.io.File;
 import java.io.IOException;
+import java.nio.file.Path;
 
 import org.apache.tools.ant.types.Environment;
 
@@ -59,8 +59,8 @@ public abstract class AbstractLinker extends AbstractProcessor implements Linker
    *          bidded fileset
    */
   @Override
-  public void addVersionFiles(final VersionInfo versionInfo, final LinkType linkType, final File outputFile,
-      final boolean isDebug, final File objDir, final TargetMatcher matcher) throws IOException {
+  public void addVersionFiles(final VersionInfo versionInfo, final LinkType linkType, final Path outputFile,
+      final boolean isDebug, final Path objDir, final TargetMatcher matcher) throws IOException {
     if (versionInfo == null) {
       throw new NullPointerException("versionInfo");
     }
@@ -87,17 +87,17 @@ public abstract class AbstractLinker extends AbstractProcessor implements Linker
    *         files, for example), 100 indicates strong interest
    */
   @Override
-  public int bid(final String inputFile) {
+  public int bid(final Path inputFile) {
     final int bid = super.bid(inputFile);
     switch (bid) {
-    //
-    // unrecognized extension, take the file
-    //
+      //
+      // unrecognized extension, take the file
+      //
       case 0:
         return 1;
-        //
-        // discard the ignored extensions
-        //
+      //
+      // discard the ignored extensions
+      //
       case 1:
         return 0;
     }
@@ -123,11 +123,11 @@ public abstract class AbstractLinker extends AbstractProcessor implements Linker
   }
 
   @Override
-  public String getLibraryKey(final File libfile) {
-    return libfile.getName();
+  public String getLibraryKey(final Path libfile) {
+    return libfile.getFileName().toString();
   }
 
   @Override
-  public abstract String[] getOutputFileNames(String fileName, VersionInfo versionInfo);
+  public abstract Path[] getOutputFileNames(Path fileName, VersionInfo versionInfo);
 
 }

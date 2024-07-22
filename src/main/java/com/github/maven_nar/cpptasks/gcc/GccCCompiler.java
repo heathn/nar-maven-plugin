@@ -19,8 +19,14 @@
  */
 package com.github.maven_nar.cpptasks.gcc;
 
-import java.io.File;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
+import java.util.Objects;
 import java.util.Vector;
+import java.util.stream.Stream;
 
 import org.apache.tools.ant.BuildException;
 import org.apache.tools.ant.types.Environment;
@@ -126,7 +132,7 @@ public final class GccCCompiler extends GccCompatibleCCompiler {
   }
 
   private String identifier;
-  private File[] includePath;
+  private List<Path> includePath;
   private boolean isPICMeaningful = true;
 
   /**
@@ -171,9 +177,9 @@ public final class GccCCompiler extends GccCompatibleCCompiler {
    * 
    */
   @Override
-  protected Parser createParser(final File source) {
+  protected Parser createParser(final Path source) {
     if (source != null) {
-      final String sourceName = source.getName();
+      final String sourceName = source.getFileName().toString();
       final int lastDot = sourceName.lastIndexOf('.');
       if (lastDot >= 0 && lastDot + 1 < sourceName.length()) {
         final char afterDot = sourceName.charAt(lastDot + 1);
@@ -186,17 +192,13 @@ public final class GccCCompiler extends GccCompatibleCCompiler {
   }
 
   @Override
-  public File[] getEnvironmentIncludePath() {
+  public List<Path> getEnvironmentIncludePath() {
     if (this.includePath == null) {
       //
       // construct default include path from machine id and version id
       //
-      final String[] defaultInclude = new String[1];
-      final String buf = "/lib/" + GccProcessor.getMachine() +
-          '/' +
-          GccProcessor.getVersion() +
-          "/include";
-      defaultInclude[0] = buf;
+      final Path[] defaultInclude = new Path[1];
+      defaultInclude[0] = Path.of("lib", GccProcessor.getMachine(), GccProcessor.getVersion(), "include");
       //
       // read specs file and look for -istart and -idirafter
       //
@@ -231,30 +233,31 @@ public final class GccCCompiler extends GccCompatibleCCompiler {
       // and .. to start of absolute filenames to
       // have something that will exist in the
       // windows filesystem
+      Path[] options = Stream.concat(
+              Arrays.stream(optionValues[0]),
+              Arrays.stream(optionValues[1]))
+          .filter(Objects::nonNull)
+          .map(Path::of)
+          .toArray(Path[]::new);
       if (GccProcessor.isCygwin()) {
-        GccProcessor.convertCygwinFilenames(optionValues[0]);
-        GccProcessor.convertCygwinFilenames(optionValues[1]);
+        GccProcessor.convertCygwinFilenames(options);
         GccProcessor.convertCygwinFilenames(defaultInclude);
       }
-      int count = CUtil.checkDirectoryArray(optionValues[0]);
-      count += CUtil.checkDirectoryArray(optionValues[1]);
+      int count = CUtil.checkDirectoryArray(options);
       count += CUtil.checkDirectoryArray(defaultInclude);
-      this.includePath = new File[count];
-      int index = 0;
-      for (final String[] optionValue : optionValues) {
-        for (final String anOptionValue : optionValue) {
-          if (anOptionValue != null) {
-            this.includePath[index++] = new File(anOptionValue);
-          }
+      this.includePath = new ArrayList<>(count);
+      for (final Path anOptionValue : options) {
+        if (anOptionValue != null) {
+          this.includePath.add(anOptionValue);
         }
       }
-      for (final String element : defaultInclude) {
+      for (final Path element : defaultInclude) {
         if (element != null) {
-          this.includePath[index++] = new File(element);
+          this.includePath.add(element);
         }
       }
     }
-    return this.includePath.clone();
+    return Collections.unmodifiableList(this.includePath);
   }
 
   @Override

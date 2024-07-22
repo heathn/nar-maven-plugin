@@ -19,7 +19,7 @@
  */
 package com.github.maven_nar.cpptasks.openwatcom;
 
-import java.io.File;
+import java.nio.file.Path;
 
 import org.apache.tools.ant.types.Environment;
 
@@ -76,7 +76,7 @@ public final class OpenWatcomFortranCompiler extends OpenWatcomCompiler {
    * @return Parser parser
    */
   @Override
-  public Parser createParser(final File source) {
+  public Parser createParser(final Path source) {
     return new FortranParser();
   }
 

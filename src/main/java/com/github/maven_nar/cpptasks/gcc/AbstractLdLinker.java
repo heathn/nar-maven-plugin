@@ -19,8 +19,13 @@
  */
 package com.github.maven_nar.cpptasks.gcc;
 
-import java.io.File;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Objects;
 import java.util.Vector;
+import java.util.stream.Collectors;
 
 import com.github.maven_nar.cpptasks.CCTask;
 import com.github.maven_nar.cpptasks.CUtil;
@@ -47,66 +52,66 @@ public abstract class AbstractLdLinker extends CommandLineLinker {
   }
 
   @Override
-  protected void addBase(final CCTask task, final long base, final Vector<String> args) {
+  protected void addBase(final CCTask task, final long base, final List<String> args) {
     if (base >= 0) {
-      args.addElement("--image-base");
-      args.addElement(Long.toHexString(base));
+      args.add("--image-base");
+      args.add(Long.toHexString(base));
     }
   }
 
   @Override
-  protected void addEntry(final CCTask task, final String entry, final Vector<String> args) {
+  protected void addEntry(final CCTask task, final String entry, final List<String> args) {
     if (entry != null) {
-      args.addElement("-e");
-      args.addElement(entry);
+      args.add("-e");
+      args.add(entry);
     }
   }
 
   @Override
   protected void addImpliedArgs(final CCTask task, final boolean debug, final LinkType linkType,
-      final Vector<String> args) {
+      final List<String> args) {
     if (debug) {
-      args.addElement("-g");
+      args.add("-g");
     }
     if (isDarwin()) {
       if (linkType.isPluginModule()) {
-        args.addElement("-bundle");
+        args.add("-bundle");
         // BEGINFREEHEP
       } else if (linkType.isJNIModule()) {
-        args.addElement("-dynamic");
-        args.addElement("-bundle");
+        args.add("-dynamic");
+        args.add("-bundle");
         // ENDFREEHEP
       } else {
         if (linkType.isSharedLibrary()) {
           // FREEHEP no longer needed for 10.4+
           // args.addElement("-prebind");
-          args.addElement("-dynamiclib");
+          args.add("-dynamiclib");
         }
       }
     } else {
       if (linkType.isStaticRuntime()) {
-        args.addElement("-static");
+        args.add("-static");
       }
       if (linkType.isPluginModule()) {
-        args.addElement("-shared");
+        args.add("-shared");
       } else {
         if (linkType.isSharedLibrary()) {
-          args.addElement("-shared");
+          args.add("-shared");
         }
       }
     }
   }
 
   @Override
-  protected void addIncremental(final CCTask task, final boolean incremental, final Vector<String> args) {
+  protected void addIncremental(final CCTask task, final boolean incremental, final List<String> args) {
     if (incremental) {
-      args.addElement("-i");
+      args.add("-i");
     }
   }
 
   @Override
-  protected void addLibraryPath(final Vector<String> preargs, final String path) {
-    preargs.addElement("-L" + path);
+  protected void addLibraryPath(final List<String> preargs, final Path path) {
+    preargs.add("-L" + path);
   }
 
   protected int addLibraryPatterns(final String[] libnames, final StringBuffer buf, final String prefix,
@@ -122,26 +127,26 @@ public abstract class AbstractLdLinker extends CommandLineLinker {
   }
 
   @Override
-  protected String[] addLibrarySets(final CCTask task, final LibrarySet[] libsets, final Vector<String> preargs,
-      final Vector<String> midargs, final Vector<String> endargs) {
+  protected String[] addLibrarySets(final CCTask task, final List<LibrarySet> libsets, final List<String> preargs,
+      final List<String> midargs, final List<String> endargs) {
     final Vector<String> libnames = new Vector<>();
     super.addLibrarySets(task, libsets, preargs, midargs, endargs);
     LibraryTypeEnum previousLibraryType = null;
     for (final LibrarySet libset : libsets) {
       final LibrarySet set = libset;
-      final File libdir = set.getDir(null);
-      final String[] libs = set.getLibs();
+      final Path libdir = set.getDir(null);
+      final List<String> libs = set.getLibs();
       if (libdir != null) {
-        String relPath = libdir.getAbsolutePath();
+        Path relPath = libdir.toAbsolutePath();
         // File outputFile = task.getOutfile();
-        final File currentDir = new File(".");
-        if (currentDir.getParentFile() != null) {
-          relPath = CUtil.getRelativePath(currentDir.getParentFile().getAbsolutePath(), libdir);
+        final Path currentDir = Path.of(".");
+        if (currentDir.getParent() != null) {
+          relPath = currentDir.getParent().relativize(libdir);
         }
         if (set.getType() != null && "framework".equals(set.getType().getValue()) && isDarwin()) {
-          endargs.addElement("-F" + relPath);
+          endargs.add("-F" + relPath);
         } else {
-          endargs.addElement("-L" + relPath);
+          endargs.add("-L" + relPath);
         }
       }
       //
@@ -151,14 +156,14 @@ public abstract class AbstractLdLinker extends CommandLineLinker {
         if (set.getType() != null && "static".equals(set.getType().getValue())) {
           // BEGINFREEHEP not on MacOS X
           if (!isDarwin()) {
-            endargs.addElement(getStaticLibFlag());
+            endargs.add(getStaticLibFlag());
             previousLibraryType = set.getType();
           }
           // ENDFREEHEP
         } else {
           // FREEHEP not on MacOS X, recheck this!
           if (set.getType() == null || !"framework".equals(set.getType().getValue()) && !isDarwin()) {
-            endargs.addElement(getDynamicLibFlag());
+            endargs.add(getDynamicLibFlag());
             previousLibraryType = set.getType();
           }
         }
@@ -167,7 +172,7 @@ public abstract class AbstractLdLinker extends CommandLineLinker {
       if (set.getType() != null && "framework".equals(set.getType().getValue()) && isDarwin()) {
         buf.setLength(0);
         // FREEHEP, added as endarg w/o trailing space to avoid quoting!
-        endargs.addElement("-framework");
+        endargs.add("-framework");
       }
       final int initialLength = buf.length();
       for (final String lib : libs) {
@@ -181,14 +186,14 @@ public abstract class AbstractLdLinker extends CommandLineLinker {
         libnames.addElement(lib);
         //
         // add the argument to the list
-        endargs.addElement(buf.toString());
+        endargs.add(buf.toString());
       }
     }
 
     // BEGINFREEHEP if last was -Bstatic reset it to -Bdynamic so that libc and
     // libm can be found as shareables
     if (previousLibraryType != null && previousLibraryType.getValue().equals("static") && !isDarwin()) {
-      endargs.addElement(getDynamicLibFlag());
+      endargs.add(getDynamicLibFlag());
     }
     // ENDFREEHEP
 
@@ -200,22 +205,22 @@ public abstract class AbstractLdLinker extends CommandLineLinker {
   }
 
   @Override
-  protected void addMap(final CCTask task, final boolean map, final Vector<String> args) {
+  protected void addMap(final CCTask task, final boolean map, final List<String> args) {
     if (map) {
-      args.addElement("-M");
+      args.add("-M");
     }
   }
 
   @Override
-  protected void addStack(final CCTask task, final int stack, final Vector<String> args) {
+  protected void addStack(final CCTask task, final int stack, final List<String> args) {
     if (stack > 0) {
-      args.addElement("--stack");
-      args.addElement(Integer.toString(stack));
+      args.add("--stack");
+      args.add(Integer.toString(stack));
     }
   }
 
   @Override
-  public String getCommandFileSwitch(final String commandFile) {
+  public String getCommandFileSwitch(final Path commandFile) {
     throw new IllegalStateException("ld does not support command files");
   }
 
@@ -227,13 +232,13 @@ public abstract class AbstractLdLinker extends CommandLineLinker {
    * Returns library path.
    *
    */
-  protected File[] getEnvironmentIncludePath() {
+  protected List<Path> getEnvironmentIncludePath() {
     return CUtil.getPathFromEnvironment("LIB", ":");
   }
 
   @Override
-  public String getLibraryKey(final File libfile) {
-    final String libname = libfile.getName();
+  public String getLibraryKey(final Path libfile) {
+    final String libname = libfile.getFileName().toString();
     final int lastDot = libname.lastIndexOf('.');
     if (lastDot >= 0) {
       return libname.substring(0, lastDot);
@@ -246,8 +251,8 @@ public abstract class AbstractLdLinker extends CommandLineLinker {
    *
    */
   @Override
-  public File[] getLibraryPath() {
-    return new File[0];
+  public List<Path> getLibraryPath() {
+    return Collections.emptyList();
   }
 
   @Override
@@ -289,18 +294,18 @@ public abstract class AbstractLdLinker extends CommandLineLinker {
   }
 
   @Override
-  public String[] getOutputFileNames(final String baseName, final VersionInfo versionInfo) {
-    final String[] baseNames = super.getOutputFileNames(baseName, versionInfo);
+  public Path[] getOutputFileNames(final Path baseName, final VersionInfo versionInfo) {
+    final Path[] baseNames = super.getOutputFileNames(baseName, versionInfo);
     if (this.outputPrefix.length() > 0) {
       for (int i = 0; i < baseNames.length; i++) {
-        baseNames[i] = this.outputPrefix + baseNames[i];
+        baseNames[i] = Path.of(this.outputPrefix + baseNames[i]);
       }
     }
     return baseNames;
   }
 
   @Override
-  public String[] getOutputFileSwitch(final String outputFile) {
+  public String[] getOutputFileSwitch(final Path outputFile) {
     return GccProcessor.getOutputFileSwitch("-o", outputFile);
   }
 
@@ -334,8 +339,8 @@ public abstract class AbstractLdLinker extends CommandLineLinker {
    * @return arguments for runTask
    */
   @Override
-  public String[] prepareArguments(final CCTask task, final String outputDir, final String outputFile,
-      final String[] sourceFiles, final CommandLineLinkerConfiguration config) {
+  public String[] prepareArguments(final CCTask task, final Path outputDir, final Path outputFile,
+      final List<Path> sourceFiles, final CommandLineLinkerConfiguration config) {
     //
     // need to suppress sources that correspond to
     // library set entries since they are already
@@ -348,16 +353,16 @@ public abstract class AbstractLdLinker extends CommandLineLinker {
     //
     // null out any sources that correspond to library names
     //
-    final String[] localSources = sourceFiles.clone();
+    final List<Path> localSources = new ArrayList<>(sourceFiles);
     int extra = 0;
     for (final String libname : libnames) {
-      for (int j = 0; j < localSources.length; j++) {
-        if (localSources[j] != null && localSources[j].indexOf(libname) > 0 && localSources[j].indexOf("lib") > 0) {
-          final String filename = new File(localSources[j]).getName();
+      for (int j = 0; j < localSources.size(); j++) {
+        if (localSources.get(j) != null && localSources.get(j).toString().indexOf(libname) > 0 && localSources.get(j).toString().indexOf("lib") > 0) {
+          final String filename = localSources.get(j).getFileName().toString();
           if (filename.startsWith("lib") && filename.substring(3).startsWith(libname)) {
             final String extension = filename.substring(libname.length() + 3);
             if (extension.equals(".a") || extension.equals(".so") || extension.equals(".sl")) {
-              localSources[j] = null;
+              localSources.set(j, null);
               extra++;
             }
           }
@@ -367,13 +372,9 @@ public abstract class AbstractLdLinker extends CommandLineLinker {
     if (extra == 0) {
       return super.prepareArguments(task, outputDir, outputFile, sourceFiles, config);
     }
-    final String[] finalSources = new String[localSources.length - extra];
-    int index = 0;
-    for (final String localSource : localSources) {
-      if (localSource != null) {
-        finalSources[index++] = localSource;
-      }
-    }
+    List<Path> finalSources = localSources.stream()
+        .filter(Objects::nonNull)
+        .collect(Collectors.toList());
     return super.prepareArguments(task, outputDir, outputFile, finalSources, config);
   }
 }
