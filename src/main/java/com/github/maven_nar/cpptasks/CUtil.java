@@ -421,7 +421,11 @@ public class CUtil {
       return exe.execute();
             */
 
-	  return CommandExecution.runCommand(cmdline,workingDir,task,env.getVariablesVector());
+    Environment defEvn = env;
+    if (defEvn == null) {
+      defEvn = new Environment();
+    }
+	  return CommandExecution.runCommand(cmdline,workingDir,task,defEvn.getVariablesVector());
     } catch (final java.io.IOException exc) {
       throw new BuildException("Could not launch " + cmdline[0] + ": " + exc, task.getLocation());
     }
