@@ -71,12 +71,12 @@ public abstract class AbstractResourcesMojo extends AbstractNarMojo {
   @Component(role = org.codehaus.plexus.archiver.manager.ArchiverManager.class)
   private ArchiverManager archiverManager;
 
-  private static final FileSet defaultIncludes = new FileSet();
-
-  {
-    defaultIncludes.setDirectory("include");
-    defaultIncludes.addInclude("**");
-    defaultIncludes.addExclude(NarUtil.DEFAULT_EXCLUDES);
+  private static FileSet defaultIncludes() {
+    final FileSet includes = new FileSet();
+    includes.setDirectory("include");
+    includes.addInclude("**");
+    includes.addExclude(NarUtil.DEFAULT_EXCLUDES);
+    return includes;
   }
 
   protected final int copyBinaries(final Path srcDir, final String aol)
@@ -96,9 +96,12 @@ public abstract class AbstractResourcesMojo extends AbstractNarMojo {
   }
 
   protected final int copyIncludes(final Path srcDir) throws IOException, MojoExecutionException, MojoFailureException {
-    if (resourceIncludes == null) {
-      resourceIncludes = defaultIncludes;
-    }
+    // Work on a copy so neither the configured FileSet nor the defaults are
+    // changed.  The defaults used to be a static that every mojo modified,
+    // so modules building in parallel (mvn -T) could copy each other's
+    // include directory, or none.
+    final FileSet includes =
+        resourceIncludes != null ? resourceIncludes.clone() : defaultIncludes();
     int copied = 0;
     String sourcePath = srcDir.toAbsolutePath().toString();
     final Path includeDstDir = getLayout().getIncludeDirectory(
@@ -106,13 +109,13 @@ public abstract class AbstractResourcesMojo extends AbstractNarMojo {
         getMavenProject().getVersion());
 
     // copy includes
-    if (resourceIncludes.getDirectory() != null) {
-      sourcePath += File.separator + resourceIncludes.getDirectory();
+    if (includes.getDirectory() != null) {
+      sourcePath += File.separator + includes.getDirectory();
     }
-    resourceIncludes.setDirectory(sourcePath);
+    includes.setDirectory(sourcePath);
     final File includeDir = new File(sourcePath);
     if (includeDir.exists()) {
-      final List<File> files = FileSetTransformer.toFileList(resourceIncludes);
+      final List<File> files = FileSetTransformer.toFileList(includes);
       for (File file : files) {
         String dest = file.getAbsolutePath();
         dest = dest.substring(sourcePath.length() + 1);
