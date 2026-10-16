@@ -46,12 +46,15 @@ public class NarProperties {
   /**
    * Retrieve the NarProperties
    * 
+   * Synchronized because a parallel build (mvn -T) calls this from several
+   * modules at once and instances is a plain HashMap.
+   *
    * @param project
    *          may be null
    * @return
    * @throws MojoFailureException
    */
-  public static NarProperties getInstance(final MavenProject project) throws MojoFailureException {
+  public static synchronized NarProperties getInstance(final MavenProject project) throws MojoFailureException {
     NarProperties instance = instances.get(project);
     if (instance == null) {
       if (project == null) {
