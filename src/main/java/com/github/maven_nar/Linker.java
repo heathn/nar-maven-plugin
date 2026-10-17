@@ -30,10 +30,11 @@ import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Set;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.util.stream.Collectors;
 
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
@@ -41,7 +42,6 @@ import org.apache.maven.plugin.logging.Log;
 import org.apache.maven.plugins.annotations.Parameter;
 import org.apache.tools.ant.Project;
 import org.codehaus.plexus.util.FileUtils;
-import org.eclipse.aether.graph.DependencyNode;
 
 import com.github.maven_nar.cpptasks.CCTask;
 import com.github.maven_nar.cpptasks.CUtil;
@@ -408,13 +408,14 @@ public class Linker {
 
     //if No user preference of dependency library link order is specified then use the Default one nar generate.
     if ((this.narDependencyLibOrder == null) && (narDefaultDependencyLibOrder)) {
-      List<DependencyNode> dependencies = mojo.dependencyTreeOrderStr(pushDepsToLowestOrder, mojo.getDirectDepsOnly());
+      final String libOrder = mojo.dependencyTreeOrderStr(pushDepsToLowestOrder, mojo.getDirectDepsOnly());
       if (os.equals(OS.AIX) && (getName(null, null).equals("xlC_r") || getName(null, null).equals("xlC") || getName(null, null).equals("xlc"))) {
-            Collections.reverse(dependencies);
+        final List<String> dependencies = new ArrayList<>(Arrays.asList(libOrder.split("\\s*,\\s*")));
+        Collections.reverse(dependencies);
+        this.narDependencyLibOrder = String.join(",", dependencies);
+      } else {
+        this.narDependencyLibOrder = libOrder;
       }
-      dependencies.stream()
-        .map(d -> d.getArtifact().getGroupId() + ":" + d.getArtifact().getArtifactId())
-        .collect(Collectors.joining(","));
     } else if (pushDepsToLowestOrder && !narDefaultDependencyLibOrder) {
         mojo.getLog().warn("pushDepsToLowestOrder will have no effect since narDefaultDependencyLibOrder is disabled");
     } else if (mojo.getDirectDepsOnly() && !narDefaultDependencyLibOrder) {
