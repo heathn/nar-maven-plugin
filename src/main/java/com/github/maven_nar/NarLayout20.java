@@ -188,6 +188,9 @@ public class NarLayout20 extends AbstractNarLayout {
           + ":" + "noarch");
     }
 
+    // a default binding configured in nar.properties, before any are generated below
+    final String configuredBinding = narInfo.getBinding(null, null);
+
     // TODO: chose not to apply new file naming for outfile in case of
     // backwards compatability, may need to reconsider
     for (final String binAOL : listNames(baseDir.resolve("bin"))) {
@@ -214,7 +217,8 @@ public class NarLayout20 extends AbstractNarLayout {
       if (mojo.getLibsName() != null) {
         narInfo.setLibs(aol, mojo.getLibsName());
       }
-      if (narInfo.getBinding(aol, null) == null) {
+      // a default generated here for another AOL doesn't count
+      if (narInfo.getExactProperty(aol, "libs.binding", configuredBinding) == null) {
         narInfo.setBinding(aol, bindingType != null ? bindingType : Library.NONE);
       }
       if (narInfo.getBinding(null, null) == null) {
