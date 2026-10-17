@@ -52,7 +52,6 @@ import org.apache.maven.shared.artifact.filter.collection.ScopeFilter;
 import org.codehaus.plexus.archiver.manager.ArchiverManager;
 import org.codehaus.plexus.util.StringUtils;
 
-import org.apache.maven.shared.dependency.graph.DependencyGraphBuilder;
 import org.eclipse.aether.RepositorySystem;
 import org.eclipse.aether.RepositorySystemSession;
 import org.eclipse.aether.artifact.Artifact;
@@ -118,12 +117,6 @@ public abstract class AbstractDependencyMojo extends AbstractNarMojo {
   protected DependencyNode rootNode;
 
   /**
-   * The dependency tree builder to use.
-   */
-  @Component( hint = "default" )
-  protected DependencyGraphBuilder dependencyGraphBuilder;
-
-  /**
    * The Repository object that dispatches the verbose dependency graph collection request.
    * @since 3.5.2
    */
@@ -160,6 +153,18 @@ public abstract class AbstractDependencyMojo extends AbstractNarMojo {
   */
   protected DependencyNode getVerboseDependencyTree()
   {
+    return collectProjectDependencies(true);
+  }
+
+  /**
+   * Collects the project's dependency tree with Aether.
+   *
+   * @param verbose {@code true} for the full tree prior to dependency mediation,
+   * {@code false} for the mediated tree Maven resolves.
+   * @return root node of the tree, or null if it could not be collected
+   */
+  private DependencyNode collectProjectDependencies(boolean verbose)
+  {
     // Create CollectRequest object that will be submitted to collect the dependencies
     CollectRequest collectReq = new CollectRequest();
 
@@ -169,7 +174,9 @@ public abstract class AbstractDependencyMojo extends AbstractNarMojo {
     DefaultRepositorySystemSession session = new DefaultRepositorySystemSession(repoSession);
 
     // Set the No-Op Graph transformer so tree stays intact
-    session.setDependencyGraphTransformer(new NoopDependencyGraphTransformer());
+    if (verbose) {
+      session.setDependencyGraphTransformer(new NoopDependencyGraphTransformer());
+    }
     
     // Create Aether graph dependency object from params extracted above
     Dependency dep = new Dependency(art, getMavenProject().getArtifact().getScope());
@@ -204,10 +211,8 @@ public abstract class AbstractDependencyMojo extends AbstractNarMojo {
    * @return {@link String Dependency tree string} of comma separated list of groupId:artifactId
    * @throws MojoExecutionException
    */
-  protected List<DependencyNode> dependencyTreeOrderStr(boolean pushDepsToLowestOrder, boolean specifyDirectDeps) throws MojoExecutionException
+  protected String dependencyTreeOrderStr(boolean pushDepsToLowestOrder, boolean specifyDirectDeps) throws MojoExecutionException
   {
-    return repoSystem.flattenDependencyNodes(repoSession, rootNode, null);
-/**
     String depLevelOrderStr = "";
     DependencyNode libTreeRootNode;
 
@@ -221,47 +226,44 @@ public abstract class AbstractDependencyMojo extends AbstractNarMojo {
     this.getLog().debug("{");
     this.getLog().debug("Dependency Lib Order to be used::");
 
-    /* Check if we should try to push libraries to their lowest place in the 
+    /* Check if we should try to push libraries to their lowest place in the
      * link order. We will use the full dependency tree from Aether (unmediated)
-     * to determine this order. 
+     * to determine this order.
      */
-/***
     if (pushDepsToLowestOrder || specifyDirectDeps)
     {
-      org.eclipse.aether.graph.DependencyNode verboseTreeRootNode = getVerboseDependencyTree ();
-      List <String> verboseDepList;
+      DependencyNode verboseTreeRootNode = getVerboseDependencyTree();
+      List<String> verboseDepList;
       try {
-          // Get verbose (full) list of dependencies
-          verboseDepList = depLevelVerboseList(verboseTreeRootNode);
+        // Get verbose (full) list of dependencies
+        verboseDepList = depLevelVerboseList(verboseTreeRootNode);
       } catch (MojoExecutionException e) {
-          this.getLog().warn("Exception caught while getting verbose dependency list: ", e);
-          throw e;
+        this.getLog().warn("Exception caught while getting verbose dependency list: ", e);
+        throw e;
       }
 
       // Create set that tracks if we found a duplicate library in the list
-      Set<String> reducedDepSet = new HashSet <String> ();
-      
+      Set<String> reducedDepSet = new HashSet<String>();
+
       /* Traverse full dependency list in REVERSE order. The dependencies at the
-       * end of the list signify the ones that are most heavily depended on 
+       * end of the list signify the ones that are most heavily depended on
        * and therefore need to occur later in the link order.
        */
-/**
-      for (int i = verboseDepList.size()-1; i >= 0; i--)
+      for (int i = verboseDepList.size() - 1; i >= 0; i--)
       {
         String depStr = verboseDepList.get(i);
 
         /* Create link order by pushing new dep to the front of the list. Do not
          * insert dep if it was added already (i.e. if adding to ReducedDepSet fails)
          */
-/**
         if (reducedDepSet.add(depStr))
         {
           this.getLog().debug(depStr);
 
-          if (!depLevelOrderStr.isEmpty()){
-            depLevelOrderStr= depStr + "," + depLevelOrderStr;
-          }else{
-            depLevelOrderStr= depStr;
+          if (!depLevelOrderStr.isEmpty()) {
+            depLevelOrderStr = depStr + "," + depLevelOrderStr;
+          } else {
+            depLevelOrderStr = depStr;
           }
         }
       }
@@ -271,44 +273,35 @@ public abstract class AbstractDependencyMojo extends AbstractNarMojo {
         // Get first level of deps, when specifyAllDirectDeps is true those can be the only ones linked.
         Set<String> directDepsSet = getDirectDepsSet(verboseTreeRootNode);
 
-        // Trim all deps from verboseDepList that are not in the directDepsSet, warn if they are found.
-        Iterator <String> it = reducedDepSet.iterator();
-        while(it.hasNext()){
-            String dep = it.next();
-            if(!directDepsSet.contains(dep)){
-                this.getLog().warn("Stray dependency: " + dep + " found. This may cause build failures.");
-                reducedDepSet.remove(it);
-            }
+        // Warn about deps that are not direct dependencies.
+        for (String dep : reducedDepSet) {
+          if (!directDepsSet.contains(dep)) {
+            this.getLog().warn("Stray dependency: " + dep + " found. This may cause build failures.");
+          }
         }
       }
-
     }
     else
     {
-
-      List<DependencyNode> NodeList = depLevelOrderList(libTreeRootNode);
-
-      for (DependencyNode node : NodeList) 
+      for (DependencyNode node : depLevelOrderList(libTreeRootNode))
       {
-        if ( node != null )
+        if (node != null && node.getArtifact() != null)
         {
-          String[] nodestring = node.toString().split(":");
-          String usestring = nodestring[0] + ":" + nodestring[1];
+          String usestring = createArtifactString(node.getArtifact());
 
           this.getLog().debug(usestring);
 
-          if (!depLevelOrderStr.isEmpty()){
-            depLevelOrderStr= depLevelOrderStr + "," + usestring;
-          }else{
-            depLevelOrderStr= usestring;
-          } 
+          if (!depLevelOrderStr.isEmpty()) {
+            depLevelOrderStr = depLevelOrderStr + "," + usestring;
+          } else {
+            depLevelOrderStr = usestring;
+          }
         }
       }
     }
-      
+
     this.getLog().debug("}");
     return depLevelOrderStr;
-*/
   }
 
   /**
@@ -480,33 +473,19 @@ public abstract class AbstractDependencyMojo extends AbstractNarMojo {
         nodeA.getArtifact().getArtifactId ().equals(nodeB.getArtifact().getArtifactId());
   }
 
-  //idea from dependency:tree mojo
   /**
-   * Get root node of the current Maven project Dependency tree generated by
-   * maven.shared dependency graph builder.
+   * Get root node of the current Maven project's (mediated) dependency tree.
    *
    * @return root node of the project Dependency tree
-   * @throws MojoExecutionException
+   * @throws MojoExecutionException if the tree could not be collected
    */
-  /*
   protected DependencyNode getRootNodeDependecyTree() throws MojoExecutionException{
-    try {
-      ArtifactFilter artifactFilter = null;
-
-      // works for only maven 3. Use of dependency graph component not handled for maven 2
-      // as current version of NAR already requires Maven 3.x
-      ProjectBuildingRequest buildingRequest =
-                new DefaultProjectBuildingRequest(session.getProjectBuildingRequest());
-      buildingRequest.setProject(getMavenProject());
-
-      rootNode = dependencyGraphBuilder.buildDependencyGraph(buildingRequest, artifactFilter);
-
-    } catch (DependencyGraphBuilderException exception) {
-      throw new MojoExecutionException("Cannot build project dependency graph", exception);
+    rootNode = collectProjectDependencies(false);
+    if (rootNode == null) {
+      throw new MojoExecutionException("Cannot build project dependency graph");
     }
-
     return rootNode;
-  }*/
+  }
 
   /**
    * To look up Archiver/UnArchiver implementations
