@@ -40,7 +40,10 @@ File[] artifacts = repoDir.listFiles( new FilenameFilter() {
 // expect only 1 it0003-jni SNAPSHOT nar
 if (artifacts.length == 1) {
     Calendar now = Calendar.getInstance();
-    Calendar tenMinsago = (Calendar)now.clone();
+    // Not now.clone(): BeanShell calls Object.clone() reflectively, which
+    // the module system blocks on JDK 17+.
+    Calendar tenMinsago = Calendar.getInstance();
+    tenMinsago.setTimeInMillis(now.getTimeInMillis());
     tenMinsago.add(Calendar.MINUTE, -10);
     DateFormat formatter = new SimpleDateFormat("yyyyMMdd.HHmmss");
 
