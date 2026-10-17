@@ -503,7 +503,13 @@ public class NarCompileMojo extends AbstractCompileMojo {
             }
           }
           Path mtexe = Path.of("mt.exe");
-          if (getMsvc().compareVersion( getMsvc().getWindowsSdkVersion(),"7.0")<0 && getLinker().getVersion(this).startsWith("8.")) { // VS2005 VC8 only one that includes mt.exe
+          if (!getMsvc().isActive()) {
+            // Visual Studio wasn't located (for example when cross-compiling
+            // for Windows): use the mt beside the configured linker, like the
+            // other tools, or else the one on the PATH.
+            final String linkerToolPath = getLinker().getToolPath();
+            mtexe = linkerToolPath != null ? Path.of(linkerToolPath, "mt") : Path.of("mt");
+          } else if (getMsvc().compareVersion( getMsvc().getWindowsSdkVersion(),"7.0")<0 && getLinker().getVersion(this).startsWith("8.")) { // VS2005 VC8 only one that includes mt.exe
             Path path = getMsvc().getToolPath().resolve(mtexe);
             if (Files.exists(path))
               mtexe = path;
@@ -512,7 +518,8 @@ public class NarCompileMojo extends AbstractCompileMojo {
             if (Files.exists(path))
               mtexe = path;
           }
-          int result = NarUtil.runCommand(mtexe.toAbsolutePath().toString(), commandlineArgs, null, null, getLog());
+          final String mtCommand = getMsvc().isActive() ? mtexe.toAbsolutePath().toString() : mtexe.toString();
+          int result = NarUtil.runCommand(mtCommand, commandlineArgs, null, null, getLog());
           if (result != 0) {
             throw new MojoFailureException("MT.EXE failed with exit code: " + result);
           }

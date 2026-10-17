@@ -282,7 +282,7 @@ public class Linker {
     // tool path
     if (this.toolPath != null) {
       linker.setToolPath(this.toolPath);
-    } else if (Msvc.isMSVC(name)) {
+    } else if (Msvc.isMSVC(name) && mojo.getMsvc().isActive()) {
       linker.setToolPath(mojo.getMsvc().getToolPath().toString());
     }
 
@@ -533,6 +533,13 @@ public class Linker {
       }
     }
     return linker;
+  }
+
+  /**
+   * The configured directory of the linker and its companion tools, or null.
+   */
+  public String getToolPath() {
+    return this.toolPath;
   }
 
   public final String getVersion() throws MojoFailureException, MojoExecutionException {
