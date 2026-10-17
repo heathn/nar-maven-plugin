@@ -24,8 +24,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
-import org.apache.commons.lang3.function.Failable;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
 import org.apache.maven.plugin.logging.Log;
@@ -71,23 +71,32 @@ public class NarLayout20 extends AbstractNarLayout {
       attachNar(archiverManager, projectHelper, project, "noarch", baseDir, "include/**");
     }
 
-    try {
-      Files.list(baseDir.resolve("bin")).forEach(Failable.asConsumer(f ->
-        attachNar(archiverManager, projectHelper, project, f + "-" + Library.EXECUTABLE, baseDir, "bin/" + f + "/**"))
-      );
-
-      final Path libDir = baseDir.resolve("lib");
-      Files.list(libDir).flatMap(Failable.asFunction(
-            dir -> Files.list(libDir.resolve(dir.getFileName()))))
-        .forEach(Failable.asConsumer(lib -> {
-            String aol = lib.getName(lib.getNameCount()-2).toString();
-            String type = lib.getFileName().toString();
-            attachNar(archiverManager, projectHelper, project, aol + "-" + type, baseDir, "lib/" + aol + "/" + type + "/**");
-      }));
-    } catch (IOException | RuntimeException e) {
-      throw new MojoExecutionException(e);
+    for (final String binAOL : listNames(baseDir.resolve("bin"))) {
+      attachNar(archiverManager, projectHelper, project, binAOL + "-" + Library.EXECUTABLE, baseDir, "bin/"
+          + binAOL + "/**");
     }
 
+    final Path libDir = baseDir.resolve("lib");
+    for (final String libAOL : listNames(libDir)) {
+      for (final String libType : listNames(libDir.resolve(libAOL))) {
+        attachNar(archiverManager, projectHelper, project, libAOL + "-" + libType, baseDir, "lib/" + libAOL
+            + "/" + libType + "/**");
+      }
+    }
+  }
+
+  /**
+   * Names of the entries in a directory, or none if it doesn't exist.
+   */
+  private static List<String> listNames(final Path dir) throws MojoExecutionException {
+    if (!Files.isDirectory(dir)) {
+      return List.of();
+    }
+    try (Stream<Path> entries = Files.list(dir)) {
+      return entries.map(f -> f.getFileName().toString()).collect(Collectors.toList());
+    } catch (IOException e) {
+      throw new MojoExecutionException(e);
+    }
   }
 
   /*
@@ -179,47 +188,38 @@ public class NarLayout20 extends AbstractNarLayout {
           + ":" + "noarch");
     }
 
-    narInfo.setNar(null, Library.EXECUTABLE, project.getGroupId() + ":" + project.getArtifactId() + ":"
-        + NarConstants.NAR_TYPE + ":" + "${aol}" + "-" + Library.EXECUTABLE);
-    narInfo.setBinding(null, Library.EXECUTABLE);
+    // TODO: chose not to apply new file naming for outfile in case of
+    // backwards compatability, may need to reconsider
+    for (final String binAOL : listNames(baseDir.resolve("bin"))) {
+      narInfo.setNar(null, Library.EXECUTABLE, project.getGroupId() + ":" + project.getArtifactId() + ":"
+          + NarConstants.NAR_TYPE + ":" + "${aol}" + "-" + Library.EXECUTABLE);
+      narInfo.setBinding(new AOL(binAOL), Library.EXECUTABLE);
+      narInfo.setBinding(null, Library.EXECUTABLE);
+    }
 
-    try {
-      // TODO: chose not to apply new file naming for outfile in case of
-      // backwards compatability, may need to reconsider
-      Files.list(baseDir.resolve("bin")).forEach(file -> 
-          narInfo.setBinding(new AOL(file.getFileName().toString()), Library.EXECUTABLE));
+    final Path libDir = baseDir.resolve("lib");
+    for (final String libAOL : listNames(libDir)) {
+      String bindingType = null;
+      for (final String libType : listNames(libDir.resolve(libAOL))) {
+        narInfo.setNar(null, libType, project.getGroupId() + ":" + project.getArtifactId() + ":"
+            + NarConstants.NAR_TYPE + ":" + "${aol}" + "-" + libType);
 
-      
-      final Path libDir = baseDir.resolve("lib");
-      Files.list(libDir)
-        .forEach(Failable.asConsumer(dir -> {
-          List<String> bindingTypes = Files.list(libDir.resolve(dir))
-            .map(f -> f.getFileName().toString())
-            .peek(type -> {
-              narInfo.setNar(null, type, project.getGroupId() + ":" + project.getArtifactId() + ":"
-                  + NarConstants.NAR_TYPE + ":" + "${aol}" + "-" + type);
-            }).collect(Collectors.toList());
+        // set if not set or override if SHARED
+        if (bindingType == null || libType.equals(Library.SHARED)) {
+          bindingType = libType;
+        }
+      }
 
-          String bindingType = null;
-          if (bindingTypes.contains(Library.SHARED)) {
-            bindingType = Library.SHARED;
-          } else {
-            bindingType = bindingTypes.get(0);
-          }
-
-          final AOL aol = new AOL(dir.getFileName().toString());
-          if (mojo.getLibsName() != null) {
-            narInfo.setLibs(aol, mojo.getLibsName());
-          }
-          if (narInfo.getBinding(aol, null) == null) {
-            narInfo.setBinding(aol, bindingType != null ? bindingType : Library.NONE);
-          }
-          if (narInfo.getBinding(null, null) == null) {
-            narInfo.setBinding(null, bindingType != null ? bindingType : Library.NONE);
-          }
-      }));
-    } catch (IOException | RuntimeException e) {
-      throw new MojoExecutionException(e);
+      final AOL aol = new AOL(libAOL);
+      if (mojo.getLibsName() != null) {
+        narInfo.setLibs(aol, mojo.getLibsName());
+      }
+      if (narInfo.getBinding(aol, null) == null) {
+        narInfo.setBinding(aol, bindingType != null ? bindingType : Library.NONE);
+      }
+      if (narInfo.getBinding(null, null) == null) {
+        narInfo.setBinding(null, bindingType != null ? bindingType : Library.NONE);
+      }
     }
   }
 
