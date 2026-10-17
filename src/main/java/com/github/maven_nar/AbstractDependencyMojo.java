@@ -39,6 +39,8 @@ import java.util.stream.Stream;
 import java.util.zip.ZipInputStream;
 
 import org.apache.commons.lang3.function.Failable;
+import org.apache.maven.RepositoryUtils;
+import org.apache.maven.model.DependencyManagement;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
 import org.apache.maven.plugins.annotations.Component;
@@ -55,6 +57,7 @@ import org.codehaus.plexus.util.StringUtils;
 import org.eclipse.aether.RepositorySystem;
 import org.eclipse.aether.RepositorySystemSession;
 import org.eclipse.aether.artifact.Artifact;
+import org.eclipse.aether.artifact.ArtifactTypeRegistry;
 import org.eclipse.aether.artifact.DefaultArtifact;
 import org.eclipse.aether.repository.RemoteRepository;
 import org.eclipse.aether.resolution.ArtifactRequest;
@@ -181,8 +184,24 @@ public abstract class AbstractDependencyMojo extends AbstractNarMojo {
     // Create Aether graph dependency object from params extracted above
     Dependency dep = new Dependency(art, getMavenProject().getArtifact().getScope());
     
-    // Set the root of the request, in this case the current project will be the root
-    collectReq.setRoot(dep);
+    if (verbose) {
+      // Set the root of the request, in this case the current project will be the root
+      collectReq.setRoot(dep);
+    } else {
+      // Collect from the project's own dependencies, as Maven does, so its
+      // direct provided and test dependencies are kept as direct dependencies
+      final ArtifactTypeRegistry stereotypes = repoSession.getArtifactTypeRegistry();
+      collectReq.setRootArtifact(art);
+      collectReq.setDependencies(getMavenProject().getDependencies().stream()
+          .map(d -> RepositoryUtils.toDependency(d, stereotypes))
+          .collect(Collectors.toList()));
+      final DependencyManagement depMgmt = getMavenProject().getDependencyManagement();
+      if (depMgmt != null) {
+        collectReq.setManagedDependencies(depMgmt.getDependencies().stream()
+            .map(d -> RepositoryUtils.toDependency(d, stereotypes))
+            .collect(Collectors.toList()));
+      }
+    }
 
     // Set the repos the collectReq will hit
     collectReq.setRepositories(projectRepos);
