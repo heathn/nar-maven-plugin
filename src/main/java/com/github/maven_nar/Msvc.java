@@ -269,7 +269,19 @@ public class Msvc {
     return toolPathWindowsSDK;
   }
 
+  /**
+   * Whether Visual Studio was located.  It isn't when building for Windows on
+   * another OS (cross-compiling), and then the tools come from the configured
+   * toolPath or the PATH.
+   */
+  public boolean isActive() {
+    return active;
+  }
+
   public void setToolPath(CompilerDef compilerDef, String name) {
+    if (!active) {
+      return;
+    }
     if ("res".equals(name) || "mc".equals(name) || "idl".equals(name)) {
       compilerDef.setToolPath(toolPathWindowsSDK.toString());
     } else {
