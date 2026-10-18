@@ -182,6 +182,8 @@ public class NarLayout21 extends AbstractNarLayout {
   @Override
   public final void prepareNarInfo(final Path baseDir, final MavenProject project, final NarInfo narInfo,
       final AbstractCompileMojo mojo) throws MojoExecutionException, MojoFailureException {
+    // the keys the project's own nar.properties sets, which declared targets don't replace
+    final Set<String> presetKeys = new HashSet<>(narInfo.getInfo().stringPropertyNames());
     if (Files.exists(getNoArchDirectory(baseDir, project.getArtifactId(), project.getVersion()))) {
       narInfo.setNar(null, NarConstants.NAR_NO_ARCH, project.getGroupId() + ":" + project.getArtifactId() + ":"
           + NarConstants.NAR_TYPE + ":" + NarConstants.NAR_NO_ARCH);
@@ -317,6 +319,22 @@ public class NarLayout21 extends AbstractNarLayout {
       if (mojo != null && narInfo.getOutput(null, null) == null) {
         narInfo.setOutput(null, mojo.getOutput(true));
       }
+    }
+
+    // describe every declared target, not just those built here
+    final List<Target> targets = mojo == null ? List.of() : mojo.getTargets();
+    if (!targets.isEmpty()) {
+      final Map<String, Set<String>> built = new HashMap<>();
+      for (final String classifier : classifiers) {
+        final int lastDash = classifier.lastIndexOf('-');
+        built.computeIfAbsent(classifier.substring(0, lastDash), aol -> new LinkedHashSet<>())
+            .add(classifier.substring(lastDash + 1));
+      }
+      final Set<String> builtTypes = new HashSet<>();
+      built.values().forEach(builtTypes::addAll);
+      Target.declare(targets, narInfo, presetKeys, builtTypes, project.getGroupId() + ":" + project.getArtifactId()
+          + ":" + NarConstants.NAR_TYPE, mojo.getOutput(true), mojo.getOutput(false), mojo.getLibsName());
+      Target.checkBuilt(targets, built, getLog());
     }
   }
 

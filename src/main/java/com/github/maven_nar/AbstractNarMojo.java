@@ -165,6 +165,14 @@ public abstract class AbstractNarMojo extends AbstractMojo implements NarConstan
   protected String libsName;
 
   /**
+   * The AOLs the project ships, and the library types it ships for each, so
+   * that every build describes all of them in the main nar.properties,
+   * whichever machine deploys it.  See {@link Target}.
+   */
+  @Parameter
+  private List<Target> targets;
+
+  /**
    * Skip running ranlib if this artifact is a library
    */
   @Parameter(defaultValue = "false", required = true)
@@ -373,6 +381,13 @@ public abstract class AbstractNarMojo extends AbstractMojo implements NarConstan
         return getMavenProject().getArtifactId();
       }
     }
+  }
+
+  /**
+   * @return the declared targets, empty if none
+   */
+  protected final List<Target> getTargets() {
+    return this.targets == null ? List.of() : this.targets;
   }
 
   protected final String getLibsName() {
