@@ -1,0 +1,55 @@
+/*
+ * #%L
+ * Native ARchive plugin for Maven
+ * %%
+ * Copyright (C) 2002 - 2014 NAR Maven Plugin developers.
+ * %%
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * #L%
+ */
+import java.io.File;
+import java.io.FileInputStream;
+import java.util.Properties;
+
+// The shared NAR's descriptor names the renamed library, and the main
+// nar.properties doesn't know about it.
+File narDir = new File(basedir, "target/nar");
+File[] shared = narDir.listFiles();
+int found = 0;
+for (int i = 0; i < shared.length; i++) {
+  String name = shared[i].getName();
+  if (!name.startsWith("it0043-descriptor-lib-1.0-SNAPSHOT-") || !name.endsWith("-shared")) {
+    continue;
+  }
+  String aol = name.substring("it0043-descriptor-lib-1.0-SNAPSHOT-".length(), name.length() - "-shared".length());
+  File dir = new File(shared[i], "META-INF/nar/com.github.maven-nar.its.nar/it0043-descriptor-lib");
+  Properties descriptor = new Properties();
+  descriptor.load(new FileInputStream(new File(dir, aol + "-shared.properties")));
+  if (!"2".equals(descriptor.getProperty("nar.descriptor.version"))) {
+    throw new RuntimeException("Unexpected descriptor version: " + descriptor);
+  }
+  if (!"renamed".equals(descriptor.getProperty("libs.names"))) {
+    throw new RuntimeException("Descriptor doesn't name the renamed library: " + descriptor);
+  }
+  Properties main = new Properties();
+  main.load(new FileInputStream(new File(basedir,
+      "target/classes/META-INF/nar/com.github.maven-nar.its.nar/it0043-descriptor-lib/nar.properties")));
+  if (main.getProperty("libs.names") != null || main.getProperty(aol + ".libs.names") != null) {
+    throw new RuntimeException("The main nar.properties shouldn't name the library: " + main);
+  }
+  found++;
+}
+if (found != 1) {
+  throw new RuntimeException("Expected one shared NAR, found " + found);
+}
+return true;

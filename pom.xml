@@ -527,6 +527,7 @@
                 <setupInclude>it0039-includesTypes/pom.xml</setupInclude>
                 <setupInclude>it0041-compat-old-lib/pom.xml</setupInclude>
                 <setupInclude>it0042-compat-new-lib/pom.xml</setupInclude>
+                <setupInclude>it0043-descriptor-lib/pom.xml</setupInclude>
               </setupIncludes>
               <pomIncludes>
                 <pomInclude>*/pom.xml</pomInclude>
