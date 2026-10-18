@@ -139,7 +139,16 @@ public class NarDeployMojo extends AbstractMojo {
     final boolean disabled = !explicitSkips.isEmpty() && explicitSkips.stream().allMatch(value -> value != null);
     if (disabled || skips(this.skip, snapshot)) {
       getLog().info("Skipping the deployment of the AOL-specific artifacts");
+      // and of everything else, which maven-deploy-plugin would deploy
+      this.project.getProperties().setProperty("maven.deploy.skip", "true");
       return;
+    }
+    // deploying at the end defers deploying until every module has built,
+    // which this goal, deploying now, would bypass
+    final String deployAtEnd = deployConfiguration("deployAtEnd", this.session.getUserProperties()
+        .getProperty("deployAtEnd", this.project.getProperties().getProperty("deployAtEnd")));
+    if (deployAtEnd != null && Boolean.parseBoolean(deployAtEnd.trim())) {
+      throw new MojoExecutionException("nar.deployScope=aol doesn't support maven-deploy-plugin's deployAtEnd");
     }
 
     final List<Artifact> artifacts = aolArtifacts(this.project.getAttachedArtifacts());
@@ -225,7 +234,9 @@ public class NarDeployMojo extends AbstractMojo {
    * @return whether a maven.deploy.skip value skips deploying this project
    */
   private static boolean skips(final String value, final boolean snapshot) {
-    return "true".equals(value) || ("releases".equals(value) && !snapshot) || ("snapshots".equals(value) && snapshot);
+    // as maven-deploy-plugin reads it: a boolean, or releases or snapshots
+    return (value != null && Boolean.parseBoolean(value.trim())) || ("releases".equals(value) && !snapshot)
+        || ("snapshots".equals(value) && snapshot);
   }
 
   private RemoteRepository deploymentRepository() throws MojoExecutionException {
