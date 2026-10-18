@@ -297,4 +297,10 @@ public class TestNarDescriptor extends TestCase {
     Assert.assertEquals("foo-1.0",
         describe(narInfo(mac, "foo-1.0"), mac, Library.SHARED, "lib", "dylib").getProperty("libs.names"));
   }
+
+  public final void testVersionedLibraryMakesItAmbiguous() throws Exception {
+    // librenamed.so.1 may carry the output's SONAME, made linkable at unpack
+    touch("librenamed.so.1", "libbundled.so");
+    Assert.assertNull(describe(narInfo(LINUX, "foo"), LINUX, Library.SHARED, "lib", "so*").getProperty("libs.names"));
+  }
 }

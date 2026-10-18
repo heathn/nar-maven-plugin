@@ -192,13 +192,14 @@ public final class NarDescriptor {
           // name, of files the linker takes as they are (not libfoo.so.1,
           // which only a link made at unpack, from its SONAME, makes linkable),
           // each file by its shortest name (renamed for librenamed.dll).
-          final TreeSet<String> names = new TreeSet<>();
-          linkAliases(libDir, unversioned(patterns)).values().forEach(fileAliases -> names.add(fileAliases.stream()
-              .min(Comparator.comparingInt(String::length).thenComparing(Comparator.naturalOrder())).get()));
-          if (names.size() == 1) {
+          final TreeSet<String> names = shortestNames(linkAliases(libDir, unversioned(patterns)));
+          // and every library there, versioned ones included, has that name;
+          // a libfoo.so.1 could be the output's by its SONAME
+          final TreeSet<String> all = shortestNames(aliases);
+          if (names.size() == 1 && all.equals(names)) {
             descriptor.setProperty("libs.names", names.first());
-          } else if (names.size() > 1) {
-            log.warn("The " + aol + " " + type + " libraries " + names + " don't include "
+          } else if (all.size() > 1) {
+            log.warn("The " + aol + " " + type + " libraries " + all + " don't include "
                 + (output == null ? "the output" : output) + "; set libsName so that consumers link the right ones");
           }
         }
@@ -209,6 +210,14 @@ public final class NarDescriptor {
       descriptor.setProperty(key, value == null ? "" : value);
     }
     return descriptor;
+  }
+
+  // each file's shortest name: renamed for librenamed.dll
+  private static TreeSet<String> shortestNames(final Map<String, TreeSet<String>> aliases) {
+    final TreeSet<String> names = new TreeSet<>();
+    aliases.values().forEach(fileAliases -> names.add(fileAliases.stream()
+        .min(Comparator.comparingInt(String::length).thenComparing(Comparator.naturalOrder())).get()));
+    return names;
   }
 
   private static List<String[]> unversioned(final List<String[]> patterns) {
