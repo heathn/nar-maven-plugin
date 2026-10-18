@@ -44,13 +44,25 @@ public class TestJavaLibraryPath extends TestCase {
   }
 
   public final void testQuotedAndSpaces() {
-    Assert.assertEquals("-Djava.library.path=\"/opt/my lib" + S + "/a\"",
+    Assert.assertEquals("\"-Djava.library.path=/opt/my lib" + S + "/a\"",
         NarIntegrationTestMojo.addToJavaLibraryPath("-Djava.library.path=\"/opt/my lib\"", "/a"));
-    Assert.assertEquals("-Djava.library.path=\"/opt/lib" + S + "/my dir\"",
+    Assert.assertEquals("\"-Djava.library.path=/opt/lib" + S + "/my dir\"",
         NarIntegrationTestMojo.addToJavaLibraryPath("-Djava.library.path=/opt/lib", "/my dir"));
   }
 
   public final void testEmptyExplicitPath() {
     Assert.assertEquals("-Djava.library.path=/a", NarIntegrationTestMojo.addToJavaLibraryPath("-Djava.library.path=", "/a"));
+  }
+
+  public final void testWholeArgumentQuoted() {
+    Assert.assertEquals("-ea \"-Djava.library.path=/opt/my lib" + S + "/a\" -Xmx1g",
+        NarIntegrationTestMojo.addToJavaLibraryPath("-ea \"-Djava.library.path=/opt/my lib\" -Xmx1g", "/a"));
+    Assert.assertEquals("\"-Djava.library.path=/opt/my lib" + S + "/a\"",
+        NarIntegrationTestMojo.addToJavaLibraryPath("'-Djava.library.path=/opt/my lib'", "/a"));
+  }
+
+  public final void testLastDefinitionExtended() {
+    Assert.assertEquals("-Djava.library.path=/parent -Djava.library.path=/child" + S + "/a",
+        NarIntegrationTestMojo.addToJavaLibraryPath("-Djava.library.path=/parent -Djava.library.path=/child", "/a"));
   }
 }

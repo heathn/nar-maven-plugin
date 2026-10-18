@@ -28,8 +28,6 @@ import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import java.util.LinkedHashSet;
 import java.util.stream.Collectors;
 
@@ -739,13 +737,12 @@ public class NarIntegrationTestMojo extends AbstractSurefireMojo
     super.execute();
   }
 
-  private static final Pattern JAVA_LIBRARY_PATH = Pattern.compile(
-      "-Djava\\.library\\.path=(\"[^\"]*\"|'[^']*'|\\S*)");
+  private static final String JAVA_LIBRARY_PATH = "-Djava.library.path=";
 
   /**
-   * Adds directories to a -Djava.library.path in an argLine, which would
-   * otherwise hide the ones in the environment, quoting the value if it
-   * has spaces.
+   * Adds directories to the -Djava.library.path in an argLine, which would
+   * otherwise hide the ones in the environment.  The JVM uses the last one,
+   * so that's the one extended; the argument is quoted if it has spaces.
    *
    * @param argLine the argLine, or null
    * @param directories the directories, separated by the path separator
@@ -755,19 +752,46 @@ public class NarIntegrationTestMojo extends AbstractSurefireMojo
     if (argLine == null) {
       return null;
     }
-    final Matcher m = JAVA_LIBRARY_PATH.matcher(argLine);
-    if (!m.find()) {
+    // find the last argument, quoted in whole or in part, that sets it
+    int start = -1;
+    int end = -1;
+    String value = null;
+    int i = 0;
+    while (i < argLine.length()) {
+      while (i < argLine.length() && Character.isWhitespace(argLine.charAt(i))) {
+        i++;
+      }
+      if (i == argLine.length()) {
+        break;
+      }
+      final int tokenStart = i;
+      final StringBuilder token = new StringBuilder();
+      char quote = 0;
+      while (i < argLine.length() && (quote != 0 || !Character.isWhitespace(argLine.charAt(i)))) {
+        final char c = argLine.charAt(i++);
+        if (quote == 0 && (c == '"' || c == '\'')) {
+          quote = c;
+        } else if (c == quote) {
+          quote = 0;
+        } else {
+          token.append(c);
+        }
+      }
+      if (token.toString().startsWith(JAVA_LIBRARY_PATH)) {
+        start = tokenStart;
+        end = i;
+        value = token.substring(JAVA_LIBRARY_PATH.length());
+      }
+    }
+    if (value == null) {
       return argLine;
     }
-    String value = m.group(1);
-    if (value.length() >= 2 && (value.startsWith("\"") || value.startsWith("'"))) {
-      value = value.substring(1, value.length() - 1);
+    final String path = value.isEmpty() ? directories : value + File.pathSeparator + directories;
+    String argument = JAVA_LIBRARY_PATH + path;
+    if (argument.indexOf(' ') >= 0) {
+      argument = "\"" + argument + "\"";
     }
-    value = value.isEmpty() ? directories : value + File.pathSeparator + directories;
-    if (value.indexOf(' ') >= 0) {
-      value = "\"" + value + "\"";
-    }
-    return argLine.substring(0, m.start(1)) + value + argLine.substring(m.end(1));
+    return argLine.substring(0, start) + argument + argLine.substring(end);
   }
 
   @Override
