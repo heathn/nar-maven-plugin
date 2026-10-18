@@ -20,6 +20,7 @@
 package com.github.maven_nar;
 
 import java.io.IOException;
+import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -188,9 +189,10 @@ public class NarLayout21 extends AbstractNarLayout {
     // what a previous build generated
     final Set<String> presetKeys = new HashSet<>();
     for (final Resource resource : project.getBuild().getResources()) {
-      final Path file = project.getBasedir().toPath().resolve(resource.getDirectory())
-          .resolve(narInfo.getNarInfoFileName());
-      if (Files.isRegularFile(file)) {
+      final String source = resourceSource(resource, narInfo.getNarInfoFileName());
+      final Path file = source == null ? null
+          : project.getBasedir().toPath().resolve(resource.getDirectory()).resolve(source);
+      if (file != null && Files.isRegularFile(file)) {
         presetKeys.addAll(new NarInfo(project.getGroupId(), project.getArtifactId(), project.getVersion(), getLog(),
             file).getInfo().stringPropertyNames());
       }
@@ -347,6 +349,50 @@ public class NarLayout21 extends AbstractNarLayout {
           + ":" + NarConstants.NAR_TYPE, mojo.getOutput(true), mojo.getOutput(false), mojo.getLibsName());
       Target.checkBuilt(targets, built, getLog());
     }
+  }
+
+  /**
+   * The path, in a resource directory, of the file the resource copies to a
+   * destination in target/classes, taking its targetPath, includes and
+   * excludes into account, or null if it doesn't copy one there.
+   *
+   * @param resource the resource
+   * @param destination the destination, relative to target/classes
+   * @return the source path relative to the resource's directory, or null
+   */
+  public static String resourceSource(final Resource resource, final String destination) {
+    String targetPath = resource.getTargetPath() == null ? "" : resource.getTargetPath().replace('\\', '/');
+    while (targetPath.startsWith("/")) {
+      targetPath = targetPath.substring(1);
+    }
+    while (targetPath.endsWith("/")) {
+      targetPath = targetPath.substring(0, targetPath.length() - 1);
+    }
+    final String source;
+    if (targetPath.isEmpty()) {
+      source = destination;
+    } else if (destination.startsWith(targetPath + "/")) {
+      source = destination.substring(targetPath.length() + 1);
+    } else {
+      return null;
+    }
+    final Path path = Path.of(source);
+    final boolean included = resource.getIncludes().isEmpty()
+        || resource.getIncludes().stream().anyMatch(pattern -> matches(pattern, path));
+    final boolean excluded = resource.getExcludes().stream().anyMatch(pattern -> matches(pattern, path));
+    return included && !excluded ? source : null;
+  }
+
+  // An Ant-style resource pattern, where a trailing / means everything below
+  private static boolean matches(final String pattern, final Path path) {
+    String glob = pattern.replace('\\', '/');
+    if (glob.endsWith("/")) {
+      glob += "**";
+    }
+    if (glob.startsWith("**/") && path.getNameCount() == 1) {
+      glob = glob.substring(3);
+    }
+    return FileSystems.getDefault().getPathMatcher("glob:" + glob).matches(path);
   }
 
   @Override

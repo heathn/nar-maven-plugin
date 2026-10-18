@@ -77,14 +77,16 @@ public class Target {
   /**
    * Writes the main nar.properties keys for every declared target, so that
    * every machine writes the same ones whatever it built:
-   * &lt;aol&gt;.nar.&lt;type&gt; for each type it ships and empty for every
+   * &lt;aol&gt;.nar.&lt;type&gt; for each type it ships (unless the project
+   * sets a generic nar.&lt;type&gt;, which then applies) and empty for every
    * other type (so the generic nar.&lt;type&gt; doesn't claim it for this
    * AOL), &lt;aol&gt;.libs.binding (the project's generic libs.binding if the
    * target ships that type, otherwise shared or static), &lt;aol&gt;.output and,
    * when configured,
    * &lt;aol&gt;.libs.names.  Each replaces what was generated for the AOL
    * built here, but not a key set in the project's own nar.properties.  An
-   * AOL that nar.properties maps to a target gets the target's keys too.
+   * AOL that nar.properties maps to a target gets the target's resulting
+   * keys too, except those the project sets for it.
    * The generic nar.&lt;type&gt; templates are written for the declared
    * types, for consumers on undeclared AOLs.
    *
@@ -132,15 +134,17 @@ public class Target {
     // a generic libs.binding in the project's nar.properties, for the
     // targets that ship that type
     final String presetBinding = presetKeys.contains("libs.binding") ? narInfo.getBinding(null, null) : null;
-    final Map<String, Target> describe = new LinkedHashMap<>(byAol);
-    describe.putAll(mapped);
 
-    describe.forEach((aol, target) -> {
-      final String shipped = byAol.entrySet().stream().filter(e -> e.getValue() == target).findFirst()
-          .map(Map.Entry::getKey).orElse(aol);
+    final List<String> suffixes = new java.util.ArrayList<>();
+    allTypes.forEach(type -> suffixes.add(NarConstants.NAR + "." + type));
+    suffixes.addAll(List.of("libs.binding", "output", "libs.names"));
+    byAol.forEach((aol, target) -> {
       for (final String type : allTypes) {
-        set(narInfo, presetKeys, aol + "." + NarConstants.NAR + "." + type,
-            target.getTypes().contains(type) ? coordinate + ":" + shipped + "-" + type : "");
+        // a generic nar.<type> the project sets applies to the types it ships
+        if (!target.getTypes().contains(type) || !presetKeys.contains(NarConstants.NAR + "." + type)) {
+          set(narInfo, presetKeys, aol + "." + NarConstants.NAR + "." + type,
+              target.getTypes().contains(type) ? coordinate + ":" + aol + "-" + type : "");
+        }
       }
       set(narInfo, presetKeys, aol + ".libs.binding", presetBinding != null && target.getTypes().contains(presetBinding)
           ? presetBinding : preferredBinding(target.getTypes()));
@@ -148,6 +152,16 @@ public class Target {
       set(narInfo, presetKeys, aol + ".output", libraries ? libraryOutput : executableOutput);
       if (libsName != null) {
         set(narInfo, presetKeys, aol + ".libs.names", libsName);
+      }
+    });
+    // an AOL mapped to a target gets the target's entries as they end up
+    mapped.forEach((alias, target) -> {
+      final String aol = new AOL(target.getAol().trim()).toString();
+      for (final String suffix : suffixes) {
+        final String value = narInfo.getInfo().getProperty(aol + "." + suffix);
+        if (value != null) {
+          set(narInfo, presetKeys, alias + "." + suffix, value);
+        }
       }
     });
 

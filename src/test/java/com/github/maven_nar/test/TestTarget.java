@@ -200,4 +200,26 @@ public class TestTarget extends TestCase {
     Assert.assertEquals("static", narInfo.getBinding(WINDOWS, null));
     Assert.assertEquals("shared", narInfo.getBinding(LINUX, null));
   }
+
+  public final void testPresetGenericCoordinateApplies() throws Exception {
+    final NarInfo narInfo = narInfo();
+    narInfo.getInfo().setProperty("nar.shared", "other:bundle:nar:${aol}-shared");
+    Target.declare(targets(), narInfo, Set.of("nar.shared"), Set.of(), COORDINATE, "lib-1.0", "lib", null);
+    Assert.assertEquals(List.of("other:bundle:nar:${aol}-shared"), narInfo.getAttachedNars(LINUX, Library.SHARED));
+    // types a target doesn't ship are still excluded
+    Assert.assertEquals("", narInfo.getProperty(LINUX, "nar.static"));
+  }
+
+  public final void testAliasGetsTheTargetsPresetValues() throws Exception {
+    final NarInfo narInfo = narInfo();
+    narInfo.getInfo().setProperty("x86_64-Linux-gpp", "amd64-Linux-gpp");
+    narInfo.setOutput(LINUX, "custom");
+    narInfo.getInfo().setProperty("x86_64-Linux-gpp.libs.binding", "jni");
+    Target.declare(targets(), narInfo, Set.of("amd64-Linux-gpp.output", "x86_64-Linux-gpp.libs.binding"), Set.of(),
+        COORDINATE, "lib-1.0", "lib", null);
+    final AOL alias = new AOL("x86_64-Linux-gpp");
+    Assert.assertEquals("custom", narInfo.getOutput(alias, null));
+    // the alias's own preset wins
+    Assert.assertEquals("jni", narInfo.getBinding(alias, null));
+  }
 }
