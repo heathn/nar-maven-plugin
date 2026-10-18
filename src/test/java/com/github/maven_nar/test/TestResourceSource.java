@@ -72,4 +72,10 @@ public class TestResourceSource extends TestCase {
     Assert.assertNull(NarLayout21.resourceSource(resource(null, List.of(), List.of("**/nar.properties")),
         DESTINATION));
   }
+
+  public final void testDotSegments() {
+    Assert.assertEquals(DESTINATION, NarLayout21.resourceSource(resource(".", List.of(), List.of()), DESTINATION));
+    Assert.assertEquals("nar.properties",
+        NarLayout21.resourceSource(resource("./META-INF/nar/com.example/lib", List.of(), List.of()), DESTINATION));
+  }
 }

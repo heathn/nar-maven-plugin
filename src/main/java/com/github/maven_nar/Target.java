@@ -137,9 +137,10 @@ public class Target {
     final Map<String, Target> mapped = new LinkedHashMap<>();
     for (final String key : narInfo.getInfo().stringPropertyNames()) {
       final String value = narInfo.getInfo().getProperty(key).trim();
-      // AOL splits arch-os-linker on its first two dashes, so linkers like gpp-12 count
-      if (key.indexOf('.') < 0 && key.split("-", 3).length == 3 && value.split("-", 3).length == 3
-          && !byAol.containsKey(key)) {
+      // AOL splits arch-os-linker on its first two dashes, so linkers like
+      // gpp-12.2 count; a key is a mapping when its value names a target,
+      // which an AOL-prefixed property's value doesn't
+      if (key.split("-", 3).length == 3 && value.split("-", 3).length == 3 && !byAol.containsKey(key)) {
         // as NarInfo.getAOL reads it, so amd64-Linux-g++ is amd64-Linux-gpp
         final Target target = byAol.get(new AOL(value).toString());
         if (target != null) {

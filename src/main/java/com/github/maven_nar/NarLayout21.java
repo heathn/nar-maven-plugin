@@ -371,10 +371,12 @@ public class NarLayout21 extends AbstractNarLayout {
    * @return the source path relative to the resource's directory, or null
    */
   public static String resourceSource(final Resource resource, final String destination) {
+    // relative to target/classes, without . segments
     String targetPath = resource.getTargetPath() == null ? "" : resource.getTargetPath().replace('\\', '/');
     while (targetPath.startsWith("/")) {
       targetPath = targetPath.substring(1);
     }
+    targetPath = targetPath.isEmpty() ? "" : Path.of(targetPath).normalize().toString().replace('\\', '/');
     while (targetPath.endsWith("/")) {
       targetPath = targetPath.substring(0, targetPath.length() - 1);
     }

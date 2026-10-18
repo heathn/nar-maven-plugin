@@ -263,4 +263,14 @@ public class TestTarget extends TestCase {
     declare(targets(), narInfo);
     Assert.assertEquals("", narInfo.getProperty(new AOL("x86_64-Linux-gpp-12"), "nar.static"));
   }
+
+  public final void testMappingWithDottedLinker() throws Exception {
+    final NarInfo narInfo = narInfo();
+    narInfo.getInfo().setProperty("x86_64-Linux-gpp-12.2", "amd64-Linux-gpp");
+    // an AOL-prefixed property isn't a mapping
+    narInfo.getInfo().setProperty("amd64-Linux-gpp.libs.names", "lib-1.0");
+    declare(targets(), narInfo);
+    Assert.assertEquals("", narInfo.getProperty(new AOL("x86_64-Linux-gpp-12.2"), "nar.static"));
+    Assert.assertNull(narInfo.getInfo().getProperty("amd64-Linux-gpp.libs.names.nar.static"));
+  }
 }
