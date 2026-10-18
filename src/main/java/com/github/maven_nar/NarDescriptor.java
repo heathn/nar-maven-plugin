@@ -44,6 +44,11 @@ import org.apache.maven.plugin.logging.Log;
  */
 public final class NarDescriptor {
 
+  /**
+   * Marks a {@link #linkNames} pattern of a linker that ignores case.
+   */
+  public static final String IGNORE_CASE = "ignoreCase";
+
   private NarDescriptor() {
   }
 
@@ -54,7 +59,9 @@ public final class NarDescriptor {
    * suffixes (libfoo.so.1.2).
    *
    * @param libDir the directory
-   * @param patterns pairs of library file prefix (possibly empty) and extension
+   * @param patterns pairs of library file prefix (possibly empty) and
+   *          extension, with a third element "ignoreCase" for a linker that
+   *          ignores case
    * @return the space-separated names, sorted, or an empty string
    * @throws IOException if the directory can't be listed
    */
@@ -71,8 +78,9 @@ public final class NarDescriptor {
       }
       final boolean versioned = extension.endsWith("*");
       final String ext = versioned ? extension.substring(0, extension.length() - 1) : extension;
+      final boolean ignoreCase = pattern.length > 2 && IGNORE_CASE.equals(pattern[2]);
       regexes.add(Pattern.compile(Pattern.quote(prefix) + "(.+)\\." + Pattern.quote(ext)
-          + (versioned ? "(\\.[0-9][0-9.]*)?" : "")));
+          + (versioned ? "(\\.[0-9][0-9.]*)?" : ""), ignoreCase ? Pattern.CASE_INSENSITIVE : 0));
     }
     final TreeSet<String> names = new TreeSet<>();
     try (Stream<Path> files = Files.list(libDir)) {
@@ -107,7 +115,7 @@ public final class NarDescriptor {
     final String linker = parts[parts.length - 1];
     if (parts.length > 1 && OS.WINDOWS.equals(parts[1])) {
       if ("msvc".equals(linker) || "icl".equals(linker)) {
-        return List.<String[]>of(new String[] { prefix == null ? "" : prefix, "lib" });
+        return List.<String[]>of(new String[] { prefix == null ? "" : prefix, "lib", IGNORE_CASE });
       }
       return Library.SHARED.equals(type)
           ? List.of(new String[] { "lib", "dll.a" }, new String[] { "", "dll" }, new String[] { "lib", "dll" })
@@ -155,7 +163,9 @@ public final class NarDescriptor {
       } else {
         final String found = linkNames(libDir, patterns);
         final List<String> names = found.isEmpty() ? List.of() : Arrays.asList(found.split(" "));
-        if (output != null && names.contains(output)) {
+        final boolean ignoreCase = patterns.stream().anyMatch(p -> p.length > 2 && IGNORE_CASE.equals(p[2]));
+        if (output != null && names.stream().anyMatch(name -> ignoreCase ? name.equalsIgnoreCase(output)
+            : name.equals(output))) {
           descriptor.setProperty("libs.names", output);
         } else if (!names.isEmpty()) {
           descriptor.setProperty("libs.names", found);
@@ -190,7 +200,8 @@ public final class NarDescriptor {
         .filter(line -> !line.startsWith("#"))
         .sorted()
         .collect(Collectors.joining("\n", "", "\n"));
-    Files.createDirectories(file.getParent());
+    // a bare file name has no parent
+    Files.createDirectories(file.toAbsolutePath().getParent());
     Files.writeString(file, body, StandardCharsets.ISO_8859_1);
   }
 }

@@ -237,4 +237,26 @@ public class TestNarDescriptor extends TestCase {
     Assert.assertEquals("renamed",
         describe(narInfo(MINGW, "lib-1.0"), MINGW, Library.SHARED, null, "dll").getProperty("libs.names"));
   }
+
+  public final void testMsvcIgnoresCase() throws Exception {
+    touch("FOO.LIB", "bundled.lib");
+    Assert.assertEquals("foo", describe(narInfo(WINDOWS, "foo"), WINDOWS, Library.SHARED, "", "dll")
+        .getProperty("libs.names"));
+    Files.delete(this.dir.resolve("FOO.LIB"));
+    touch("FOO.lib");
+    Assert.assertEquals("foo", describe(narInfo(WINDOWS, "foo"), WINDOWS, Library.SHARED, "", "dll")
+        .getProperty("libs.names"));
+  }
+
+  public final void testWriteBareFileName() throws Exception {
+    final Path file = Path.of("descriptor-test-" + System.nanoTime() + ".properties");
+    try {
+      final Properties p = new Properties();
+      p.setProperty("output", "foo");
+      NarDescriptor.write(file, p);
+      Assert.assertTrue(Files.exists(file));
+    } finally {
+      Files.deleteIfExists(file);
+    }
+  }
 }
