@@ -175,8 +175,8 @@ public class NarDeployMojo extends AbstractMojo {
       request.setRepository(repository);
       for (final Artifact artifact : artifacts) {
         if (artifact.getFile() == null) {
-          getLog().warn("Not deploying " + artifact + ", which has no file");
-          continue;
+          // rather than deploy only some of them and report success
+          throw new MojoExecutionException("Can't deploy " + artifact + ", which has no file");
         }
         getLog().info("Deploying " + artifact.getFile().getName() + " to " + repository.getUrl());
         request.addArtifact(new DefaultArtifact(artifact.getGroupId(), artifact.getArtifactId(),
@@ -314,25 +314,37 @@ public class NarDeployMojo extends AbstractMojo {
   }
 
   /**
-   * A parameter configured on maven-deploy-plugin, for the plugin or its
-   * default-deploy execution, which wins over the property, as in that
-   * plugin; otherwise the property's value.
+   * A parameter configured on maven-deploy-plugin for the deploy executions
+   * that will run in the deploy phase (an execution's, else the plugin's),
+   * which wins over the property, as in that plugin; otherwise the
+   * property's value.  Fails if those executions are configured differently,
+   * as this goal deploys once, to one repository.
    */
   private String deployConfiguration(final String name, final String property) throws MojoExecutionException {
     final Plugin plugin = deployPlugin();
-    if (plugin != null) {
-      for (final PluginExecution execution : plugin.getExecutions()) {
+    if (plugin == null) {
+      return property;
+    }
+    final String pluginValue = evaluate(valueOf(plugin.getConfiguration(), name));
+    final java.util.Set<String> values = new java.util.LinkedHashSet<>();
+    boolean active = false;
+    for (final PluginExecution execution : plugin.getExecutions()) {
+      final String phase = execution.getPhase();
+      if (execution.getGoals().contains("deploy") && (phase == null || "deploy".equals(phase))) {
+        active = true;
         final String value = evaluate(valueOf(execution.getConfiguration(), name));
-        if ("default-deploy".equals(execution.getId()) && value != null) {
-          return value;
-        }
-      }
-      final String value = evaluate(valueOf(plugin.getConfiguration(), name));
-      if (value != null) {
-        return value;
+        values.add(value != null ? value : pluginValue != null ? pluginValue : property);
       }
     }
-    return property;
+    if (!active) {
+      values.add(pluginValue != null ? pluginValue : property);
+    }
+    values.remove(null);
+    if (values.size() > 1) {
+      throw new MojoExecutionException("maven-deploy-plugin's deploy executions set " + name
+          + " differently, " + values + "; nar.deployScope=aol deploys to one repository");
+    }
+    return values.isEmpty() ? null : values.iterator().next();
   }
 
   /**
