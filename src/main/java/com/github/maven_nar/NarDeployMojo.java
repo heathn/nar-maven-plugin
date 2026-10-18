@@ -19,6 +19,7 @@
  */
 package com.github.maven_nar;
 
+import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -255,24 +256,69 @@ public class NarDeployMojo extends AbstractMojo {
   }
 
   private RemoteRepository deploymentRepository() throws MojoExecutionException {
-    // configured on maven-deploy-plugin, as it would use them, or as properties
-    final String snapshotRepository = deployConfiguration("altSnapshotDeploymentRepository",
-        this.altSnapshotDeploymentRepository);
-    final String releaseRepository = deployConfiguration("altReleaseDeploymentRepository",
-        this.altReleaseDeploymentRepository);
-    String alt = this.project.getArtifact().isSnapshot() ? snapshotRepository : releaseRepository;
-    if (alt == null || alt.isEmpty()) {
-      alt = deployConfiguration("altDeploymentRepository", this.altDeploymentRepository);
+    // where each maven-deploy-plugin execution that runs in the deploy phase,
+    // and doesn't skip itself, would deploy, which must be the same for all
+    final Plugin plugin = deployPlugin();
+    final List<Object> configurations = new ArrayList<>();
+    if (plugin != null) {
+      final boolean snapshot = this.project.getArtifact().isSnapshot();
+      for (final PluginExecution execution : plugin.getExecutions()) {
+        final String phase = execution.getPhase();
+        if (execution.getGoals().contains("deploy") && (phase == null || "deploy".equals(phase))
+            && !skips(evaluate(valueOf(execution.getConfiguration(), "skip")), snapshot)) {
+          configurations.add(execution.getConfiguration());
+        }
+      }
     }
-    if (alt != null && !alt.isEmpty()) {
-      return parseRepository(alt);
+    if (configurations.isEmpty()) {
+      configurations.add(null);
     }
-    final ArtifactRepository repository = this.project.getDistributionManagementArtifactRepository();
-    if (repository == null) {
+    final Set<String> destinations = new LinkedHashSet<>();
+    for (final Object configuration : configurations) {
+      destinations.add(destination(configuration, plugin == null ? null : plugin.getConfiguration()));
+    }
+    if (destinations.size() > 1) {
+      throw new MojoExecutionException("maven-deploy-plugin's deploy executions deploy to different repositories, "
+          + destinations + "; nar.deployScope=aol deploys to one");
+    }
+    final String destination = destinations.iterator().next();
+    if (destination.isEmpty()) {
       throw new MojoExecutionException("No deployment repository: set distributionManagement or "
           + "altDeploymentRepository");
     }
-    return new RemoteRepository.Builder(repository.getId(), "default", repository.getUrl()).build();
+    return parseRepository(destination);
+  }
+
+  /**
+   * The repository, as id::url, a deploy execution with this configuration
+   * deploys to, as maven-deploy-plugin chooses it: the snapshot or release
+   * repository, else altDeploymentRepository (each configured, else the
+   * property), else distributionManagement; empty if there's none.
+   */
+  private String destination(final Object execution, final Object plugin) throws MojoExecutionException {
+    final boolean snapshot = this.project.getArtifact().isSnapshot();
+    String alt = configured(execution, plugin, snapshot ? "altSnapshotDeploymentRepository"
+        : "altReleaseDeploymentRepository", snapshot ? this.altSnapshotDeploymentRepository
+        : this.altReleaseDeploymentRepository);
+    if (alt == null || alt.isEmpty()) {
+      alt = configured(execution, plugin, "altDeploymentRepository", this.altDeploymentRepository);
+    }
+    if (alt != null && !alt.isEmpty()) {
+      final RemoteRepository repository = parseRepository(alt);
+      return repository.getId() + "::" + repository.getUrl();
+    }
+    final ArtifactRepository repository = this.project.getDistributionManagementArtifactRepository();
+    return repository == null ? "" : repository.getId() + "::" + repository.getUrl();
+  }
+
+  private String configured(final Object execution, final Object plugin, final String name, final String property)
+      throws MojoExecutionException {
+    final String value = evaluate(valueOf(execution, name));
+    if (value != null) {
+      return value;
+    }
+    final String pluginValue = evaluate(valueOf(plugin, name));
+    return pluginValue != null ? pluginValue : property;
   }
 
   /**
