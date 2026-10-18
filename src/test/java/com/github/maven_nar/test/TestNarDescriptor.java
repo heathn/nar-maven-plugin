@@ -1,0 +1,183 @@
+/*
+ * #%L
+ * Native ARchive plugin for Maven
+ * %%
+ * Copyright (C) 2002 - 2014 NAR Maven Plugin developers.
+ * %%
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * #L%
+ */
+package com.github.maven_nar.test;
+
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Comparator;
+import java.util.Properties;
+import java.util.stream.Stream;
+
+import junit.framework.TestCase;
+
+import org.junit.Assert;
+
+import org.apache.maven.plugin.logging.SystemStreamLog;
+
+import com.github.maven_nar.AOL;
+import com.github.maven_nar.Library;
+import com.github.maven_nar.NarDescriptor;
+import com.github.maven_nar.NarInfo;
+
+/**
+ * Tests deriving and writing the descriptor of an AOL-specific NAR.
+ */
+public class TestNarDescriptor extends TestCase {
+  private Path dir;
+
+  @Override
+  protected void setUp() throws Exception {
+    this.dir = Files.createTempDirectory("descriptor");
+  }
+
+  @Override
+  protected void tearDown() throws Exception {
+    try (Stream<Path> paths = Files.walk(this.dir)) {
+      paths.sorted(Comparator.reverseOrder()).forEach(p -> p.toFile().delete());
+    }
+  }
+
+  private void touch(final String... names) throws Exception {
+    for (final String name : names) {
+      Files.createFile(this.dir.resolve(name));
+    }
+  }
+
+  public final void testLinuxShared() throws Exception {
+    touch("libfoo-1.0.so", "libfoo-1.0.so.1", "libbar.so.2.3.4", "notalib.txt", "libbaz.a");
+    Assert.assertEquals("bar foo-1.0", NarDescriptor.linkNames(this.dir, "lib", "so*"));
+  }
+
+  public final void testLinuxStatic() throws Exception {
+    touch("libfoo.a", "libfoo.so");
+    Assert.assertEquals("foo", NarDescriptor.linkNames(this.dir, "lib", "a"));
+  }
+
+  public final void testWindowsImportLibraryWithDottedName() throws Exception {
+    // leptonica's own build names its library after the upstream version
+    touch("leptonica-1.87.0.lib", "leptonica-1.87.0.dll", "leptonica-1.87.0.pdb");
+    Assert.assertEquals("leptonica-1.87.0", NarDescriptor.linkNames(this.dir, "", "lib"));
+  }
+
+  public final void testNameContainingExtension() throws Exception {
+    touch("libsomething.so", "libso.so.1");
+    Assert.assertEquals("so something", NarDescriptor.linkNames(this.dir, "lib", "so*"));
+  }
+
+  public final void testMissingDirectoryOrExtension() throws Exception {
+    Assert.assertEquals("", NarDescriptor.linkNames(this.dir.resolve("none"), "lib", "so"));
+    touch("libfoo.so");
+    Assert.assertEquals("", NarDescriptor.linkNames(this.dir, "lib", null));
+    Assert.assertEquals("libfoo", NarDescriptor.linkNames(this.dir, null, "so"));
+  }
+
+  public final void testWriteIsReproducible() throws Exception {
+    final Properties a = new Properties();
+    a.setProperty("output", "foo");
+    a.setProperty("libs.names", "foo bar");
+    a.setProperty("nar.descriptor.version", "2");
+    final Properties b = new Properties();
+    b.setProperty("nar.descriptor.version", "2");
+    b.setProperty("libs.names", "foo bar");
+    b.setProperty("output", "foo");
+    final Path fa = this.dir.resolve("a/d.properties");
+    final Path fb = this.dir.resolve("b/d.properties");
+    NarDescriptor.write(fa, a);
+    NarDescriptor.write(fb, b);
+    Assert.assertArrayEquals(Files.readAllBytes(fa), Files.readAllBytes(fb));
+    Assert.assertEquals("libs.names=foo bar\nnar.descriptor.version=2\noutput=foo\n", Files.readString(fa));
+    final Properties read = new Properties();
+    try (var in = Files.newInputStream(fa)) {
+      read.load(in);
+    }
+    Assert.assertEquals(a, read);
+  }
+
+  private static final AOL LINUX = new AOL("amd64-Linux-gpp");
+
+  private static final AOL LINUX_GCC = new AOL("amd64-Linux-gcc");
+
+  private static final AOL WINDOWS = new AOL("amd64-Windows-msvc");
+
+  private static NarInfo narInfo(final AOL aol, final String output) throws Exception {
+    final NarInfo narInfo = new NarInfo("com.example", "lib", "1.0", new SystemStreamLog());
+    narInfo.setOutput(aol, output);
+    return narInfo;
+  }
+
+  private Properties describe(final NarInfo narInfo, final AOL aol, final String type, final String prefix,
+      final String extension) throws Exception {
+    return NarDescriptor.describe(narInfo, aol, type, this.dir, prefix, extension, new SystemStreamLog());
+  }
+
+  public final void testOutputPresentKeepsLinkingOutput() throws Exception {
+    // a bundled library next to the project's own mustn't be linked too
+    touch("liblib-1.0.so", "libbundled.so.3");
+    final Properties d = describe(narInfo(LINUX, "lib-1.0"), LINUX, Library.SHARED, "lib", "so*");
+    Assert.assertEquals("2", d.getProperty(NarInfo.DESCRIPTOR_VERSION_KEY));
+    Assert.assertEquals("lib-1.0", d.getProperty("output"));
+    Assert.assertNull(d.getProperty("libs.names"));
+    Assert.assertEquals("", d.getProperty("syslibs.names"));
+    Assert.assertEquals("", d.getProperty("linker.options"));
+  }
+
+  public final void testRenamedLibraryIsFound() throws Exception {
+    touch("leptonica-1.87.0.lib", "leptonica-1.87.0.dll");
+    final Properties d = describe(narInfo(WINDOWS, "leptonica-1.87.0-p1"), WINDOWS, Library.SHARED, "", "lib");
+    Assert.assertEquals("leptonica-1.87.0", d.getProperty("libs.names"));
+  }
+
+  public final void testConfiguredLibsNamesWins() throws Exception {
+    touch("librenamed.so");
+    final NarInfo narInfo = narInfo(LINUX, "lib-1.0");
+    narInfo.setLibs(LINUX, "b a");
+    Assert.assertEquals("b a", describe(narInfo, LINUX, Library.SHARED, "lib", "so*").getProperty("libs.names"));
+    final NarInfo generic = narInfo(LINUX, "lib-1.0");
+    generic.getInfo().setProperty("libs.names", "c");
+    Assert.assertEquals("c", describe(generic, LINUX, Library.STATIC, "lib", "a").getProperty("libs.names"));
+  }
+
+  public final void testMissingPrefixDefaultsToLib() throws Exception {
+    // aol.properties has no lib.prefix for the gcc linkers
+    touch("liblib-1.0.so");
+    Assert.assertNull(describe(narInfo(LINUX_GCC, "lib-1.0"), LINUX_GCC, Library.SHARED, null, "so*")
+        .getProperty("libs.names"));
+    touch("librenamed.so");
+    Files.delete(this.dir.resolve("liblib-1.0.so"));
+    Assert.assertEquals("renamed", describe(narInfo(LINUX_GCC, "lib-1.0"), LINUX_GCC, Library.SHARED, null, "so*")
+        .getProperty("libs.names"));
+  }
+
+  public final void testOnlyLibrariesGetLibsNames() throws Exception {
+    touch("librenamed.so");
+    for (final String type : new String[] { Library.JNI, Library.EXECUTABLE, Library.PLUGIN }) {
+      Assert.assertNull(type, describe(narInfo(LINUX, "lib-1.0"), LINUX, type, "lib", "so*").getProperty("libs.names"));
+    }
+  }
+
+  public final void testSysLibsAndOptions() throws Exception {
+    final NarInfo narInfo = narInfo(LINUX, "lib-1.0");
+    narInfo.setSysLibs(LINUX, "pthread:shared");
+    narInfo.getInfo().setProperty("linker.options", "-Wl,--as-needed");
+    final Properties d = describe(narInfo, LINUX, Library.SHARED, "lib", "so*");
+    Assert.assertEquals("pthread:shared", d.getProperty("syslibs.names"));
+    Assert.assertEquals("-Wl,--as-needed", d.getProperty("linker.options"));
+  }
+}
