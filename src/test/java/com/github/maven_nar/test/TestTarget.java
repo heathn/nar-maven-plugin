@@ -235,4 +235,25 @@ public class TestTarget extends TestCase {
         "lib-1.0", "lib", null);
     Assert.assertEquals(List.of("other:bundle:nar:${aol}-static"), narInfo.getAttachedNars(LINUX, Library.STATIC));
   }
+
+  public final void testInvalidTypeOrDuplicateRejected() throws Exception {
+    for (final List<Target> targets : List.of(List.of(target("amd64-Linux-gpp", "shard")),
+        List.of(target("amd64-Linux-gpp", "none")),
+        List.of(target("amd64-Linux-gpp", "shared"), target("amd64-Linux-g++", "static")))) {
+      try {
+        declare(targets, narInfo());
+        fail("accepted " + targets.size() + " targets");
+      } catch (final MojoExecutionException expected) {
+        // expected
+      }
+    }
+  }
+
+  public final void testPresetMissingFromLoadedProperties() throws Exception {
+    // the preset came from a resource whose copy another one replaced
+    final NarInfo narInfo = narInfo();
+    Target.declare(targets(), narInfo, Set.of("nar.static"), Set.of(), COORDINATE, "lib-1.0", "lib", null);
+    Assert.assertEquals(List.of(COORDINATE + ":amd64-Windows-msvc-static"),
+        narInfo.getAttachedNars(WINDOWS, Library.STATIC));
+  }
 }

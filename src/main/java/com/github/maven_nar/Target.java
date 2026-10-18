@@ -54,6 +54,12 @@ import org.apache.maven.plugin.logging.Log;
  */
 public class Target {
 
+  /**
+   * The library types a target can ship.
+   */
+  public static final List<String> TYPES = List.of(Library.SHARED, Library.STATIC, Library.JNI, Library.EXECUTABLE,
+      Library.PLUGIN);
+
   private String aol;
 
   private List<String> types = new ArrayList<>();
@@ -81,7 +87,7 @@ public class Target {
    * nar.&lt;type&gt; if the project sets one) and empty for every
    * other type (so the generic nar.&lt;type&gt; doesn't claim it for this
    * AOL), &lt;aol&gt;.libs.binding (the project's generic libs.binding if the
-   * target ships that type, otherwise shared or static), &lt;aol&gt;.output and,
+   * target ships that type, otherwise shared, static or its first type), &lt;aol&gt;.output and,
    * when configured,
    * &lt;aol&gt;.libs.names.  Each replaces what was generated for the AOL
    * built here, but not a key set in the project's own nar.properties.  An
@@ -98,13 +104,13 @@ public class Target {
    * @param libraryOutput the output name of a library
    * @param executableOutput the output name of an executable
    * @param libsName the configured libs.names, or null
-   * @throws MojoExecutionException if a target lacks its AOL or types
+   * @throws MojoExecutionException if a target lacks its AOL or types, has
+   *           an unknown type, or is declared twice
    */
   public static void declare(final Collection<Target> targets, final NarInfo narInfo, final Set<String> presetKeys,
       final Set<String> builtTypes, final String coordinate, final String libraryOutput,
       final String executableOutput, final String libsName) throws MojoExecutionException {
-    final Set<String> allTypes = new LinkedHashSet<>(List.of(Library.SHARED, Library.STATIC, Library.JNI,
-        Library.EXECUTABLE, Library.PLUGIN));
+    final Set<String> allTypes = new LinkedHashSet<>(TYPES);
     allTypes.addAll(builtTypes);
     final Set<String> declaredTypes = new LinkedHashSet<>();
     final Map<String, Target> byAol = new LinkedHashMap<>();
@@ -113,9 +119,18 @@ public class Target {
           || target.getTypes().isEmpty()) {
         throw new MojoExecutionException("Each target needs an aol and at least one type");
       }
+      for (final String type : target.getTypes()) {
+        if (!TYPES.contains(type)) {
+          throw new MojoExecutionException("Target " + target.getAol() + " has type " + type + ", not one of " + TYPES);
+        }
+      }
+      final String aol = new AOL(target.getAol().trim()).toString();
+      if (byAol.containsKey(aol)) {
+        throw new MojoExecutionException("Target " + aol + " is declared more than once");
+      }
       allTypes.addAll(target.getTypes());
       declaredTypes.addAll(target.getTypes());
-      byAol.put(new AOL(target.getAol().trim()).toString(), target);
+      byAol.put(aol, target);
     }
 
     // AOLs that the project's nar.properties maps to a declared target
@@ -135,7 +150,7 @@ public class Target {
     // targets that ship that type
     final String presetBinding = presetKeys.contains("libs.binding") ? narInfo.getBinding(null, null) : null;
 
-    final List<String> suffixes = new java.util.ArrayList<>();
+    final List<String> suffixes = new ArrayList<>();
     allTypes.forEach(type -> suffixes.add(NarConstants.NAR + "." + type));
     suffixes.addAll(List.of("libs.binding", "output", "libs.names"));
     byAol.forEach((aol, target) -> {
@@ -146,7 +161,10 @@ public class Target {
         if (!target.getTypes().contains(type)) {
           value = "";
         } else if (presetKeys.contains(generic)) {
-          value = narInfo.getInfo().getProperty(generic);
+          // as the project's nar.properties has it; if that file was
+          // replaced by another resource's, as if it weren't set
+          final String preset = narInfo.getInfo().getProperty(generic);
+          value = preset != null ? preset : coordinate + ":" + aol + "-" + type;
         } else {
           value = coordinate + ":" + aol + "-" + type;
         }

@@ -184,17 +184,24 @@ public class NarLayout21 extends AbstractNarLayout {
   @Override
   public final void prepareNarInfo(final Path baseDir, final MavenProject project, final NarInfo narInfo,
       final AbstractCompileMojo mojo) throws MojoExecutionException, MojoFailureException {
-    // the keys the project's own nar.properties sets, which declared targets
-    // don't replace; read from the sources, since target/classes may hold
-    // what a previous build generated
+    // With targets declared, the keys the project's own nar.properties sets,
+    // which they don't replace: read from the source file the last resource
+    // supplying it copies, since target/classes may hold what a previous
+    // build generated
     final Set<String> presetKeys = new HashSet<>();
-    for (final Resource resource : project.getBuild().getResources()) {
-      final String source = resourceSource(resource, narInfo.getNarInfoFileName());
-      final Path file = source == null ? null
-          : project.getBasedir().toPath().resolve(resource.getDirectory()).resolve(source);
-      if (file != null && Files.isRegularFile(file)) {
+    if (mojo != null && !mojo.getTargets().isEmpty()) {
+      Path source = null;
+      for (final Resource resource : project.getBuild().getResources()) {
+        final String path = resourceSource(resource, narInfo.getNarInfoFileName());
+        final Path file = path == null ? null
+            : project.getBasedir().toPath().resolve(resource.getDirectory()).resolve(path);
+        if (file != null && Files.isRegularFile(file)) {
+          source = file;
+        }
+      }
+      if (source != null) {
         presetKeys.addAll(new NarInfo(project.getGroupId(), project.getArtifactId(), project.getVersion(), getLog(),
-            file).getInfo().stringPropertyNames());
+            source).getInfo().stringPropertyNames());
       }
     }
     if (Files.exists(getNoArchDirectory(baseDir, project.getArtifactId(), project.getVersion()))) {
