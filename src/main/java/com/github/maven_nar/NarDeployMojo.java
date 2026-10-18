@@ -23,10 +23,14 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import org.apache.maven.artifact.Artifact;
 import org.apache.maven.artifact.repository.ArtifactRepository;
 import org.apache.maven.execution.MavenSession;
+import org.apache.maven.plugin.MojoExecution;
+import org.apache.maven.plugin.PluginParameterExpressionEvaluator;
+import org.codehaus.plexus.component.configurator.expression.ExpressionEvaluationException;
 import org.apache.maven.model.Plugin;
 import org.apache.maven.model.PluginExecution;
 import org.apache.maven.plugin.AbstractMojo;
@@ -94,6 +98,9 @@ public class NarDeployMojo extends AbstractMojo {
   @Parameter(defaultValue = "${session}", readonly = true, required = true)
   private MavenSession session;
 
+  @Parameter(defaultValue = "${mojoExecution}", readonly = true, required = true)
+  private MojoExecution mojoExecution;
+
   @Component
   private RepositorySystem repoSystem;
 
@@ -112,6 +119,16 @@ public class NarDeployMojo extends AbstractMojo {
     final String userSkip = this.session.getUserProperties().getProperty("maven.deploy.skip",
         this.session.getSystemProperties().getProperty("maven.deploy.skip"));
     final List<String> explicitSkips = deployExecutionSkips(userSkip);
+    // maven-deploy-plugin before 3.0 takes skip as a boolean, so it would
+    // deploy despite a conditional value
+    final Plugin deployPlugin = deployPlugin();
+    final String version = deployPlugin == null ? null : deployPlugin.getVersion();
+    final boolean conditional = Stream.concat(explicitSkips.stream(), Stream.of(this.skip))
+        .anyMatch(value -> "releases".equals(value) || "snapshots".equals(value));
+    if (conditional && version != null && version.matches("[0-2]\\..*")) {
+      throw new MojoExecutionException("maven.deploy.skip=releases or snapshots needs maven-deploy-plugin 3.0 or "
+          + "later, not " + version);
+    }
     final List<String> blocking = explicitSkips.stream()
         .filter(value -> value != null && !skips(value, snapshot)).collect(Collectors.toList());
     if (!blocking.isEmpty()) {
@@ -237,17 +254,17 @@ public class NarDeployMojo extends AbstractMojo {
    * it's set explicitly: in the execution's configuration, the plugin's, or
    * on the command line; null where it isn't.
    */
-  private List<String> deployExecutionSkips(final String userSkip) {
+  private List<String> deployExecutionSkips(final String userSkip) throws MojoExecutionException {
     final List<String> skips = new java.util.ArrayList<>();
     final Plugin plugin = deployPlugin();
     if (plugin == null) {
       skips.add(userSkip);
       return skips;
     }
-    final String pluginSkip = valueOf(plugin.getConfiguration(), "skip");
+    final String pluginSkip = evaluate(valueOf(plugin.getConfiguration(), "skip"));
     for (final PluginExecution execution : plugin.getExecutions()) {
       if (execution.getGoals().contains("deploy")) {
-        final String executionSkip = valueOf(execution.getConfiguration(), "skip");
+        final String executionSkip = evaluate(valueOf(execution.getConfiguration(), "skip"));
         skips.add(executionSkip != null ? executionSkip : pluginSkip != null ? pluginSkip : userSkip);
       }
     }
@@ -262,21 +279,38 @@ public class NarDeployMojo extends AbstractMojo {
    * default-deploy execution, which wins over the property, as in that
    * plugin; otherwise the property's value.
    */
-  private String deployConfiguration(final String name, final String property) {
+  private String deployConfiguration(final String name, final String property) throws MojoExecutionException {
     final Plugin plugin = deployPlugin();
     if (plugin != null) {
       for (final PluginExecution execution : plugin.getExecutions()) {
-        final String value = valueOf(execution.getConfiguration(), name);
+        final String value = evaluate(valueOf(execution.getConfiguration(), name));
         if ("default-deploy".equals(execution.getId()) && value != null) {
           return value;
         }
       }
-      final String value = valueOf(plugin.getConfiguration(), name);
+      final String value = evaluate(valueOf(plugin.getConfiguration(), name));
       if (value != null) {
         return value;
       }
     }
     return property;
+  }
+
+  /**
+   * Evaluates the expressions Maven leaves in plugin configuration until the
+   * plugin runs, such as ${session.executionRootDirectory}.
+   */
+  private String evaluate(final String value) throws MojoExecutionException {
+    if (value == null || value.indexOf("${") < 0) {
+      return value;
+    }
+    try {
+      final Object evaluated = new PluginParameterExpressionEvaluator(this.session, this.mojoExecution)
+          .evaluate(value);
+      return evaluated == null ? null : evaluated.toString();
+    } catch (final ExpressionEvaluationException e) {
+      throw new MojoExecutionException("Can't evaluate maven-deploy-plugin's " + value, e);
+    }
   }
 
   private Plugin deployPlugin() {
