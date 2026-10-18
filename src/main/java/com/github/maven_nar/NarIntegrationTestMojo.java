@@ -778,10 +778,12 @@ public class NarIntegrationTestMojo extends AbstractSurefireMojo
           token.append(c);
         }
       }
-      if (token.toString().startsWith(JAVA_LIBRARY_PATH)) {
+      // without "=" the JVM sets it empty
+      if (token.toString().startsWith(JAVA_LIBRARY_PATH)
+          || token.toString().equals(JAVA_LIBRARY_PATH.substring(0, JAVA_LIBRARY_PATH.length() - 1))) {
         start = tokenStart;
         end = i;
-        value = token.substring(JAVA_LIBRARY_PATH.length());
+        value = token.length() < JAVA_LIBRARY_PATH.length() ? "" : token.substring(JAVA_LIBRARY_PATH.length());
       }
     }
     if (value == null) {
