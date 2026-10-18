@@ -206,8 +206,10 @@ public abstract class AbstractDependencyMojo extends AbstractNarMojo {
     // Set the repos the collectReq will hit
     collectReq.setRepositories(projectRepos);
 
-    // Get test scope dependencies if we are in the testCompile phase
-    if (this instanceof NarTestCompileMojo)
+    // Get test scope dependencies if we are in the testCompile phase.  The
+    // mediated tree already keeps the direct test dependencies, along with
+    // Maven's exclusions, which this selector would drop.
+    if (verbose && this instanceof NarTestCompileMojo)
     {
       DependencySelector dependencySelector = new AndDependencySelector(new OptionalDependencySelector(), new ScopeDependencySelector(dep.getScope()));
       session.setDependencySelector(dependencySelector);
