@@ -20,6 +20,7 @@
 package com.github.maven_nar;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
@@ -41,11 +42,23 @@ public class NarInfo {
 
   public static final String NAR_PROPERTIES = "nar.properties";
 
+  /**
+   * The key under which a descriptor records its format version.
+   */
+  public static final String DESCRIPTOR_VERSION_KEY = "nar.descriptor.version";
+
+  /**
+   * The descriptor format this plugin reads.
+   */
+  public static final int DESCRIPTOR_VERSION = 2;
+
   private final String groupId, artifactId, version;
 
   private final Properties info;
 
   private final Log log;
+
+  private boolean descriptor;
 
   public NarInfo(final String groupId, final String artifactId, final String version, final Log log)
       throws MojoExecutionException {
@@ -67,7 +80,9 @@ public class NarInfo {
           propertiesFile = propertiesFile.resolve(getNarInfoFileName());
         }
         if (Files.exists(propertiesFile)) {
-          this.info.load(Files.newInputStream(propertiesFile));
+          try (InputStream in = Files.newInputStream(propertiesFile)) {
+            this.info.load(in);
+          }
         }
       } catch (final IOException e) {
         throw new MojoExecutionException("Problem loading " + propertiesFile, e);
@@ -246,6 +261,71 @@ public class NarInfo {
 
   public void mergeProperties(final Properties properties){
     this.getInfo().putAll(properties);
+  }
+
+  /**
+   * The file name of the descriptor of an AOL-specific NAR, which sits next
+   * to the nar.properties in it.
+   *
+   * @param aol the NAR's AOL
+   * @param type the NAR's library type
+   * @return the descriptor's file name
+   */
+  public static String getDescriptorFileName(final String aol, final String type) {
+    return aol + "-" + type + ".properties";
+  }
+
+  /**
+   * Lays the descriptor of an AOL-specific NAR over these properties, so
+   * that the facts recorded by the build that produced the NAR win.
+   * Unlike the copy of nar.properties in the NAR, a descriptor describes
+   * only that NAR, so its keys have no AOL prefix (libs.names, not
+   * amd64-Linux-gpp.libs.names), and it carries
+   * {@link #DESCRIPTOR_VERSION_KEY}.  Each key is stored under the AOL the
+   * consumer looks it up with, which takes precedence over any other value.
+   *
+   * @param descriptor the descriptor file, which need not exist
+   * @param aol the AOL the consumer looks the properties up with
+   * @return whether a descriptor was read
+   * @throws MojoExecutionException if it can't be read
+   */
+  public final boolean overlayDescriptor(final Path descriptor, final AOL aol) throws MojoExecutionException {
+    if (descriptor == null || !Files.isRegularFile(descriptor)) {
+      return false;
+    }
+    final Properties properties = new Properties();
+    try (InputStream in = Files.newInputStream(descriptor)) {
+      properties.load(in);
+    } catch (final IOException e) {
+      throw new MojoExecutionException("Problem loading " + descriptor, e);
+    }
+    final String version = properties.getProperty(DESCRIPTOR_VERSION_KEY);
+    if (version == null) {
+      this.log.warn("Ignoring " + descriptor + ", which has no " + DESCRIPTOR_VERSION_KEY);
+      return false;
+    }
+    try {
+      if (Integer.parseInt(version.trim()) > DESCRIPTOR_VERSION) {
+        this.log.warn(descriptor + " is a newer descriptor (" + version + ") than this plugin reads ("
+            + DESCRIPTOR_VERSION + "); applying it anyway");
+      }
+    } catch (final NumberFormatException e) {
+      this.log.warn("Ignoring " + descriptor + ", whose " + DESCRIPTOR_VERSION_KEY + " isn't a number: " + version);
+      return false;
+    }
+    properties.remove(DESCRIPTOR_VERSION_KEY);
+    for (final String key : properties.stringPropertyNames()) {
+      setProperty(aol, key, properties.getProperty(key));
+    }
+    this.descriptor = true;
+    return true;
+  }
+
+  /**
+   * @return whether a descriptor has been laid over these properties
+   */
+  public final boolean hasDescriptor() {
+    return this.descriptor;
   }
 
 

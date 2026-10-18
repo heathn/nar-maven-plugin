@@ -765,6 +765,36 @@ public abstract class AbstractDependencyMojo extends AbstractNarMojo {
     }
   }
 
+  /**
+   * The NarInfo of a dependency for one of its AOL-specific NARs, unpacked
+   * in the given directory.  The dependency's main nar.properties is laid
+   * over the copy of it in the NAR, and then the NAR's own descriptor, if it
+   * has one, over both, under this project's AOL.
+   *
+   * @param dependency the dependency
+   * @param aol the AOL of the NAR
+   * @param binding the library type of the NAR
+   * @param unpackDirectory where the NAR is unpacked
+   * @return the NarInfo to use for that NAR
+   * @throws MojoExecutionException if a file can't be read
+   * @throws MojoFailureException if the layout can't be created
+   */
+  protected final NarInfo getAolNarInfo(final NarArtifact dependency, final AOL aol, final String binding,
+      final Path unpackDirectory) throws MojoExecutionException, MojoFailureException {
+    final Path narInfoFile = getLayout().getNarInfoDirectory(unpackDirectory, dependency.getGroupId(),
+        dependency.getArtifactId(), dependency.getBaseVersion(), aol.toString(), binding);
+    final NarInfo narInfo = new NarInfo(dependency.getGroupId(), dependency.getArtifactId(),
+        dependency.getBaseVersion(), getLog(), narInfoFile);
+    narInfo.mergeProperties(dependency.getNarInfo().getInfo());
+    if (narInfoFile != null) {
+      final Path descriptor = narInfoFile.resolveSibling(NarInfo.getDescriptorFileName(aol.toString(), binding));
+      if (narInfo.overlayDescriptor(descriptor, getAOL())) {
+        getLog().debug("Using the descriptor " + descriptor);
+      }
+    }
+    return narInfo;
+  }
+
   protected final NarManager getNarManager() throws MojoFailureException, MojoExecutionException {
     return new NarManager(getLog(), repoSystem, repoSession, projectRepos, getMavenProject(), getArchitecture(), getOS(), getLinker());
   }

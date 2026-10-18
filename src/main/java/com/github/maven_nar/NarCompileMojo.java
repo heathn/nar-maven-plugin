@@ -395,42 +395,15 @@ public class NarCompileMojo extends AbstractCompileMojo {
                   binding);
 
           getLog().debug("Looking for Library Directory: " + dir);
+          NarInfo narInfo = dependency.getNarInfo();
           if (Files.exists(dir)) {
-            // Load nar properties file from aol specific directory
-            final Path aolNarInfoFile = getLayout()
-                    .getNarInfoDirectory(unpackDirectory, dependency.getGroupId(), dependency.getArtifactId(),
-                            dependency.getBaseVersion(), aol.toString(), binding);
-
-            // Read nar properties file as narInfo
-            NarInfo aolNarInfo = new NarInfo(dependency.getGroupId(), dependency.getArtifactId(),
-                    dependency.getBaseVersion(), getLog(), aolNarInfoFile);
-
-            // Write to log about custom nar properties found in aol directory.
-            if(!aolNarInfo.getInfo().isEmpty()) {
-              getLog().debug(String.format ("Custom NAR properties identified: %s-%s-%s-%s-%s",
-                      dependency.getGroupId(),
-                      dependency.getArtifactId(),
-                      dependency.getBaseVersion(),
-                      aol.toString(),
-                      binding));
-            }
-            else {
-              getLog().debug(String.format ("Custom NAR properties not identified: %s-%s-%s-%s-%s",
-                      dependency.getGroupId(),
-                      dependency.getArtifactId(),
-                      dependency.getBaseVersion(),
-                      aol.toString(),
-                      binding));
-            }
-
-            // overlay aol nar properties file on top of the default one.
-            aolNarInfo.mergeProperties(dependency.getNarInfo().getInfo());
+            narInfo = getAolNarInfo(dependency, aol, binding, unpackDirectory);
 
             final LibrarySet libSet = new LibrarySet();
             libSet.setProject(antProject);
 
             // FIXME, no way to override
-            final String libs = aolNarInfo.getLibs(getAOL());
+            final String libs = narInfo.getLibs(getAOL());
             if (libs != null && !libs.equals("")) {
               getLog().debug("Using LIBS = " + libs);
               libSet.setLibs(new CUtil.StringArrayBuilder(libs));
@@ -438,15 +411,15 @@ public class NarCompileMojo extends AbstractCompileMojo {
               task.addLibset(libSet);
             }
 
-            dependencySysLibs.addAll(getDependecySysLib(aolNarInfo));
-            
+            dependencySysLibs.addAll(getDependecySysLib(narInfo));
+
           } else {
             getLog().debug("Library Directory " + dir + " does NOT exist.");
           }
 
           // FIXME, look again at this, for multiple dependencies we may need to
-          // remove duplicates
-          final String options = dependency.getNarInfo().getOptions(getAOL());
+          // remove duplicates.  Only a descriptor overrides the main nar.properties.
+          final String options = (narInfo.hasDescriptor() ? narInfo : dependency.getNarInfo()).getOptions(getAOL());
           if (options != null && !options.equals("")) {
             getLog().debug("Using OPTIONS = " + options);
             final LinkerArgument arg = new LinkerArgument();
