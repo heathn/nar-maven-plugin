@@ -27,6 +27,8 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Set;
+import java.util.LinkedHashSet;
 import java.util.stream.Collectors;
 
 import org.apache.maven.plugin.MojoExecutionException;
@@ -41,7 +43,6 @@ import org.apache.maven.plugins.annotations.Parameter;
 import org.apache.maven.plugins.annotations.ResolutionScope;
 import org.apache.maven.project.MavenProject;
 import org.apache.maven.surefire.extensions.ForkNodeFactory;
-import org.apache.maven.surefire.shared.lang3.function.Failable;
 
 import org.eclipse.aether.RepositorySystem;
 import org.eclipse.aether.RepositorySystemSession;
@@ -678,25 +679,17 @@ public class NarIntegrationTestMojo extends AbstractSurefireMojo
       setArgLine("");
     }
 
-    List<Path> libraryPaths = new ArrayList<>();
-    List<Path> jniLibraryPaths = new ArrayList<>();
+    // The project's own libraries, which a JNI library or a generated
+    // NarSystem class loads, and its dependencies' shared and JNI libraries.
+    // Dependencies of either scope may have been unpacked by nar-test-unpack
+    // or nar-unpack, so look in both places, test-nar first like nar-test.
+    final Set<Path> libraryPaths = new LinkedHashSet<>();
+    for (final String binding : List.of(Library.JNI, Library.SHARED)) {
+      libraryPaths.add(getLayout().getLibDirectory(
+          getTargetDirectory(), getProject().getArtifactId(),
+          getProject().getVersion(), getAOL().toString(), binding));
+    }
     if (testJNIModule()) {
-      // Add libraries to java.library.path for testing
-      Path jniLibraryPathEntry = getLayout().getLibDirectory(
-          getTargetDirectory(), getProject().getArtifactId(),
-          getProject().getVersion(), getAOL().toString(), Library.JNI);
-      if (Files.exists(jniLibraryPathEntry)) {
-        jniLibraryPaths.add(jniLibraryPathEntry);
-        libraryPaths.add(jniLibraryPathEntry);
-      }
-
-      Path sharedLibraryPathEntry = getLayout().getLibDirectory(
-          getTargetDirectory(), getProject().getArtifactId(),
-          getProject().getVersion(), getAOL().toString(), Library.SHARED);
-      if (Files.exists(sharedLibraryPathEntry)) {
-        libraryPaths.add(sharedLibraryPathEntry);
-      }
-
       // add jar file to classpath, as one may want to read a
       // properties file for artifactId and version
       String narFile = "target/" + getProject().getArtifactId() + "-" + getProject().getVersion() + ".jar";
@@ -708,89 +701,33 @@ public class NarIntegrationTestMojo extends AbstractSurefireMojo
     // NarInfo info = dependency.getNarInfo();
     // String binding = info.getBinding(getAOL(), Library.STATIC);
     // NOTE: fixed to shared, jni
-    List<Path> deps = getNarManager().getNarDependencies("compile").stream()
-        .flatMap(artifact ->
-          List.of(Library.SHARED, Library.JNI).stream()
-            .map(Failable.asFunction(binding -> getLayout().getLibDirectory(
-              getUnpackDirectory(),
-              artifact.getArtifactId(),
-              artifact.getVersion(),
-              getAOL().toString(),
-              binding))))
-        .filter(Files::exists)
-        .collect(Collectors.toList());
-    libraryPaths.addAll(deps);
-
-    deps = getNarManager().getNarDependencies("compile").stream()
-      .flatMap(artifact ->
-        List.of(Library.JNI).stream()
-          .map(Failable.asFunction(binding -> getLayout().getLibDirectory(
-            getUnpackDirectory(),
-            artifact.getArtifactId(),
-            artifact.getVersion(),
-            getAOL().toString(),
-            binding))))
-      .filter(Files::exists)
-      .collect(Collectors.toList());
-      jniLibraryPaths.addAll(deps);
-
-    deps = getNarManager().getNarDependencies("test").stream()
-        .flatMap(artifact ->
-          List.of(Library.SHARED, Library.JNI).stream()
-            .map(Failable.asFunction(binding -> getLayout().getLibDirectory(
-              getTestUnpackDirectory(),
-              artifact.getArtifactId(),
-              artifact.getVersion(),
-              getAOL().toString(),
-              binding))))
-        .filter(Files::exists)
-        .collect(Collectors.toList());
-    libraryPaths.addAll(deps);
-
-    deps = getNarManager().getNarDependencies("test").stream()
-        .flatMap(artifact ->
-          List.of(Library.JNI).stream()
-            .map(Failable.asFunction(binding -> getLayout().getLibDirectory(
-              getTestUnpackDirectory(),
-              artifact.getArtifactId(),
-              artifact.getVersion(),
-              getAOL().toString(),
-              binding))))
-        .filter(Files::exists)
-        .collect(Collectors.toList());
-    jniLibraryPaths.addAll(deps);
+    final List<NarArtifact> dependencies = new ArrayList<>(getNarManager().getNarDependencies("compile"));
+    dependencies.addAll(getNarManager().getNarDependencies("test"));
+    for (final NarArtifact dependency : dependencies) {
+      for (final Path unpackDirectory : List.of(getTestUnpackDirectory(), getUnpackDirectory())) {
+        for (final String binding : List.of(Library.SHARED, Library.JNI)) {
+          libraryPaths.add(getLayout().getLibDirectory(unpackDirectory, dependency.getArtifactId(),
+              dependency.getBaseVersion(), getAOL().toString(), binding));
+        }
+      }
+    }
+    libraryPaths.removeIf(path -> !Files.isDirectory(path));
 
     // add final javalibrary path
-    if (libraryPaths.size() > 0) {
-      // NOTE java.library.path only works for the jni lib itself, and
-      // not for its dependent shareables.
-      // NOTE: java.library.path does not work with arguments with
-      // spaces as
-      // SureFireBooter splits the line in parts and then quotes
-      // it wrongly
-      String javaLibraryPath = libraryPaths.stream()
+    if (!libraryPaths.isEmpty()) {
+      final String javaLibraryPath = libraryPaths.stream()
           .map(Path::toAbsolutePath)
           .map(Path::toString)
           .peek(dir -> getLog().debug("Adding to java.library.path: " + dir))
           .collect(Collectors.joining(File.pathSeparator));
 
+      // The JVM builds java.library.path from the library search path in
+      // the environment (PATH, LD_LIBRARY_PATH, DYLD_LIBRARY_PATH or LIBPATH),
+      // so System.loadLibrary finds these too, along with the system's and
+      // the user's own directories.  Setting -Djava.library.path instead
+      // would drop those, and with spaces in a path SureFireBooter splits
+      // the argument.
       NarUtil.addLibraryPathToEnv(javaLibraryPath, getEnvironmentVariables(), getOS());
-    }
-
-    if (jniLibraryPaths.size() > 0) {
-      String javaLibraryPath = jniLibraryPaths.stream()
-          .map(Path::toAbsolutePath)
-          .map(Path::toString)
-          .collect(Collectors.joining(File.pathSeparator));
-
-      String argLine = getArgLine();
-      if (argLine == null) {
-        argLine = "";
-      } else {
-        argLine += " ";
-      }
-      argLine += "-Djava.library.path=" + javaLibraryPath;
-      setArgLine(argLine);
     }
 
     // necessary to find WinSxS
