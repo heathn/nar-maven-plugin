@@ -419,7 +419,7 @@ public class NarCompileMojo extends AbstractCompileMojo {
 
           // FIXME, look again at this, for multiple dependencies we may need to
           // remove duplicates.  Only a descriptor's options override the main nar.properties.
-          final String options = (narInfo.hasDescriptorKey("linker.options") ? narInfo : dependency.getNarInfo()).getOptions(getAOL());
+          final String options = narInfo.getLinkerOptions(getAOL(), dependency.getNarInfo());
           if (options != null && !options.equals("")) {
             getLog().debug("Using OPTIONS = " + options);
             final LinkerArgument arg = new LinkerArgument();

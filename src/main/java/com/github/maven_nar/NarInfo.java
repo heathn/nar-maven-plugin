@@ -26,6 +26,8 @@ import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Properties;
+import java.util.Set;
+import java.util.HashSet;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 import java.util.stream.Collectors;
@@ -58,7 +60,7 @@ public class NarInfo {
 
   private final Log log;
 
-  private final java.util.Set<String> descriptorKeys = new java.util.HashSet<>();
+  private final Set<String> descriptorKeys = new HashSet<>();
 
   public NarInfo(final String groupId, final String artifactId, final String version, final Log log)
       throws MojoExecutionException {
@@ -305,7 +307,13 @@ public class NarInfo {
       return false;
     }
     try {
-      if (Integer.parseInt(version.trim()) > DESCRIPTOR_VERSION) {
+      final int number = Integer.parseInt(version.trim());
+      if (number < DESCRIPTOR_VERSION) {
+        this.log.warn("Ignoring " + descriptor + ", whose " + DESCRIPTOR_VERSION_KEY + " " + version
+            + " isn't a descriptor version");
+        return false;
+      }
+      if (number > DESCRIPTOR_VERSION) {
         this.log.warn(descriptor + " is a newer descriptor (" + version + ") than this plugin reads ("
             + DESCRIPTOR_VERSION + "); applying it anyway");
       }
@@ -327,6 +335,19 @@ public class NarInfo {
    */
   public final boolean hasDescriptorKey(final String key) {
     return this.descriptorKeys.contains(key);
+  }
+
+  /**
+   * The linker options for an AOL: a descriptor's, when one laid over these
+   * properties sets them (empty meaning none), otherwise the main
+   * nar.properties'.
+   *
+   * @param aol the AOL to look them up with
+   * @param main the dependency's main nar.properties
+   * @return the options, or null
+   */
+  public final String getLinkerOptions(final AOL aol, final NarInfo main) {
+    return (hasDescriptorKey("linker.options") ? this : main).getOptions(aol);
   }
 
 

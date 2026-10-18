@@ -22,6 +22,7 @@ package com.github.maven_nar.test;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Comparator;
 
 import junit.framework.TestCase;
 
@@ -48,7 +49,7 @@ public class TestNarInfoDescriptor extends TestCase {
   @Override
   protected void tearDown() throws Exception {
     try (var paths = Files.walk(this.dir)) {
-      paths.sorted(java.util.Comparator.reverseOrder()).forEach(p -> p.toFile().delete());
+      paths.sorted(Comparator.reverseOrder()).forEach(p -> p.toFile().delete());
     }
   }
 
@@ -126,5 +127,27 @@ public class TestNarInfoDescriptor extends TestCase {
     Assert.assertTrue(narInfo.overlayDescriptor(descriptor(
         "nar.descriptor.version=3\nlibs.names=lib-1.0-p2\n"), LINUX));
     Assert.assertEquals("lib-1.0-p2", narInfo.getLibs(LINUX));
+  }
+
+  public final void testOldVersionIgnored() throws Exception {
+    final NarInfo narInfo = mainInfo();
+    Assert.assertFalse(narInfo.overlayDescriptor(descriptor("nar.descriptor.version=1\nlibs.names=other\n"), LINUX));
+    Assert.assertEquals("lib-1.0", narInfo.getLibs(LINUX));
+  }
+
+  public final void testLinkerOptions() throws Exception {
+    final NarInfo main = mainInfo();
+    main.getInfo().setProperty("linker.options", "-Wl,--as-needed");
+    // the copy of nar.properties in the NAR has stale options
+    final NarInfo withoutOptions = mainInfo();
+    withoutOptions.getInfo().setProperty("amd64-Linux-gpp.linker.options", "-lold");
+    Assert.assertTrue(withoutOptions.overlayDescriptor(descriptor("nar.descriptor.version=2\nlibs.names=x\n"), LINUX));
+    Assert.assertEquals("-Wl,--as-needed", withoutOptions.getLinkerOptions(LINUX, main));
+    final NarInfo withOptions = mainInfo();
+    Assert.assertTrue(withOptions.overlayDescriptor(descriptor("nar.descriptor.version=2\nlinker.options=-lnew\n"), LINUX));
+    Assert.assertEquals("-lnew", withOptions.getLinkerOptions(LINUX, main));
+    final NarInfo emptyOptions = mainInfo();
+    Assert.assertTrue(emptyOptions.overlayDescriptor(descriptor("nar.descriptor.version=2\nlinker.options=\n"), LINUX));
+    Assert.assertEquals("", emptyOptions.getLinkerOptions(LINUX, main));
   }
 }
