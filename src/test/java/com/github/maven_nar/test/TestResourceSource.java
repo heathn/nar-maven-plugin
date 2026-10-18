@@ -63,4 +63,13 @@ public class TestResourceSource extends TestCase {
     Assert.assertEquals("nar.properties", NarLayout21.resourceSource(
         resource("META-INF/nar/com.example/lib", List.of("*.properties"), List.of()), DESTINATION));
   }
+
+  public final void testAntStyleDoubleStar() {
+    Assert.assertEquals(DESTINATION,
+        NarLayout21.resourceSource(resource(null, List.of("**/META-INF/**"), List.of()), DESTINATION));
+    Assert.assertEquals(DESTINATION,
+        NarLayout21.resourceSource(resource(null, List.of("META-INF/**/nar/**"), List.of()), DESTINATION));
+    Assert.assertNull(NarLayout21.resourceSource(resource(null, List.of(), List.of("**/nar.properties")),
+        DESTINATION));
+  }
 }

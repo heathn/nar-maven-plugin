@@ -20,7 +20,6 @@
 package com.github.maven_nar;
 
 import java.io.IOException;
-import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -41,6 +40,7 @@ import org.apache.maven.project.MavenProject;
 import org.apache.maven.project.MavenProjectHelper;
 import org.apache.maven.surefire.shared.lang3.function.Failable;
 import org.codehaus.plexus.archiver.manager.ArchiverManager;
+import org.codehaus.plexus.util.SelectorUtils;
 import org.codehaus.plexus.util.FileUtils;
 
 /**
@@ -234,7 +234,10 @@ public class NarLayout21 extends AbstractNarLayout {
           narInfo.setOutput(aol, mojo.getOutput(!Library.EXECUTABLE.equals(type)));
         }
 
-        if (mojo.getLibsName() != null) {
+        // with targets declared, an <aol>.libs.names the project sets wins,
+        // as it does on the other AOLs' builds
+        if (mojo.getLibsName() != null
+            && (mojo.getTargets().isEmpty() || !presetKeys.contains(aol + ".libs.names"))) {
           narInfo.setLibs(aol, mojo.getLibsName());
         }
         
@@ -376,23 +379,20 @@ public class NarLayout21 extends AbstractNarLayout {
     } else {
       return null;
     }
-    final Path path = Path.of(source);
     final boolean included = resource.getIncludes().isEmpty()
-        || resource.getIncludes().stream().anyMatch(pattern -> matches(pattern, path));
-    final boolean excluded = resource.getExcludes().stream().anyMatch(pattern -> matches(pattern, path));
+        || resource.getIncludes().stream().anyMatch(pattern -> matches(pattern, source));
+    final boolean excluded = resource.getExcludes().stream().anyMatch(pattern -> matches(pattern, source));
     return included && !excluded ? source : null;
   }
 
-  // An Ant-style resource pattern, where a trailing / means everything below
-  private static boolean matches(final String pattern, final Path path) {
-    String glob = pattern.replace('\\', '/');
-    if (glob.endsWith("/")) {
-      glob += "**";
+  // An Ant-style resource pattern, as Maven matches them, where a trailing
+  // / means everything below
+  private static boolean matches(final String pattern, final String path) {
+    String normalized = pattern.replace('\\', '/');
+    if (normalized.endsWith("/")) {
+      normalized += "**";
     }
-    if (glob.startsWith("**/") && path.getNameCount() == 1) {
-      glob = glob.substring(3);
-    }
-    return FileSystems.getDefault().getPathMatcher("glob:" + glob).matches(path);
+    return SelectorUtils.matchPath(normalized, path, "/", true);
   }
 
   @Override

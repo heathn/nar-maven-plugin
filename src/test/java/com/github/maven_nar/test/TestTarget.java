@@ -222,4 +222,17 @@ public class TestTarget extends TestCase {
     // the alias's own preset wins
     Assert.assertEquals("jni", narInfo.getBinding(alias, null));
   }
+
+  public final void testRedeclaringRefreshesGeneratedEntries() throws Exception {
+    // target/classes holds what the previous build generated
+    final NarInfo narInfo = narInfo();
+    narInfo.getInfo().setProperty("nar.static", "other:bundle:nar:${aol}-static");
+    final Set<String> preset = Set.of("nar.static");
+    Target.declare(List.of(target("amd64-Linux-gpp", "shared")), narInfo, preset, Set.of(), COORDINATE, "lib-1.0",
+        "lib", null);
+    Assert.assertEquals("", narInfo.getProperty(LINUX, "nar.static"));
+    Target.declare(List.of(target("amd64-Linux-gpp", "shared", "static")), narInfo, preset, Set.of(), COORDINATE,
+        "lib-1.0", "lib", null);
+    Assert.assertEquals(List.of("other:bundle:nar:${aol}-static"), narInfo.getAttachedNars(LINUX, Library.STATIC));
+  }
 }
