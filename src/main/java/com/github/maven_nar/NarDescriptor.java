@@ -19,8 +19,8 @@
  */
 package com.github.maven_nar;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.io.StringWriter;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -83,10 +83,10 @@ public final class NarDescriptor {
    * <ul>
    * <li>output: as the main nar.properties has it for the AOL.</li>
    * <li>libs.names, for shared and static libraries: when configured, as
-   * configured; otherwise only when the output library isn't among the
-   * library files packaged (a library renamed by a third-party build, for
-   * example), the names of those files.  So consumers link what they link
-   * now whenever that works.</li>
+   * configured; otherwise the output when its library is among the library
+   * files packaged, so consumers link what they link now whatever the main
+   * nar.properties says; otherwise (a library renamed by a third-party
+   * build, for example) the names of those files.</li>
    * <li>syslibs.names and linker.options: as the main nar.properties has
    * them for the AOL, empty if it has none, so that a value another AOL's
    * build put in the main nar.properties doesn't apply.</li>
@@ -115,10 +115,14 @@ public final class NarDescriptor {
       if (configured != null) {
         descriptor.setProperty("libs.names", configured);
       } else {
-        final String libPrefix = prefix != null ? prefix : OS.WINDOWS.equals(aol.getOS()) ? "" : "lib";
+        // GNU archives are lib<name>.a on Windows too
+        final String libPrefix = prefix != null ? prefix
+            : OS.WINDOWS.equals(aol.getOS()) && !"a".equals(extension) ? "" : "lib";
         final String found = linkNames(libDir, libPrefix, extension);
         final List<String> names = found.isEmpty() ? List.of() : Arrays.asList(found.split(" "));
-        if (!names.isEmpty() && (output == null || !names.contains(output))) {
+        if (output != null && names.contains(output)) {
+          descriptor.setProperty("libs.names", output);
+        } else if (!names.isEmpty()) {
           descriptor.setProperty("libs.names", found);
           if (names.size() > 1) {
             log.warn("The " + aol + " " + type + " libraries don't include " + output + ", so consumers will link "
@@ -143,10 +147,11 @@ public final class NarDescriptor {
    * @throws IOException if the file can't be written
    */
   public static void write(final Path file, final Properties properties) throws IOException {
-    final StringWriter text = new StringWriter();
-    properties.store(text, null);
+    // store to a stream, which escapes characters outside ISO 8859-1
+    final ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+    properties.store(bytes, null);
     // drop the timestamp comment that Properties.store writes first
-    final String body = text.toString().lines()
+    final String body = new String(bytes.toByteArray(), StandardCharsets.ISO_8859_1).lines()
         .filter(line -> !line.startsWith("#"))
         .sorted()
         .collect(Collectors.joining("\n", "", "\n"));

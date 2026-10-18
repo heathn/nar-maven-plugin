@@ -133,7 +133,8 @@ public class TestNarDescriptor extends TestCase {
     final Properties d = describe(narInfo(LINUX, "lib-1.0"), LINUX, Library.SHARED, "lib", "so*");
     Assert.assertEquals("2", d.getProperty(NarInfo.DESCRIPTOR_VERSION_KEY));
     Assert.assertEquals("lib-1.0", d.getProperty("output"));
-    Assert.assertNull(d.getProperty("libs.names"));
+    // the output, so that a libs.names in the main nar.properties doesn't apply
+    Assert.assertEquals("lib-1.0", d.getProperty("libs.names"));
     Assert.assertEquals("", d.getProperty("syslibs.names"));
     Assert.assertEquals("", d.getProperty("linker.options"));
   }
@@ -157,7 +158,7 @@ public class TestNarDescriptor extends TestCase {
   public final void testMissingPrefixDefaultsToLib() throws Exception {
     // aol.properties has no lib.prefix for the gcc linkers
     touch("liblib-1.0.so");
-    Assert.assertNull(describe(narInfo(LINUX_GCC, "lib-1.0"), LINUX_GCC, Library.SHARED, null, "so*")
+    Assert.assertEquals("lib-1.0", describe(narInfo(LINUX_GCC, "lib-1.0"), LINUX_GCC, Library.SHARED, null, "so*")
         .getProperty("libs.names"));
     touch("librenamed.so");
     Files.delete(this.dir.resolve("liblib-1.0.so"));
@@ -179,5 +180,38 @@ public class TestNarDescriptor extends TestCase {
     final Properties d = describe(narInfo, LINUX, Library.SHARED, "lib", "so*");
     Assert.assertEquals("pthread:shared", d.getProperty("syslibs.names"));
     Assert.assertEquals("-Wl,--as-needed", d.getProperty("linker.options"));
+  }
+
+  public final void testWindowsGccStatic() throws Exception {
+    // aol.properties has no lib.prefix for Windows gcc, which names static libraries libfoo.a
+    touch("librenamed.a");
+    final AOL windowsGcc = new AOL("amd64-Windows-gcc");
+    Assert.assertEquals("renamed", describe(narInfo(windowsGcc, "lib-1.0"), windowsGcc, Library.STATIC, null, "a")
+        .getProperty("libs.names"));
+  }
+
+  public final void testUnicodeRoundTrip() throws Exception {
+    final Properties p = new Properties();
+    p.setProperty("linker.options", "-L/opt/\u5e93");
+    p.setProperty("output", "caf\u00e9");
+    final Path file = this.dir.resolve("u/d.properties");
+    NarDescriptor.write(file, p);
+    final Properties read = new Properties();
+    try (var in = Files.newInputStream(file)) {
+      read.load(in);
+    }
+    Assert.assertEquals(p, read);
+  }
+
+  public final void testDescriptorOutputBeatsInheritedLibsNames() throws Exception {
+    // the main nar.properties, from another AOL's build, names other libraries
+    touch("liblib-1.0.so");
+    final Properties d = describe(narInfo(LINUX, "lib-1.0"), LINUX, Library.SHARED, "lib", "so*");
+    final NarInfo consumer = narInfo(LINUX, "lib-1.0");
+    consumer.getInfo().setProperty("libs.names", "other");
+    final Path file = this.dir.resolve("m/amd64-Linux-gpp-shared.properties");
+    NarDescriptor.write(file, d);
+    Assert.assertTrue(consumer.overlayDescriptor(file, LINUX));
+    Assert.assertEquals("lib-1.0", consumer.getLibs(LINUX));
   }
 }
