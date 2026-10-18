@@ -35,10 +35,12 @@ import java.util.stream.Collectors;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
 import org.apache.maven.plugin.logging.Log;
+import org.apache.maven.model.Resource;
 import org.apache.maven.project.MavenProject;
 import org.apache.maven.project.MavenProjectHelper;
 import org.apache.maven.surefire.shared.lang3.function.Failable;
 import org.codehaus.plexus.archiver.manager.ArchiverManager;
+import org.codehaus.plexus.util.SelectorUtils;
 import org.codehaus.plexus.util.FileUtils;
 
 /**
@@ -182,6 +184,26 @@ public class NarLayout21 extends AbstractNarLayout {
   @Override
   public final void prepareNarInfo(final Path baseDir, final MavenProject project, final NarInfo narInfo,
       final AbstractCompileMojo mojo) throws MojoExecutionException, MojoFailureException {
+    // With targets declared, the keys the project's own nar.properties sets,
+    // which they don't replace: read from the source file the last resource
+    // supplying it copies, since target/classes may hold what a previous
+    // build generated
+    final Set<String> presetKeys = new HashSet<>();
+    if (mojo != null && !mojo.getTargets().isEmpty()) {
+      Path source = null;
+      for (final Resource resource : project.getBuild().getResources()) {
+        final String path = resourceSource(resource, narInfo.getNarInfoFileName());
+        final Path file = path == null ? null
+            : project.getBasedir().toPath().resolve(resource.getDirectory()).resolve(path);
+        if (file != null && Files.isRegularFile(file)) {
+          source = file;
+        }
+      }
+      if (source != null) {
+        presetKeys.addAll(new NarInfo(project.getGroupId(), project.getArtifactId(), project.getVersion(), getLog(),
+            source).getInfo().stringPropertyNames());
+      }
+    }
     if (Files.exists(getNoArchDirectory(baseDir, project.getArtifactId(), project.getVersion()))) {
       narInfo.setNar(null, NarConstants.NAR_NO_ARCH, project.getGroupId() + ":" + project.getArtifactId() + ":"
           + NarConstants.NAR_TYPE + ":" + NarConstants.NAR_NO_ARCH);
@@ -219,7 +241,10 @@ public class NarLayout21 extends AbstractNarLayout {
           narInfo.setOutput(aol, mojo.getOutput(!Library.EXECUTABLE.equals(type)));
         }
 
-        if (mojo.getLibsName() != null) {
+        // with targets declared, an <aol>.libs.names the project sets wins,
+        // as it does on the other AOLs' builds
+        if (mojo.getLibsName() != null
+            && (mojo.getTargets().isEmpty() || !presetKeys.contains(aol + ".libs.names"))) {
           narInfo.setLibs(aol, mojo.getLibsName());
         }
         
@@ -318,6 +343,65 @@ public class NarLayout21 extends AbstractNarLayout {
         narInfo.setOutput(null, mojo.getOutput(true));
       }
     }
+
+    // describe every declared target, not just those built here
+    final List<Target> targets = mojo == null ? List.of() : mojo.getTargets();
+    if (!targets.isEmpty()) {
+      final Map<String, Set<String>> built = new HashMap<>();
+      for (final String classifier : classifiers) {
+        final int lastDash = classifier.lastIndexOf('-');
+        built.computeIfAbsent(classifier.substring(0, lastDash), aol -> new LinkedHashSet<>())
+            .add(classifier.substring(lastDash + 1));
+      }
+      final Set<String> builtTypes = new HashSet<>();
+      built.values().forEach(builtTypes::addAll);
+      Target.declare(targets, narInfo, presetKeys, builtTypes, project.getGroupId() + ":" + project.getArtifactId()
+          + ":" + NarConstants.NAR_TYPE, mojo.getOutput(true), mojo.getOutput(false), mojo.getLibsName());
+      Target.checkBuilt(targets, built, getLog());
+    }
+  }
+
+  /**
+   * The path, in a resource directory, of the file the resource copies to a
+   * destination in target/classes, taking its targetPath, includes and
+   * excludes into account, or null if it doesn't copy one there.
+   *
+   * @param resource the resource
+   * @param destination the destination, relative to target/classes
+   * @return the source path relative to the resource's directory, or null
+   */
+  public static String resourceSource(final Resource resource, final String destination) {
+    // relative to target/classes, without . segments
+    String targetPath = resource.getTargetPath() == null ? "" : resource.getTargetPath().replace('\\', '/');
+    while (targetPath.startsWith("/")) {
+      targetPath = targetPath.substring(1);
+    }
+    targetPath = targetPath.isEmpty() ? "" : Path.of(targetPath).normalize().toString().replace('\\', '/');
+    while (targetPath.endsWith("/")) {
+      targetPath = targetPath.substring(0, targetPath.length() - 1);
+    }
+    final String source;
+    if (targetPath.isEmpty()) {
+      source = destination;
+    } else if (destination.startsWith(targetPath + "/")) {
+      source = destination.substring(targetPath.length() + 1);
+    } else {
+      return null;
+    }
+    final boolean included = resource.getIncludes().isEmpty()
+        || resource.getIncludes().stream().anyMatch(pattern -> matches(pattern, source));
+    final boolean excluded = resource.getExcludes().stream().anyMatch(pattern -> matches(pattern, source));
+    return included && !excluded ? source : null;
+  }
+
+  // An Ant-style resource pattern, as Maven matches them, where a trailing
+  // / means everything below
+  private static boolean matches(final String pattern, final String path) {
+    String normalized = pattern.replace('\\', '/');
+    if (normalized.endsWith("/")) {
+      normalized += "**";
+    }
+    return SelectorUtils.matchPath(normalized, path, "/", true);
   }
 
   @Override
