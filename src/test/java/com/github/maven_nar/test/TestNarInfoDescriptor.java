@@ -72,7 +72,7 @@ public class TestNarInfoDescriptor extends TestCase {
     Assert.assertFalse(narInfo.overlayDescriptor(this.dir.resolve("none.properties"), LINUX));
     Assert.assertFalse(narInfo.overlayDescriptor(null, LINUX));
     Assert.assertEquals("lib-1.0", narInfo.getLibs(LINUX));
-    Assert.assertFalse(narInfo.hasDescriptor());
+    Assert.assertFalse(narInfo.hasDescriptorKey("libs.names"));
   }
 
   public final void testDescriptorWins() throws Exception {
@@ -84,7 +84,8 @@ public class TestNarInfoDescriptor extends TestCase {
     Assert.assertEquals("shared", narInfo.getBinding(LINUX, null));
     // the version isn't a NAR property
     Assert.assertNull(narInfo.getInfo().getProperty(NarInfo.DESCRIPTOR_VERSION_KEY));
-    Assert.assertTrue(narInfo.hasDescriptor());
+    Assert.assertTrue(narInfo.hasDescriptorKey("libs.names"));
+    Assert.assertFalse(narInfo.hasDescriptorKey("linker.options"));
   }
 
   public final void testDescriptorWinsOverGenericAndPrefixedKeys() throws Exception {

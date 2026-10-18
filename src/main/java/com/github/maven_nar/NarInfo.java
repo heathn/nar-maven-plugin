@@ -58,7 +58,7 @@ public class NarInfo {
 
   private final Log log;
 
-  private boolean descriptor;
+  private final java.util.Set<String> descriptorKeys = new java.util.HashSet<>();
 
   public NarInfo(final String groupId, final String artifactId, final String version, final Log log)
       throws MojoExecutionException {
@@ -317,15 +317,16 @@ public class NarInfo {
     for (final String key : properties.stringPropertyNames()) {
       setProperty(aol, key, properties.getProperty(key));
     }
-    this.descriptor = true;
+    this.descriptorKeys.addAll(properties.stringPropertyNames());
     return true;
   }
 
   /**
-   * @return whether a descriptor has been laid over these properties
+   * @param key a property key, without an AOL prefix
+   * @return whether a descriptor laid over these properties sets the key
    */
-  public final boolean hasDescriptor() {
-    return this.descriptor;
+  public final boolean hasDescriptorKey(final String key) {
+    return this.descriptorKeys.contains(key);
   }
 
 
