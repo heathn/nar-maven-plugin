@@ -256,4 +256,11 @@ public class TestTarget extends TestCase {
     Assert.assertEquals(List.of(COORDINATE + ":amd64-Windows-msvc-static"),
         narInfo.getAttachedNars(WINDOWS, Library.STATIC));
   }
+
+  public final void testMappingWithHyphenatedLinker() throws Exception {
+    final NarInfo narInfo = narInfo();
+    narInfo.getInfo().setProperty("x86_64-Linux-gpp-12", "amd64-Linux-gpp");
+    declare(targets(), narInfo);
+    Assert.assertEquals("", narInfo.getProperty(new AOL("x86_64-Linux-gpp-12"), "nar.static"));
+  }
 }

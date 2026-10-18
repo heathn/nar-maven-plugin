@@ -137,7 +137,8 @@ public class Target {
     final Map<String, Target> mapped = new LinkedHashMap<>();
     for (final String key : narInfo.getInfo().stringPropertyNames()) {
       final String value = narInfo.getInfo().getProperty(key).trim();
-      if (key.indexOf('.') < 0 && key.split("-").length == 3 && value.split("-").length == 3
+      // AOL splits arch-os-linker on its first two dashes, so linkers like gpp-12 count
+      if (key.indexOf('.') < 0 && key.split("-", 3).length == 3 && value.split("-", 3).length == 3
           && !byAol.containsKey(key)) {
         // as NarInfo.getAOL reads it, so amd64-Linux-g++ is amd64-Linux-gpp
         final Target target = byAol.get(new AOL(value).toString());
