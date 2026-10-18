@@ -28,6 +28,8 @@ import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.LinkedHashSet;
 import java.util.stream.Collectors;
 
@@ -724,10 +726,10 @@ public class NarIntegrationTestMojo extends AbstractSurefireMojo
       // The JVM builds java.library.path from the library search path in
       // the environment (PATH, LD_LIBRARY_PATH, DYLD_LIBRARY_PATH or LIBPATH),
       // so System.loadLibrary finds these too, along with the system's and
-      // the user's own directories.  Setting -Djava.library.path instead
-      // would drop those, and with spaces in a path SureFireBooter splits
-      // the argument.
+      // the user's own directories.  Setting -Djava.library.path would drop
+      // those, so it's only extended when argLine already sets it.
       NarUtil.addLibraryPathToEnv(javaLibraryPath, getEnvironmentVariables(), getOS());
+      setArgLine(addToJavaLibraryPath(getArgLine(), javaLibraryPath));
     }
 
     // necessary to find WinSxS
@@ -735,6 +737,37 @@ public class NarIntegrationTestMojo extends AbstractSurefireMojo
       getEnvironmentVariables().put("SystemRoot", NarUtil.getEnv("SystemRoot", "SystemRoot", "C:\\Windows"));
     }
     super.execute();
+  }
+
+  private static final Pattern JAVA_LIBRARY_PATH = Pattern.compile(
+      "-Djava\\.library\\.path=(\"[^\"]*\"|'[^']*'|\\S*)");
+
+  /**
+   * Adds directories to a -Djava.library.path in an argLine, which would
+   * otherwise hide the ones in the environment, quoting the value if it
+   * has spaces.
+   *
+   * @param argLine the argLine, or null
+   * @param directories the directories, separated by the path separator
+   * @return the argLine, unchanged if it doesn't set java.library.path
+   */
+  public static String addToJavaLibraryPath(final String argLine, final String directories) {
+    if (argLine == null) {
+      return null;
+    }
+    final Matcher m = JAVA_LIBRARY_PATH.matcher(argLine);
+    if (!m.find()) {
+      return argLine;
+    }
+    String value = m.group(1);
+    if (value.length() >= 2 && (value.startsWith("\"") || value.startsWith("'"))) {
+      value = value.substring(1, value.length() - 1);
+    }
+    value = value.isEmpty() ? directories : value + File.pathSeparator + directories;
+    if (value.indexOf(' ') >= 0) {
+      value = "\"" + value + "\"";
+    }
+    return argLine.substring(0, m.start(1)) + value + argLine.substring(m.end(1));
   }
 
   @Override
