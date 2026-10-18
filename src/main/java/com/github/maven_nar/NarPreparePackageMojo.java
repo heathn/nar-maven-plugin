@@ -168,7 +168,11 @@ public class NarPreparePackageMojo extends AbstractCompileMojo {
     final NarInfo narInfo = getNarInfo();
     final NarProperties narProperties = NarProperties.getInstance(getMavenProject());
     for (final Path directory : classifierDirectories) {
-      final String classifier = directory.getFileName().toString().substring(artifactIdVersion.length() + 1);
+      final String name = directory.getFileName().toString();
+      if (!Files.isDirectory(directory) || name.length() <= artifactIdVersion.length() + 1) {
+        continue;
+      }
+      final String classifier = name.substring(artifactIdVersion.length() + 1);
       final int dash = classifier.lastIndexOf('-');
       if (dash <= 0) {
         continue;

@@ -25,9 +25,11 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.Arrays;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.Properties;
+import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -81,9 +83,9 @@ public final class NarDescriptor {
    * @return the names, by file name
    * @throws IOException if the directory can't be listed
    */
-  public static java.util.Map<String, TreeSet<String>> linkAliases(final Path libDir, final List<String[]> patterns)
+  public static Map<String, TreeSet<String>> linkAliases(final Path libDir, final List<String[]> patterns)
       throws IOException {
-    final java.util.Map<String, TreeSet<String>> aliases = new java.util.TreeMap<>();
+    final Map<String, TreeSet<String>> aliases = new TreeMap<>();
     if (!Files.isDirectory(libDir)) {
       return aliases;
     }
@@ -149,7 +151,8 @@ public final class NarDescriptor {
    * configured; otherwise the output when its library is among the library
    * files packaged, so consumers link what they link now whatever the main
    * nar.properties says; otherwise (a library renamed by a third-party
-   * build, for example) the names of those files.</li>
+   * build, for example) the name of the one library file there, unversioned;
+   * with several, none, and a warning to set libsName.</li>
    * <li>syslibs.names and linker.options: as the main nar.properties has
    * them for the AOL, empty if it has none, so that a value another AOL's
    * build put in the main nar.properties doesn't apply.</li>
@@ -178,22 +181,25 @@ public final class NarDescriptor {
       if (configured != null) {
         descriptor.setProperty("libs.names", configured);
       } else {
-        final java.util.Map<String, TreeSet<String>> aliases = linkAliases(libDir, patterns);
-        // one name for each library, its shortest: renamed for librenamed.dll
-        final TreeSet<String> names = new TreeSet<>();
-        aliases.values().forEach(fileAliases -> names.add(fileAliases.stream()
-            .min(java.util.Comparator.comparingInt(String::length).thenComparing(java.util.Comparator.naturalOrder()))
-            .get()));
-        final String found = String.join(" ", names);
+        final Map<String, TreeSet<String>> aliases = linkAliases(libDir, patterns);
         final boolean ignoreCase = patterns.stream().anyMatch(p -> p.length > 2 && IGNORE_CASE.equals(p[2]));
         if (output != null && aliases.values().stream().flatMap(TreeSet::stream)
             .anyMatch(name -> ignoreCase ? name.equalsIgnoreCase(output) : name.equals(output))) {
           descriptor.setProperty("libs.names", output);
-        } else if (!names.isEmpty()) {
-          descriptor.setProperty("libs.names", found);
-          if (names.size() > 1) {
-            log.warn("The " + aol + " " + type + " libraries don't include " + output + ", so consumers will link "
-                + found + "; set libsName to choose the libraries and their order");
+        } else {
+          // The output's library isn't there, as when a third-party build
+          // names its own.  Only an unambiguous replacement is recorded: one
+          // name, of files the linker takes as they are (not libfoo.so.1,
+          // which only a link made at unpack, from its SONAME, makes linkable),
+          // each file by its shortest name (renamed for librenamed.dll).
+          final TreeSet<String> names = new TreeSet<>();
+          linkAliases(libDir, unversioned(patterns)).values().forEach(fileAliases -> names.add(fileAliases.stream()
+              .min(Comparator.comparingInt(String::length).thenComparing(Comparator.naturalOrder())).get()));
+          if (names.size() == 1) {
+            descriptor.setProperty("libs.names", names.first());
+          } else if (names.size() > 1) {
+            log.warn("The " + aol + " " + type + " libraries " + names + " don't include "
+                + (output == null ? "the output" : output) + "; set libsName so that consumers link the right ones");
           }
         }
       }
@@ -203,6 +209,18 @@ public final class NarDescriptor {
       descriptor.setProperty(key, value == null ? "" : value);
     }
     return descriptor;
+  }
+
+  private static List<String[]> unversioned(final List<String[]> patterns) {
+    final List<String[]> unversioned = new ArrayList<>();
+    for (final String[] pattern : patterns) {
+      final String[] copy = pattern.clone();
+      if (copy[1] != null && copy[1].endsWith("*")) {
+        copy[1] = copy[1].substring(0, copy[1].length() - 1);
+      }
+      unversioned.add(copy);
+    }
+    return unversioned;
   }
 
   /**

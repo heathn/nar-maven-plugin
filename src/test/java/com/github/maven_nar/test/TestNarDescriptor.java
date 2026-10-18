@@ -265,4 +265,36 @@ public class TestNarDescriptor extends TestCase {
     Assert.assertEquals("renamed",
         describe(narInfo(MINGW, "lib-1.0"), MINGW, Library.SHARED, null, "dll").getProperty("libs.names"));
   }
+
+  public final void testSeveralLibrariesWithoutTheOutput() throws Exception {
+    // a bundle of prebuilt libraries: consumers keep linking what they did
+    touch("opencv_world455.lib", "opencv_world455d.lib");
+    Assert.assertNull(describe(narInfo(WINDOWS, "bundle-1.0"), WINDOWS, Library.SHARED, "", "dll")
+        .getProperty("libs.names"));
+    // an import library and a DLL with different names
+    final Path mingwDir = Files.createDirectories(this.dir.resolve("mingw"));
+    Files.createFile(mingwDir.resolve("libpng16.dll.a"));
+    Files.createFile(mingwDir.resolve("libpng16-16.dll"));
+    Assert.assertEquals("png16 png16-16", NarDescriptor.linkNames(mingwDir,
+        NarDescriptor.linkPatterns("amd64-Windows-gpp", Library.SHARED, null, "dll")).replace("libpng16-16 ", ""));
+    final Properties mingw = NarDescriptor.describe(narInfo(MINGW, "png-1.0"), MINGW, Library.SHARED, mingwDir,
+        NarDescriptor.linkPatterns("amd64-Windows-gpp", Library.SHARED, null, "dll"), new SystemStreamLog());
+    Assert.assertNull(mingw.getProperty("libs.names"));
+  }
+
+  public final void testVersionedOnlyLibraryNotNamed() throws Exception {
+    // librenamed.so.1 is linkable only by its SONAME's link, made at unpack
+    touch("librenamed.so.1");
+    Assert.assertNull(describe(narInfo(LINUX, "foo"), LINUX, Library.SHARED, "lib", "so*").getProperty("libs.names"));
+    touch("librenamed.so");
+    Assert.assertEquals("renamed",
+        describe(narInfo(LINUX, "foo"), LINUX, Library.SHARED, "lib", "so*").getProperty("libs.names"));
+  }
+
+  public final void testMacDylib() throws Exception {
+    final AOL mac = new AOL("aarch64-MacOSX-gpp");
+    touch("libfoo-1.0.dylib", "libfoo-1.0.1.dylib");
+    Assert.assertEquals("foo-1.0",
+        describe(narInfo(mac, "foo-1.0"), mac, Library.SHARED, "lib", "dylib").getProperty("libs.names"));
+  }
 }
