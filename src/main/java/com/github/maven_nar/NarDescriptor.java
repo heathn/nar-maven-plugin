@@ -119,7 +119,7 @@ public final class NarDescriptor {
    * The patterns a linker finds a library's files by, for
    * {@link #linkNames}: MSVC links name.lib (an import library, for a
    * shared one); a GNU linker on Windows a shared library's libname.dll.a,
-   * name.dll or libname.dll, and a static one's libname.a; others the
+   * name.dll.a, name.dll or libname.dll, and a static one's libname.a; others the
    * prefix and extension aol.properties gives, prefix lib if none.
    *
    * @param aol the AOL, arch-os-linker
@@ -137,7 +137,8 @@ public final class NarDescriptor {
         return List.<String[]>of(new String[] { prefix == null ? "" : prefix, "lib", IGNORE_CASE });
       }
       return Library.SHARED.equals(type)
-          ? List.of(new String[] { "lib", "dll.a" }, new String[] { "", "dll" }, new String[] { "lib", "dll" })
+          ? List.of(new String[] { "lib", "dll.a" }, new String[] { "", "dll.a" }, new String[] { "", "dll" },
+              new String[] { "lib", "dll" })
           : List.<String[]>of(new String[] { "lib", "a" });
     }
     return List.<String[]>of(new String[] { prefix == null ? "lib" : prefix, extension });

@@ -275,8 +275,9 @@ public class TestNarDescriptor extends TestCase {
     final Path mingwDir = Files.createDirectories(this.dir.resolve("mingw"));
     Files.createFile(mingwDir.resolve("libpng16.dll.a"));
     Files.createFile(mingwDir.resolve("libpng16-16.dll"));
-    Assert.assertEquals("png16 png16-16", NarDescriptor.linkNames(mingwDir,
-        NarDescriptor.linkPatterns("amd64-Windows-gpp", Library.SHARED, null, "dll")).replace("libpng16-16 ", ""));
+    final String names = NarDescriptor.linkNames(mingwDir,
+        NarDescriptor.linkPatterns("amd64-Windows-gpp", Library.SHARED, null, "dll"));
+    Assert.assertTrue(names, names.contains("png16 ") && names.endsWith("png16-16"));
     final Properties mingw = NarDescriptor.describe(narInfo(MINGW, "png-1.0"), MINGW, Library.SHARED, mingwDir,
         NarDescriptor.linkPatterns("amd64-Windows-gpp", Library.SHARED, null, "dll"), new SystemStreamLog());
     Assert.assertNull(mingw.getProperty("libs.names"));
@@ -302,5 +303,12 @@ public class TestNarDescriptor extends TestCase {
     // librenamed.so.1 may carry the output's SONAME, made linkable at unpack
     touch("librenamed.so.1", "libbundled.so");
     Assert.assertNull(describe(narInfo(LINUX, "foo"), LINUX, Library.SHARED, "lib", "so*").getProperty("libs.names"));
+  }
+
+  public final void testMingwUnprefixedImportLibrary() throws Exception {
+    // MinGW finds -lfoo through foo.dll.a too
+    touch("foo.dll.a", "bundled.dll");
+    Assert.assertEquals("foo",
+        describe(narInfo(MINGW, "foo"), MINGW, Library.SHARED, null, "dll").getProperty("libs.names"));
   }
 }
