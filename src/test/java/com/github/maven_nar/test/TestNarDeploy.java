@@ -85,7 +85,12 @@ public class TestNarDeploy extends TestCase {
   public final void testParseRepository() throws Exception {
     Assert.assertEquals("https://repo.example/maven", NarDeployMojo.parseRepository("id::https://repo.example/maven").getUrl());
     Assert.assertEquals("id", NarDeployMojo.parseRepository("id::default::file:///tmp/repo").getId());
-    for (final String bad : new String[] { "id", "id::legacy::file:///tmp", "::file:///tmp", "a::b::c::d" }) {
+    // compressed IPv6 addresses contain the separator too
+    Assert.assertEquals("http://[::1]:8081/repository",
+        NarDeployMojo.parseRepository("local::http://[::1]:8081/repository").getUrl());
+    Assert.assertEquals("http://[::1]:8081/repository",
+        NarDeployMojo.parseRepository("local::default::http://[::1]:8081/repository").getUrl());
+    for (final String bad : new String[] { "id", "id::", "id::legacy::file:///tmp", "::file:///tmp", "a::b::c::d" }) {
       try {
         NarDeployMojo.parseRepository(bad);
         fail("accepted " + bad);

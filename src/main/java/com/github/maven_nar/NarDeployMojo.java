@@ -105,17 +105,22 @@ public class NarDeployMojo extends AbstractMojo {
     if (!"aol".equals(this.deployScope)) {
       throw new MojoExecutionException("nar.deployScope must be all or aol, not " + this.deployScope);
     }
-    final String configuredSkip = deployPluginSkip();
+    // What each maven-deploy-plugin deploy execution's skip is set to: in its
+    // configuration, the plugin's, or on the command line.  Unset, the
+    // project property set below makes it skip.
+    final boolean snapshot = this.project.getArtifact().isSnapshot();
     final String userSkip = this.session.getUserProperties().getProperty("maven.deploy.skip",
         this.session.getSystemProperties().getProperty("maven.deploy.skip"));
-    if ((configuredSkip != null && !"true".equals(configuredSkip)) || (userSkip != null && !"true".equals(userSkip))) {
+    final List<String> explicitSkips = deployExecutionSkips(userSkip);
+    final List<String> blocking = explicitSkips.stream()
+        .filter(value -> value != null && !skips(value, snapshot)).collect(Collectors.toList());
+    if (!blocking.isEmpty()) {
       throw new MojoExecutionException("nar.deployScope=aol can't stop maven-deploy-plugin from deploying the "
-          + "shared artifacts while maven.deploy.skip is set to " + (userSkip != null ? userSkip : configuredSkip)
-          + (userSkip != null ? " on the command line" : " in its configuration"));
+          + "shared artifacts while maven.deploy.skip is set to " + blocking.get(0)
+          + " on the command line or in its configuration");
     }
-    if ("true".equals(configuredSkip) || "true".equals(this.skip)
-        || ("releases".equals(this.skip) && !this.project.getArtifact().isSnapshot())
-        || ("snapshots".equals(this.skip) && this.project.getArtifact().isSnapshot())) {
+    final boolean disabled = !explicitSkips.isEmpty() && explicitSkips.stream().allMatch(value -> value != null);
+    if (disabled || skips(this.skip, snapshot)) {
       getLog().info("Skipping the deployment of the AOL-specific artifacts");
       return;
     }
@@ -183,19 +188,38 @@ public class NarDeployMojo extends AbstractMojo {
    * @throws MojoExecutionException if it isn't in either form
    */
   public static RemoteRepository parseRepository(final String repository) throws MojoExecutionException {
-    final String[] parts = repository.split("::");
-    if (parts.length < 2 || parts.length > 3 || (parts.length == 3 && !"default".equals(parts[1]))
-        || parts[0].isEmpty() || parts[parts.length - 1].isEmpty()) {
+    final int separator = repository.indexOf("::");
+    String url = separator < 0 ? "" : repository.substring(separator + 2);
+    // a layout is a plain word, unlike a URL's scheme, which ends with a colon
+    final java.util.regex.Matcher layout = java.util.regex.Pattern.compile("([A-Za-z0-9_-]+)::(.*)").matcher(url);
+    if (layout.matches()) {
+      if (!"default".equals(layout.group(1))) {
+        throw new MojoExecutionException("Invalid deployment repository " + repository + ", expected id::url");
+      }
+      url = layout.group(2);
+    }
+    if (separator <= 0 || url.isEmpty()) {
       throw new MojoExecutionException("Invalid deployment repository " + repository + ", expected id::url");
     }
-    return new RemoteRepository.Builder(parts[0], "default", parts[parts.length - 1]).build();
+    return new RemoteRepository.Builder(repository.substring(0, separator), "default", url).build();
+  }
+
+  /**
+   * @return whether a maven.deploy.skip value skips deploying this project
+   */
+  private static boolean skips(final String value, final boolean snapshot) {
+    return "true".equals(value) || ("releases".equals(value) && !snapshot) || ("snapshots".equals(value) && snapshot);
   }
 
   private RemoteRepository deploymentRepository() throws MojoExecutionException {
-    String alt = this.project.getArtifact().isSnapshot() ? this.altSnapshotDeploymentRepository
-        : this.altReleaseDeploymentRepository;
+    // configured on maven-deploy-plugin, as it would use them, or as properties
+    final String snapshotRepository = deployConfiguration("altSnapshotDeploymentRepository",
+        this.altSnapshotDeploymentRepository);
+    final String releaseRepository = deployConfiguration("altReleaseDeploymentRepository",
+        this.altReleaseDeploymentRepository);
+    String alt = this.project.getArtifact().isSnapshot() ? snapshotRepository : releaseRepository;
     if (alt == null || alt.isEmpty()) {
-      alt = this.altDeploymentRepository;
+      alt = deployConfiguration("altDeploymentRepository", this.altDeploymentRepository);
     }
     if (alt != null && !alt.isEmpty()) {
       return parseRepository(alt);
@@ -209,34 +233,70 @@ public class NarDeployMojo extends AbstractMojo {
   }
 
   /**
-   * @return the skip configured on maven-deploy-plugin, for the plugin or
-   *         its default-deploy execution, or null
+   * The skip value each maven-deploy-plugin deploy execution will see when
+   * it's set explicitly: in the execution's configuration, the plugin's, or
+   * on the command line; null where it isn't.
    */
-  private String deployPluginSkip() {
-    for (final Plugin plugin : this.project.getBuildPlugins()) {
-      if (!"org.apache.maven.plugins".equals(plugin.getGroupId())
-          || !"maven-deploy-plugin".equals(plugin.getArtifactId())) {
-        continue;
+  private List<String> deployExecutionSkips(final String userSkip) {
+    final List<String> skips = new java.util.ArrayList<>();
+    final Plugin plugin = deployPlugin();
+    if (plugin == null) {
+      skips.add(userSkip);
+      return skips;
+    }
+    final String pluginSkip = valueOf(plugin.getConfiguration(), "skip");
+    for (final PluginExecution execution : plugin.getExecutions()) {
+      if (execution.getGoals().contains("deploy")) {
+        final String executionSkip = valueOf(execution.getConfiguration(), "skip");
+        skips.add(executionSkip != null ? executionSkip : pluginSkip != null ? pluginSkip : userSkip);
       }
-      String skip = skipOf(plugin.getConfiguration());
+    }
+    if (skips.isEmpty()) {
+      skips.add(pluginSkip != null ? pluginSkip : userSkip);
+    }
+    return skips;
+  }
+
+  /**
+   * A parameter configured on maven-deploy-plugin, for the plugin or its
+   * default-deploy execution, which wins over the property, as in that
+   * plugin; otherwise the property's value.
+   */
+  private String deployConfiguration(final String name, final String property) {
+    final Plugin plugin = deployPlugin();
+    if (plugin != null) {
       for (final PluginExecution execution : plugin.getExecutions()) {
-        if ("default-deploy".equals(execution.getId()) && skipOf(execution.getConfiguration()) != null) {
-          skip = skipOf(execution.getConfiguration());
+        final String value = valueOf(execution.getConfiguration(), name);
+        if ("default-deploy".equals(execution.getId()) && value != null) {
+          return value;
         }
       }
-      return skip;
+      final String value = valueOf(plugin.getConfiguration(), name);
+      if (value != null) {
+        return value;
+      }
+    }
+    return property;
+  }
+
+  private Plugin deployPlugin() {
+    for (final Plugin plugin : this.project.getBuildPlugins()) {
+      if ("org.apache.maven.plugins".equals(plugin.getGroupId())
+          && "maven-deploy-plugin".equals(plugin.getArtifactId())) {
+        return plugin;
+      }
     }
     return null;
   }
 
   // The configuration is an Xpp3Dom, from a library this plugin doesn't
   // compile against.
-  private static String skipOf(final Object configuration) {
+  private static String valueOf(final Object configuration, final String name) {
     if (configuration == null) {
       return null;
     }
     try {
-      final Object skip = configuration.getClass().getMethod("getChild", String.class).invoke(configuration, "skip");
+      final Object skip = configuration.getClass().getMethod("getChild", String.class).invoke(configuration, name);
       final Object value = skip == null ? null : skip.getClass().getMethod("getValue").invoke(skip);
       return value == null ? null : value.toString().trim();
     } catch (final ReflectiveOperationException e) {
