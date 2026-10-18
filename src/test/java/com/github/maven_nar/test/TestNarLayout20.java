@@ -19,7 +19,11 @@
  */
 package com.github.maven_nar.test;
 
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Comparator;
+import java.util.stream.Stream;
 
 import junit.framework.TestCase;
 
@@ -27,12 +31,16 @@ import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
 import org.apache.maven.plugin.logging.Log;
 import org.apache.maven.plugin.logging.SystemStreamLog;
+import org.apache.maven.project.MavenProject;
 import org.junit.Assert;
 
+import com.github.maven_nar.AOL;
 import com.github.maven_nar.AbstractNarLayout;
 import com.github.maven_nar.Library;
+import com.github.maven_nar.NarCompileMojo;
 import com.github.maven_nar.NarFileLayout;
 import com.github.maven_nar.NarFileLayout10;
+import com.github.maven_nar.NarInfo;
 import com.github.maven_nar.NarLayout;
 import com.github.maven_nar.NarLayout20;
 
@@ -52,6 +60,8 @@ public class TestNarLayout20 extends TestCase {
 
   private String type;
 
+  private Path narDir;
+
   /*
    * (non-Javadoc)
    * 
@@ -65,6 +75,15 @@ public class TestNarLayout20 extends TestCase {
     this.baseDir = Path.of("/Users/maven");
     this.aol = "x86_64-MacOSX-g++";
     this.type = Library.SHARED;
+  }
+
+  @Override
+  protected void tearDown() throws Exception {
+    if (this.narDir != null) {
+      try (Stream<Path> paths = Files.walk(this.narDir)) {
+        paths.sorted(Comparator.reverseOrder()).forEach(p -> p.toFile().delete());
+      }
+    }
   }
 
   /**
@@ -107,5 +126,65 @@ public class TestNarLayout20 extends TestCase {
   public final void testGetLibDirectory() throws MojoExecutionException, MojoFailureException {
     Assert.assertEquals(this.baseDir.resolve(this.fileLayout.getLibDirectory(this.aol, this.type)),
         this.layout.getLibDirectory(this.baseDir, null, null, this.aol, this.type));
+  }
+
+  private static final AOL LINUX = new AOL("amd64-Linux-gpp");
+
+  private static final AOL WINDOWS = new AOL("amd64-Windows-msvc");
+
+  /**
+   * Creates the given directories under a new NAR directory, runs
+   * {@link NarLayout20#prepareNarInfo} on it and returns the result.
+   */
+  private NarInfo prepareNarInfo(final NarInfo narInfo, final String... dirs)
+      throws IOException, MojoExecutionException {
+    this.narDir = Files.createTempDirectory("nar");
+    for (final String dir : dirs) {
+      Files.createDirectories(this.narDir.resolve(dir));
+    }
+    final MavenProject project = new MavenProject();
+    project.setGroupId("com.example");
+    project.setArtifactId("lib");
+    project.setVersion("1.0");
+    ((NarLayout20) this.layout).prepareNarInfo(this.narDir, project, narInfo, new NarCompileMojo());
+    return narInfo;
+  }
+
+  private NarInfo newNarInfo() throws MojoExecutionException {
+    return new NarInfo("com.example", "lib", "1.0", this.log);
+  }
+
+  private static String binding(final NarInfo narInfo, final AOL aol) {
+    return narInfo.getExactProperty(aol, "libs.binding", null);
+  }
+
+  public final void testEmptyLibDirectoryAlongsideSharedLibrary() throws Exception {
+    final NarInfo narInfo = prepareNarInfo(newNarInfo(), "lib/" + LINUX, "lib/" + WINDOWS + "/" + Library.SHARED);
+    Assert.assertEquals(Library.NONE, binding(narInfo, LINUX));
+    Assert.assertEquals(Library.SHARED, binding(narInfo, WINDOWS));
+  }
+
+  public final void testExecutableAlongsideOtherAolLibrary() throws Exception {
+    final NarInfo narInfo = prepareNarInfo(newNarInfo(), "bin/" + WINDOWS, "lib/" + LINUX + "/" + Library.SHARED);
+    Assert.assertEquals(Library.EXECUTABLE, binding(narInfo, WINDOWS));
+    Assert.assertEquals(Library.SHARED, binding(narInfo, LINUX));
+  }
+
+  public final void testConfiguredDefaultBindingIsRespected() throws Exception {
+    final NarInfo narInfo = newNarInfo();
+    narInfo.setBinding(null, Library.STATIC);
+    prepareNarInfo(narInfo, "lib/" + LINUX + "/" + Library.SHARED, "lib/" + WINDOWS + "/" + Library.SHARED);
+    Assert.assertNull(binding(narInfo, LINUX));
+    Assert.assertNull(binding(narInfo, WINDOWS));
+    Assert.assertEquals(Library.STATIC, narInfo.getBinding(LINUX, null));
+    Assert.assertEquals(Library.STATIC, narInfo.getBinding(WINDOWS, null));
+  }
+
+  public final void testConfiguredAolBindingIsRespected() throws Exception {
+    final NarInfo narInfo = newNarInfo();
+    narInfo.setBinding(LINUX, Library.STATIC);
+    prepareNarInfo(narInfo, "lib/" + LINUX + "/" + Library.SHARED, "lib/" + WINDOWS + "/" + Library.SHARED);
+    Assert.assertEquals(Library.STATIC, binding(narInfo, LINUX));
+    Assert.assertEquals(Library.SHARED, binding(narInfo, WINDOWS));
   }
 }
