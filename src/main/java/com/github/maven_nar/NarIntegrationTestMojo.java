@@ -26,7 +26,10 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Iterator;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Properties;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 import org.apache.maven.plugin.MojoExecutionException;
@@ -41,7 +44,6 @@ import org.apache.maven.plugins.annotations.Parameter;
 import org.apache.maven.plugins.annotations.ResolutionScope;
 import org.apache.maven.project.MavenProject;
 import org.apache.maven.surefire.extensions.ForkNodeFactory;
-import org.apache.maven.surefire.shared.lang3.function.Failable;
 
 import org.eclipse.aether.RepositorySystem;
 import org.eclipse.aether.RepositorySystemSession;
@@ -60,14 +62,14 @@ import static org.apache.maven.plugin.surefire.SurefireHelper.reportExecution;
  * package phase, so we use the integration-test phase.
  * </P>
  * <P>
- * 2. We need to set java.library.path to an AOL (architecture-os-linker)
- * specific value, but AOL is only known in the NAR plugin and thus cannot be
- * set from the pom.
+ * 2. The native libraries' directories are AOL (architecture-os-linker)
+ * specific, and AOL is only known in the NAR plugin, so it adds them to the
+ * forked JVM's library search path in the environment (and to an explicit
+ * java.library.path in argLine, if there is one).
  * </P>
  * <P>
- * 3. To have the java.library.path definition picked up by java we need the
- * "pertest" forkmode. To use this goal you need to put the test sources in the
- * regular test directories but disable the running of the tests by the
+ * 3. To use this goal you need to put the test sources in the regular test
+ * directories but disable the running of the tests by the
  * maven-surefire-plugin by setting maven.test.skip.exec to false in your pom.
  * </P>
  *
@@ -678,25 +680,17 @@ public class NarIntegrationTestMojo extends AbstractSurefireMojo
       setArgLine("");
     }
 
-    List<Path> libraryPaths = new ArrayList<>();
-    List<Path> jniLibraryPaths = new ArrayList<>();
+    // The project's own libraries, which a JNI library or a generated
+    // NarSystem class loads, and its dependencies' shared and JNI libraries.
+    // Dependencies of either scope may have been unpacked by nar-test-unpack
+    // or nar-unpack, so look in both places, test-nar first like nar-test.
+    final Set<Path> libraryPaths = new LinkedHashSet<>();
+    for (final String binding : List.of(Library.JNI, Library.SHARED)) {
+      libraryPaths.add(getLayout().getLibDirectory(
+          getTargetDirectory(), getProject().getArtifactId(),
+          getProject().getVersion(), getAOL().toString(), binding));
+    }
     if (testJNIModule()) {
-      // Add libraries to java.library.path for testing
-      Path jniLibraryPathEntry = getLayout().getLibDirectory(
-          getTargetDirectory(), getProject().getArtifactId(),
-          getProject().getVersion(), getAOL().toString(), Library.JNI);
-      if (Files.exists(jniLibraryPathEntry)) {
-        jniLibraryPaths.add(jniLibraryPathEntry);
-        libraryPaths.add(jniLibraryPathEntry);
-      }
-
-      Path sharedLibraryPathEntry = getLayout().getLibDirectory(
-          getTargetDirectory(), getProject().getArtifactId(),
-          getProject().getVersion(), getAOL().toString(), Library.SHARED);
-      if (Files.exists(sharedLibraryPathEntry)) {
-        libraryPaths.add(sharedLibraryPathEntry);
-      }
-
       // add jar file to classpath, as one may want to read a
       // properties file for artifactId and version
       String narFile = "target/" + getProject().getArtifactId() + "-" + getProject().getVersion() + ".jar";
@@ -708,89 +702,53 @@ public class NarIntegrationTestMojo extends AbstractSurefireMojo
     // NarInfo info = dependency.getNarInfo();
     // String binding = info.getBinding(getAOL(), Library.STATIC);
     // NOTE: fixed to shared, jni
-    List<Path> deps = getNarManager().getNarDependencies("compile").stream()
-        .flatMap(artifact ->
-          List.of(Library.SHARED, Library.JNI).stream()
-            .map(Failable.asFunction(binding -> getLayout().getLibDirectory(
-              getUnpackDirectory(),
-              artifact.getArtifactId(),
-              artifact.getVersion(),
-              getAOL().toString(),
-              binding))))
-        .filter(Files::exists)
-        .collect(Collectors.toList());
-    libraryPaths.addAll(deps);
-
-    deps = getNarManager().getNarDependencies("compile").stream()
-      .flatMap(artifact ->
-        List.of(Library.JNI).stream()
-          .map(Failable.asFunction(binding -> getLayout().getLibDirectory(
-            getUnpackDirectory(),
-            artifact.getArtifactId(),
-            artifact.getVersion(),
-            getAOL().toString(),
-            binding))))
-      .filter(Files::exists)
-      .collect(Collectors.toList());
-      jniLibraryPaths.addAll(deps);
-
-    deps = getNarManager().getNarDependencies("test").stream()
-        .flatMap(artifact ->
-          List.of(Library.SHARED, Library.JNI).stream()
-            .map(Failable.asFunction(binding -> getLayout().getLibDirectory(
-              getTestUnpackDirectory(),
-              artifact.getArtifactId(),
-              artifact.getVersion(),
-              getAOL().toString(),
-              binding))))
-        .filter(Files::exists)
-        .collect(Collectors.toList());
-    libraryPaths.addAll(deps);
-
-    deps = getNarManager().getNarDependencies("test").stream()
-        .flatMap(artifact ->
-          List.of(Library.JNI).stream()
-            .map(Failable.asFunction(binding -> getLayout().getLibDirectory(
-              getTestUnpackDirectory(),
-              artifact.getArtifactId(),
-              artifact.getVersion(),
-              getAOL().toString(),
-              binding))))
-        .filter(Files::exists)
-        .collect(Collectors.toList());
-    jniLibraryPaths.addAll(deps);
+    final List<NarArtifact> dependencies = new ArrayList<>(getNarManager().getNarDependencies("compile"));
+    dependencies.addAll(getNarManager().getNarDependencies("test"));
+    for (final NarArtifact dependency : dependencies) {
+      for (final Path unpackDirectory : List.of(getTestUnpackDirectory(), getUnpackDirectory())) {
+        for (final String binding : List.of(Library.SHARED, Library.JNI)) {
+          libraryPaths.add(getLayout().getLibDirectory(unpackDirectory, dependency.getArtifactId(),
+              dependency.getBaseVersion(), getAOL().toString(), binding));
+        }
+      }
+    }
+    libraryPaths.removeIf(path -> !Files.isDirectory(path));
 
     // add final javalibrary path
-    if (libraryPaths.size() > 0) {
-      // NOTE java.library.path only works for the jni lib itself, and
-      // not for its dependent shareables.
-      // NOTE: java.library.path does not work with arguments with
-      // spaces as
-      // SureFireBooter splits the line in parts and then quotes
-      // it wrongly
-      String javaLibraryPath = libraryPaths.stream()
+    if (!libraryPaths.isEmpty()) {
+      final String javaLibraryPath = libraryPaths.stream()
           .map(Path::toAbsolutePath)
           .map(Path::toString)
-          .peek(dir -> getLog().debug("Adding to java.library.path: " + dir))
+          .peek(dir -> getLog().debug("Adding to the library path: " + dir))
           .collect(Collectors.joining(File.pathSeparator));
 
+      // The JVM builds java.library.path from the library search path in
+      // the environment (PATH, LD_LIBRARY_PATH, DYLD_LIBRARY_PATH or LIBPATH),
+      // so System.loadLibrary finds these too, along with the system's and
+      // the user's own directories.  Setting -Djava.library.path would drop
+      // those, so it's only extended when argLine already sets it.
       NarUtil.addLibraryPathToEnv(javaLibraryPath, getEnvironmentVariables(), getOS());
-    }
-
-    if (jniLibraryPaths.size() > 0) {
-      String javaLibraryPath = jniLibraryPaths.stream()
-          .map(Path::toAbsolutePath)
-          .map(Path::toString)
-          .collect(Collectors.joining(File.pathSeparator));
-
-      String argLine = getArgLine();
-      if (argLine == null) {
-        argLine = "";
-      } else {
-        argLine += " ";
+      // Surefire starts the JVM through /bin/sh, for which macOS drops the
+      // DYLD_ variables; the JVM also reads JAVA_LIBRARY_PATH there, which
+      // finds the libraries System.loadLibrary loads, though their own
+      // dependencies still need install names or @rpath to be found
+      if (OS.MACOSX.equals(getOS())) {
+        final String existing = getEnvironmentVariables().getOrDefault("JAVA_LIBRARY_PATH",
+            System.getenv("JAVA_LIBRARY_PATH"));
+        getEnvironmentVariables().put("JAVA_LIBRARY_PATH",
+            existing == null || existing.isEmpty() ? javaLibraryPath : javaLibraryPath + File.pathSeparator + existing);
       }
-      argLine += "-Djava.library.path=" + javaLibraryPath;
-      setArgLine(argLine);
+      // Surefire expands @{...} in argLine itself, just before forking, from
+      // the project's properties
+      final String argLine = expandLateProperties(getArgLine(), getProject().getModel().getProperties());
+      final String extended = addToJavaLibraryPath(argLine, javaLibraryPath);
+      if (extended != null && extended.equals(argLine) && lastJavaLibraryPath(argLine) != null) {
+        getLog().warn("Can't add the NAR libraries to the java.library.path in argLine, which has both kinds of "
+            + "quote; System.loadLibrary may not find them");
+      }
+      if (extended != null && !extended.equals(argLine)) {
+        setArgLine(extended);
+      }
     }
 
     // necessary to find WinSxS
@@ -798,6 +756,118 @@ public class NarIntegrationTestMojo extends AbstractSurefireMojo
       getEnvironmentVariables().put("SystemRoot", NarUtil.getEnv("SystemRoot", "SystemRoot", "C:\\Windows"));
     }
     super.execute();
+  }
+
+  /**
+   * Expands the @{...} properties in an argLine, as Surefire does late,
+   * leaving those that aren't defined.
+   *
+   * @param argLine the argLine, or null
+   * @param properties the properties
+   * @return the expanded argLine
+   */
+  public static String expandLateProperties(final String argLine, final Properties properties) {
+    if (argLine == null || argLine.indexOf("@{") < 0) {
+      return argLine;
+    }
+    final StringBuilder expanded = new StringBuilder();
+    int i = 0;
+    while (i < argLine.length()) {
+      final int start = argLine.indexOf("@{", i);
+      final int end = start < 0 ? -1 : argLine.indexOf('}', start);
+      if (end < 0) {
+        expanded.append(argLine, i, argLine.length());
+        break;
+      }
+      final String value = properties.getProperty(argLine.substring(start + 2, end));
+      expanded.append(argLine, i, start).append(value != null ? value : argLine.substring(start, end + 1));
+      i = end + 1;
+    }
+    return expanded.toString();
+  }
+
+  private static final String JAVA_LIBRARY_PATH = "-Djava.library.path=";
+
+  /**
+   * Finds the last argument in an argLine, quoted in whole or in part, that
+   * sets java.library.path.
+   *
+   * @param argLine the argLine, or null
+   * @return its start, end and value, or null if there's none
+   */
+  private static String[] lastJavaLibraryPath(final String argLine) {
+    if (argLine == null) {
+      return null;
+    }
+    String[] last = null;
+    int i = 0;
+    while (i < argLine.length()) {
+      while (i < argLine.length() && Character.isWhitespace(argLine.charAt(i))) {
+        i++;
+      }
+      if (i == argLine.length()) {
+        break;
+      }
+      final int tokenStart = i;
+      final StringBuilder token = new StringBuilder();
+      char quote = 0;
+      while (i < argLine.length() && (quote != 0 || !Character.isWhitespace(argLine.charAt(i)))) {
+        final char c = argLine.charAt(i++);
+        // as in Surefire, a quote after a backslash is literal, backslash and all
+        if (c == '\\' && i < argLine.length() && (argLine.charAt(i) == '"' || argLine.charAt(i) == '\'')) {
+          token.append(c).append(argLine.charAt(i++));
+        } else if (quote == 0 && (c == '"' || c == '\'')) {
+          quote = c;
+        } else if (c == quote) {
+          quote = 0;
+        } else {
+          token.append(c);
+        }
+      }
+      // without "=" the JVM sets it empty
+      if (token.toString().startsWith(JAVA_LIBRARY_PATH)
+          || token.toString().equals(JAVA_LIBRARY_PATH.substring(0, JAVA_LIBRARY_PATH.length() - 1))) {
+        last = new String[] { String.valueOf(tokenStart), String.valueOf(i),
+            token.length() < JAVA_LIBRARY_PATH.length() ? "" : token.substring(JAVA_LIBRARY_PATH.length()) };
+      }
+    }
+    return last;
+  }
+
+  /**
+   * Adds directories to the -Djava.library.path in an argLine, which would
+   * otherwise hide the ones in the environment.  The JVM uses the last one,
+   * so that's the one extended; the argument is quoted if it has spaces or
+   * quotes, and left alone if it has both kinds of quote, which Surefire
+   * can't take.
+   *
+   * @param argLine the argLine, or null
+   * @param directories the directories, separated by the path separator
+   * @return the argLine, unchanged if it doesn't set java.library.path
+   */
+  public static String addToJavaLibraryPath(final String argLine, final String directories) {
+    final String[] last = lastJavaLibraryPath(argLine);
+    if (last == null) {
+      return argLine;
+    }
+    final int start = Integer.parseInt(last[0]);
+    final int end = Integer.parseInt(last[1]);
+    final String value = last[2];
+    final String path = value.isEmpty() ? directories : value + File.pathSeparator + directories;
+    String argument = JAVA_LIBRARY_PATH + path;
+    // Surefire splits argLine on whitespace outside quotes, taking a quote
+    // after a backslash literally; the argument written here never ends in a
+    // backslash, as a NAR directory comes last
+    if (argument.chars().anyMatch(c -> Character.isWhitespace(c) || c == '"' || c == '\'')) {
+      if (argument.indexOf('"') < 0) {
+        argument = "\"" + argument + "\"";
+      } else if (argument.indexOf('\'') < 0) {
+        argument = "'" + argument + "'";
+      } else {
+        return argLine;
+      }
+    }
+    return argLine.substring(0, start) + argument + argLine.substring(end);
   }
 
   @Override

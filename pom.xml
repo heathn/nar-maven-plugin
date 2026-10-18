@@ -11,7 +11,7 @@
 
   <groupId>com.github.maven-nar</groupId>
   <artifactId>nar-maven-plugin</artifactId>
-  <version>3.10.1-fh11</version>
+  <version>3.10.1-fh12</version>
   <packaging>maven-plugin</packaging>
 
   <name>Native ARchive plugin for Maven</name>
@@ -117,6 +117,12 @@
   <properties>
     <invoker.debug>false</invoker.debug>
     <invoker.workspace>${project.build.directory}/it</invoker.workspace>
+    <!--
+      The previous release, for the it0041/it0042 compatibility tests, which
+      build a library with one version of the plugin and consume it with the
+      other.  It must be resolvable from the local repository.
+    -->
+    <nar.compat.version>3.10.1-fh11</nar.compat.version>
     <its.to.skip>dummy</its.to.skip>
     <mavenVersion>3.9.8</mavenVersion>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
@@ -498,6 +504,9 @@
               <properties>
                 <jna.nosys>true</jna.nosys>
               </properties>
+              <filterProperties>
+                <nar.compat.version>${nar.compat.version}</nar.compat.version>
+              </filterProperties>
               <debug>${invoker.debug}</debug>
               <ignoreFailures>false</ignoreFailures>
               <!-- FAILS to run, see ReleaseNotes
@@ -516,6 +525,8 @@
                 <setupInclude>it0034-upstream-aol1-multi-aol/pom.xml</setupInclude>
                 <setupInclude>it0034-upstream-aol2-multi-aol/pom.xml</setupInclude>
                 <setupInclude>it0039-includesTypes/pom.xml</setupInclude>
+                <setupInclude>it0041-compat-old-lib/pom.xml</setupInclude>
+                <setupInclude>it0042-compat-new-lib/pom.xml</setupInclude>
               </setupIncludes>
               <pomIncludes>
                 <pomInclude>*/pom.xml</pomInclude>
