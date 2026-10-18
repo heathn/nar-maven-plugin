@@ -65,4 +65,11 @@ public class TestJavaLibraryPath extends TestCase {
     Assert.assertEquals("-Djava.library.path=/parent -Djava.library.path=/child" + S + "/a",
         NarIntegrationTestMojo.addToJavaLibraryPath("-Djava.library.path=/parent -Djava.library.path=/child", "/a"));
   }
+
+  public final void testQuotesInPath() {
+    Assert.assertEquals("\"-Djava.library.path=/opt/O'Brien/lib" + S + "/a\"",
+        NarIntegrationTestMojo.addToJavaLibraryPath("-Djava.library.path=\"/opt/O'Brien/lib\"", "/a"));
+    Assert.assertEquals("'-Djava.library.path=/opt/say \"hi\"" + S + "/a'",
+        NarIntegrationTestMojo.addToJavaLibraryPath("'-Djava.library.path=/opt/say \"hi\"'", "/a"));
+  }
 }

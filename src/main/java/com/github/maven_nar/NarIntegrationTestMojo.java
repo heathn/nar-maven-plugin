@@ -742,7 +742,8 @@ public class NarIntegrationTestMojo extends AbstractSurefireMojo
   /**
    * Adds directories to the -Djava.library.path in an argLine, which would
    * otherwise hide the ones in the environment.  The JVM uses the last one,
-   * so that's the one extended; the argument is quoted if it has spaces.
+   * so that's the one extended; the argument is quoted if it has spaces or
+   * quotes, and left alone if it has both kinds of quote, which can't be.
    *
    * @param argLine the argLine, or null
    * @param directories the directories, separated by the path separator
@@ -788,8 +789,15 @@ public class NarIntegrationTestMojo extends AbstractSurefireMojo
     }
     final String path = value.isEmpty() ? directories : value + File.pathSeparator + directories;
     String argument = JAVA_LIBRARY_PATH + path;
-    if (argument.indexOf(' ') >= 0) {
-      argument = "\"" + argument + "\"";
+    // Surefire splits argLine on whitespace outside quotes, with no escapes
+    if (argument.chars().anyMatch(c -> Character.isWhitespace(c) || c == '"' || c == '\'')) {
+      if (argument.indexOf('"') < 0) {
+        argument = "\"" + argument + "\"";
+      } else if (argument.indexOf('\'') < 0) {
+        argument = "'" + argument + "'";
+      } else {
+        return argLine;
+      }
     }
     return argLine.substring(0, start) + argument + argLine.substring(end);
   }
