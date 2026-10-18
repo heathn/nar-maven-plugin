@@ -31,7 +31,7 @@
   <name>Deploy scope: skipped on nar-deploy</name>
   <version>1.0-SNAPSHOT</version>
   <description>
-    With nar.deployScope=aol and skip set on the nar-deploy execution,
+    With nar.deployScope=aol and deploySkip set on the nar-deploy execution,
     nothing is deployed, maven-deploy-plugin's artifacts included.
   </description>
   <properties>
@@ -55,7 +55,7 @@
           <execution>
             <id>default-nar-deploy</id>
             <configuration>
-              <skip>true</skip>
+              <deploySkip>true</deploySkip>
             </configuration>
           </execution>
         </executions>

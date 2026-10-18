@@ -64,8 +64,11 @@ import org.eclipse.aether.repository.RemoteRepository;
  * by every build; skip them with maven.deploy.skip in a profile of their
  * pom.  maven.deploy.skip set on the command line, or a skip configured on
  * maven-deploy-plugin, would also keep this goal from stopping
- * maven-deploy-plugin, so with "aol" the build fails if one is set to
- * anything but true.
+ * maven-deploy-plugin, so with "aol" the build fails if one would leave it
+ * deploying: one that skips (true, or releases or snapshots with
+ * maven-deploy-plugin 3) skips this goal too.  It also fails with
+ * maven-deploy-plugin's deployAtEnd, which this goal, deploying right
+ * away, would bypass, and with a deploy execution bound to an earlier phase.
  */
 @Mojo(name = "nar-deploy", defaultPhase = LifecyclePhase.DEPLOY, requiresProject = true, threadSafe = true)
 public class NarDeployMojo extends AbstractMojo {
@@ -74,11 +77,21 @@ public class NarDeployMojo extends AbstractMojo {
    * "all" to deploy everything, or "aol" to deploy only this build's
    * AOL-specific artifacts.
    */
+  // The default lifecycle's phases, up to deploy
+  private static final List<String> PHASES_TO_DEPLOY = List.of("validate", "initialize", "generate-sources",
+      "process-sources", "generate-resources", "process-resources", "compile", "process-classes",
+      "generate-test-sources", "process-test-sources", "generate-test-resources", "process-test-resources",
+      "test-compile", "process-test-classes", "test", "prepare-package", "package", "pre-integration-test",
+      "integration-test", "post-integration-test", "verify", "install", "deploy");
+
   @Parameter(property = "nar.deployScope", defaultValue = "all")
   private String deployScope;
 
+  /**
+   * maven-deploy-plugin's skip, which this goal follows.
+   */
   @Parameter(property = "maven.deploy.skip", defaultValue = "false")
-  private String skip;
+  private String deploySkip;
 
   @Parameter(property = "altDeploymentRepository")
   private String altDeploymentRepository;
@@ -123,7 +136,7 @@ public class NarDeployMojo extends AbstractMojo {
     // deploy despite a conditional value
     final Plugin deployPlugin = deployPlugin();
     final String version = deployPlugin == null ? null : deployPlugin.getVersion();
-    final boolean conditional = Stream.concat(explicitSkips.stream(), Stream.of(this.skip))
+    final boolean conditional = Stream.concat(explicitSkips.stream(), Stream.of(this.deploySkip))
         .anyMatch(value -> "releases".equals(value) || "snapshots".equals(value));
     if (conditional && version != null && version.matches("[0-2]\\..*")) {
       throw new MojoExecutionException("maven.deploy.skip=releases or snapshots needs maven-deploy-plugin 3.0 or "
@@ -137,7 +150,7 @@ public class NarDeployMojo extends AbstractMojo {
           + " on the command line or in its configuration");
     }
     final boolean disabled = !explicitSkips.isEmpty() && explicitSkips.stream().allMatch(value -> value != null);
-    if (disabled || skips(this.skip, snapshot)) {
+    if (disabled || skips(this.deploySkip, snapshot)) {
       getLog().info("Skipping the deployment of the AOL-specific artifacts");
       // and of everything else, which maven-deploy-plugin would deploy
       this.project.getProperties().setProperty("maven.deploy.skip", "true");
@@ -146,7 +159,8 @@ public class NarDeployMojo extends AbstractMojo {
     // deploying at the end defers deploying until every module has built,
     // which this goal, deploying now, would bypass
     final String deployAtEnd = deployConfiguration("deployAtEnd", this.session.getUserProperties()
-        .getProperty("deployAtEnd", this.project.getProperties().getProperty("deployAtEnd")));
+        .getProperty("deployAtEnd", this.session.getSystemProperties().getProperty("deployAtEnd",
+            this.project.getProperties().getProperty("deployAtEnd"))));
     if (deployAtEnd != null && Boolean.parseBoolean(deployAtEnd.trim())) {
       throw new MojoExecutionException("nar.deployScope=aol doesn't support maven-deploy-plugin's deployAtEnd");
     }
@@ -274,12 +288,22 @@ public class NarDeployMojo extends AbstractMojo {
     }
     final String pluginSkip = evaluate(valueOf(plugin.getConfiguration(), "skip"));
     for (final PluginExecution execution : plugin.getExecutions()) {
-      if (execution.getGoals().contains("deploy")) {
+      // one bound to none, or to a phase mvn deploy doesn't run, never runs
+      final String phase = execution.getPhase();
+      if (execution.getGoals().contains("deploy") && (phase == null || PHASES_TO_DEPLOY.contains(phase))) {
         final String executionSkip = evaluate(valueOf(execution.getConfiguration(), "skip"));
-        skips.add(executionSkip != null ? executionSkip : pluginSkip != null ? pluginSkip : userSkip);
+        final String skip = executionSkip != null ? executionSkip : pluginSkip != null ? pluginSkip : userSkip;
+        // one bound to an earlier phase would deploy everything before this goal runs
+        if (phase != null && !"deploy".equals(phase) && !skips(skip, this.project.getArtifact().isSnapshot())) {
+          throw new MojoExecutionException("maven-deploy-plugin's " + execution.getId() + " execution in the "
+              + execution.getPhase() + " phase, before this goal, has deployed everything, which nar.deployScope=aol "
+              + "can't prevent");
+        }
+        skips.add(skip);
       }
     }
-    if (skips.isEmpty()) {
+    // with no deploy execution at all, the lifecycle's would use these
+    if (plugin.getExecutions().stream().noneMatch(execution -> execution.getGoals().contains("deploy"))) {
       skips.add(pluginSkip != null ? pluginSkip : userSkip);
     }
     return skips;
@@ -336,7 +360,7 @@ public class NarDeployMojo extends AbstractMojo {
 
   // The configuration is an Xpp3Dom, from a library this plugin doesn't
   // compile against.
-  private static String valueOf(final Object configuration, final String name) {
+  private static String valueOf(final Object configuration, final String name) throws MojoExecutionException {
     if (configuration == null) {
       return null;
     }
@@ -345,7 +369,8 @@ public class NarDeployMojo extends AbstractMojo {
       final Object value = skip == null ? null : skip.getClass().getMethod("getValue").invoke(skip);
       return value == null ? null : value.toString().trim();
     } catch (final ReflectiveOperationException e) {
-      return null;
+      // fail rather than act as if it weren't configured
+      throw new MojoExecutionException("Can't read maven-deploy-plugin's " + name + " configuration", e);
     }
   }
 }

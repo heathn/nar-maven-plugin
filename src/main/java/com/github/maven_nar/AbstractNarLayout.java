@@ -74,6 +74,8 @@ public abstract class AbstractNarLayout implements NarLayout, NarConstants {
 
   private final Log log;
 
+  private FileTime outputTimestamp;
+
   protected AbstractNarLayout(final Log log) {
     this.log = log;
   }
@@ -92,17 +94,8 @@ public abstract class AbstractNarLayout implements NarLayout, NarConstants {
       fs.setIncludes(new String[] { include });
       archiver.addFileSet(fs);
       archiver.setDestFile(narFile);
-      // as -D, Maven sets it as a system property too
-      final String outputTimestamp = System.getProperty("project.build.outputTimestamp",
-          project.getProperties().getProperty("project.build.outputTimestamp"));
-      final FileTime timestamp;
-      try {
-        timestamp = NarUtil.getOutputTimestamp(outputTimestamp);
-      } catch (final IllegalArgumentException e) {
-        throw new MojoExecutionException(e.getMessage(), e);
-      }
-      if (timestamp != null) {
-        archiver.configureReproducibleBuild(timestamp);
+      if (this.outputTimestamp != null) {
+        archiver.configureReproducibleBuild(this.outputTimestamp);
       }
       archiver.createArchive();
     } catch (final NoSuchArchiverException e) {
@@ -111,6 +104,16 @@ public abstract class AbstractNarLayout implements NarLayout, NarConstants {
       throw new MojoExecutionException("NAR: cannot create NAR archive '" + narFile + "'", e);
     }
     projectHelper.attachArtifact(project, NarConstants.NAR_TYPE, classifier, narFile);
+  }
+
+  /**
+   * Makes the NARs attached afterwards reproducible, with every entry's
+   * time set to this one.
+   *
+   * @param outputTimestamp the time, or null to leave them as they are
+   */
+  public final void setOutputTimestamp(final FileTime outputTimestamp) {
+    this.outputTimestamp = outputTimestamp;
   }
 
   protected Log getLog() {
