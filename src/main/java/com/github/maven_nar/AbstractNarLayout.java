@@ -25,6 +25,7 @@ import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
 
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
@@ -91,6 +92,18 @@ public abstract class AbstractNarLayout implements NarLayout, NarConstants {
       fs.setIncludes(new String[] { include });
       archiver.addFileSet(fs);
       archiver.setDestFile(narFile);
+      // as -D, Maven sets it as a system property too
+      final String outputTimestamp = System.getProperty("project.build.outputTimestamp",
+          project.getProperties().getProperty("project.build.outputTimestamp"));
+      final FileTime timestamp;
+      try {
+        timestamp = NarUtil.getOutputTimestamp(outputTimestamp);
+      } catch (final IllegalArgumentException e) {
+        throw new MojoExecutionException(e.getMessage(), e);
+      }
+      if (timestamp != null) {
+        archiver.configureReproducibleBuild(timestamp);
+      }
       archiver.createArchive();
     } catch (final NoSuchArchiverException e) {
       throw new MojoExecutionException("NAR: cannot find archiver", e);
