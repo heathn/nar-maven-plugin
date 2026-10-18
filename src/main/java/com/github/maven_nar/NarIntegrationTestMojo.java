@@ -26,9 +26,10 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Iterator;
-import java.util.List;
-import java.util.Set;
 import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Properties;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 import org.apache.maven.plugin.MojoExecutionException;
@@ -61,14 +62,14 @@ import static org.apache.maven.plugin.surefire.SurefireHelper.reportExecution;
  * package phase, so we use the integration-test phase.
  * </P>
  * <P>
- * 2. We need to set java.library.path to an AOL (architecture-os-linker)
- * specific value, but AOL is only known in the NAR plugin and thus cannot be
- * set from the pom.
+ * 2. The native libraries' directories are AOL (architecture-os-linker)
+ * specific, and AOL is only known in the NAR plugin, so it adds them to the
+ * forked JVM's library search path in the environment (and to an explicit
+ * java.library.path in argLine, if there is one).
  * </P>
  * <P>
- * 3. To have the java.library.path definition picked up by java we need the
- * "pertest" forkmode. To use this goal you need to put the test sources in the
- * regular test directories but disable the running of the tests by the
+ * 3. To use this goal you need to put the test sources in the regular test
+ * directories but disable the running of the tests by the
  * maven-surefire-plugin by setting maven.test.skip.exec to false in your pom.
  * </P>
  *
@@ -718,7 +719,7 @@ public class NarIntegrationTestMojo extends AbstractSurefireMojo
       final String javaLibraryPath = libraryPaths.stream()
           .map(Path::toAbsolutePath)
           .map(Path::toString)
-          .peek(dir -> getLog().debug("Adding to java.library.path: " + dir))
+          .peek(dir -> getLog().debug("Adding to the library path: " + dir))
           .collect(Collectors.joining(File.pathSeparator));
 
       // The JVM builds java.library.path from the library search path in
@@ -727,7 +728,27 @@ public class NarIntegrationTestMojo extends AbstractSurefireMojo
       // the user's own directories.  Setting -Djava.library.path would drop
       // those, so it's only extended when argLine already sets it.
       NarUtil.addLibraryPathToEnv(javaLibraryPath, getEnvironmentVariables(), getOS());
-      setArgLine(addToJavaLibraryPath(getArgLine(), javaLibraryPath));
+      // Surefire starts the JVM through /bin/sh, for which macOS drops the
+      // DYLD_ variables; the JVM also reads JAVA_LIBRARY_PATH there, which
+      // finds the libraries System.loadLibrary loads, though their own
+      // dependencies still need install names or @rpath to be found
+      if (OS.MACOSX.equals(getOS())) {
+        final String existing = getEnvironmentVariables().getOrDefault("JAVA_LIBRARY_PATH",
+            System.getenv("JAVA_LIBRARY_PATH"));
+        getEnvironmentVariables().put("JAVA_LIBRARY_PATH",
+            existing == null || existing.isEmpty() ? javaLibraryPath : javaLibraryPath + File.pathSeparator + existing);
+      }
+      // Surefire expands @{...} in argLine itself, just before forking, from
+      // the project's properties
+      final String argLine = expandLateProperties(getArgLine(), getProject().getModel().getProperties());
+      final String extended = addToJavaLibraryPath(argLine, javaLibraryPath);
+      if (extended != null && extended.equals(argLine) && lastJavaLibraryPath(argLine) != null) {
+        getLog().warn("Can't add the NAR libraries to the java.library.path in argLine, which has both kinds of "
+            + "quote; System.loadLibrary may not find them");
+      }
+      if (extended != null && !extended.equals(argLine)) {
+        setArgLine(extended);
+      }
     }
 
     // necessary to find WinSxS
@@ -737,26 +758,48 @@ public class NarIntegrationTestMojo extends AbstractSurefireMojo
     super.execute();
   }
 
+  /**
+   * Expands the @{...} properties in an argLine, as Surefire does late,
+   * leaving those that aren't defined.
+   *
+   * @param argLine the argLine, or null
+   * @param properties the properties
+   * @return the expanded argLine
+   */
+  public static String expandLateProperties(final String argLine, final Properties properties) {
+    if (argLine == null || argLine.indexOf("@{") < 0) {
+      return argLine;
+    }
+    final StringBuilder expanded = new StringBuilder();
+    int i = 0;
+    while (i < argLine.length()) {
+      final int start = argLine.indexOf("@{", i);
+      final int end = start < 0 ? -1 : argLine.indexOf('}', start);
+      if (end < 0) {
+        expanded.append(argLine, i, argLine.length());
+        break;
+      }
+      final String value = properties.getProperty(argLine.substring(start + 2, end));
+      expanded.append(argLine, i, start).append(value != null ? value : argLine.substring(start, end + 1));
+      i = end + 1;
+    }
+    return expanded.toString();
+  }
+
   private static final String JAVA_LIBRARY_PATH = "-Djava.library.path=";
 
   /**
-   * Adds directories to the -Djava.library.path in an argLine, which would
-   * otherwise hide the ones in the environment.  The JVM uses the last one,
-   * so that's the one extended; the argument is quoted if it has spaces or
-   * quotes, and left alone if it has both kinds of quote, which can't be.
+   * Finds the last argument in an argLine, quoted in whole or in part, that
+   * sets java.library.path.
    *
    * @param argLine the argLine, or null
-   * @param directories the directories, separated by the path separator
-   * @return the argLine, unchanged if it doesn't set java.library.path
+   * @return its start, end and value, or null if there's none
    */
-  public static String addToJavaLibraryPath(final String argLine, final String directories) {
+  private static String[] lastJavaLibraryPath(final String argLine) {
     if (argLine == null) {
       return null;
     }
-    // find the last argument, quoted in whole or in part, that sets it
-    int start = -1;
-    int end = -1;
-    String value = null;
+    String[] last = null;
     int i = 0;
     while (i < argLine.length()) {
       while (i < argLine.length() && Character.isWhitespace(argLine.charAt(i))) {
@@ -781,17 +824,37 @@ public class NarIntegrationTestMojo extends AbstractSurefireMojo
       // without "=" the JVM sets it empty
       if (token.toString().startsWith(JAVA_LIBRARY_PATH)
           || token.toString().equals(JAVA_LIBRARY_PATH.substring(0, JAVA_LIBRARY_PATH.length() - 1))) {
-        start = tokenStart;
-        end = i;
-        value = token.length() < JAVA_LIBRARY_PATH.length() ? "" : token.substring(JAVA_LIBRARY_PATH.length());
+        last = new String[] { String.valueOf(tokenStart), String.valueOf(i),
+            token.length() < JAVA_LIBRARY_PATH.length() ? "" : token.substring(JAVA_LIBRARY_PATH.length()) };
       }
     }
-    if (value == null) {
+    return last;
+  }
+
+  /**
+   * Adds directories to the -Djava.library.path in an argLine, which would
+   * otherwise hide the ones in the environment.  The JVM uses the last one,
+   * so that's the one extended; the argument is quoted if it has spaces or
+   * quotes, and left alone if it has both kinds of quote, which Surefire
+   * can't take.
+   *
+   * @param argLine the argLine, or null
+   * @param directories the directories, separated by the path separator
+   * @return the argLine, unchanged if it doesn't set java.library.path
+   */
+  public static String addToJavaLibraryPath(final String argLine, final String directories) {
+    final String[] last = lastJavaLibraryPath(argLine);
+    if (last == null) {
       return argLine;
     }
+    final int start = Integer.parseInt(last[0]);
+    final int end = Integer.parseInt(last[1]);
+    final String value = last[2];
     final String path = value.isEmpty() ? directories : value + File.pathSeparator + directories;
     String argument = JAVA_LIBRARY_PATH + path;
-    // Surefire splits argLine on whitespace outside quotes, with no escapes
+    // Surefire splits argLine on whitespace outside quotes; a quote after a
+    // backslash is literal there, which this doesn't need to handle, as the
+    // argument it writes never ends in one
     if (argument.chars().anyMatch(c -> Character.isWhitespace(c) || c == '"' || c == '\'')) {
       if (argument.indexOf('"') < 0) {
         argument = "\"" + argument + "\"";

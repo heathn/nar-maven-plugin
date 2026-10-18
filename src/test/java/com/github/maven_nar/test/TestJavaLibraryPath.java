@@ -82,4 +82,23 @@ public class TestJavaLibraryPath extends TestCase {
     Assert.assertEquals("-Djava.library.pathx=/b",
         NarIntegrationTestMojo.addToJavaLibraryPath("-Djava.library.pathx=/b", "/a"));
   }
+
+  public final void testLateProperties() {
+    final java.util.Properties properties = new java.util.Properties();
+    properties.setProperty("nativeArgs", "-Djava.library.path=/vendor");
+    properties.setProperty("argLine", "-javaagent:\"C:/Users/John Doe/jacoco.jar\"=destfile=x");
+    Assert.assertEquals("-Xmx1g -Djava.library.path=/vendor",
+        NarIntegrationTestMojo.expandLateProperties("-Xmx1g @{nativeArgs}", properties));
+    Assert.assertEquals("-javaagent:\"C:/Users/John Doe/jacoco.jar\"=destfile=x @{undefined} @{",
+        NarIntegrationTestMojo.expandLateProperties("@{argLine} @{undefined} @{", properties));
+    Assert.assertNull(NarIntegrationTestMojo.expandLateProperties(null, properties));
+    // then the expanded override is extended
+    Assert.assertEquals("-Djava.library.path=/vendor" + S + "/a", NarIntegrationTestMojo.addToJavaLibraryPath(
+        NarIntegrationTestMojo.expandLateProperties("@{nativeArgs}", properties), "/a"));
+  }
+
+  public final void testUnrelatedArgumentsUnchanged() {
+    final String jacoco = "-javaagent:\"C:\\Users\\John Doe\\jacoco.jar\"=destfile=x -Dfoo=-Djava.library.path=x";
+    Assert.assertEquals(jacoco, NarIntegrationTestMojo.addToJavaLibraryPath(jacoco, "/a"));
+  }
 }
