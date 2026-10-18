@@ -311,4 +311,10 @@ public class TestNarDescriptor extends TestCase {
     Assert.assertEquals("foo",
         describe(narInfo(MINGW, "foo"), MINGW, Library.SHARED, null, "dll").getProperty("libs.names"));
   }
+
+  public final void testVersionedLibraryAmbiguousWithPlainSo() throws Exception {
+    // some AOLs give the shared extension as so, not so*
+    touch("librenamed.so.1", "libbundled.so");
+    Assert.assertNull(describe(narInfo(LINUX, "foo"), LINUX, Library.SHARED, "lib", "so").getProperty("libs.names"));
+  }
 }

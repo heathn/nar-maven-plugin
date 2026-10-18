@@ -196,7 +196,7 @@ public final class NarDescriptor {
           final TreeSet<String> names = shortestNames(linkAliases(libDir, unversioned(patterns)));
           // and every library there, versioned ones included, has that name;
           // a libfoo.so.1 could be the output's by its SONAME
-          final TreeSet<String> all = shortestNames(aliases);
+          final TreeSet<String> all = shortestNames(linkAliases(libDir, versioned(patterns)));
           if (names.size() == 1 && all.equals(names)) {
             descriptor.setProperty("libs.names", names.first());
           } else if (all.size() > 1) {
@@ -219,6 +219,19 @@ public final class NarDescriptor {
     aliases.values().forEach(fileAliases -> names.add(fileAliases.stream()
         .min(Comparator.comparingInt(String::length).thenComparing(Comparator.naturalOrder())).get()));
     return names;
+  }
+
+  // so, as some AOLs give it, versioned too: libfoo.so.1
+  private static List<String[]> versioned(final List<String[]> patterns) {
+    final List<String[]> versioned = new ArrayList<>();
+    for (final String[] pattern : patterns) {
+      final String[] copy = pattern.clone();
+      if ("so".equals(copy[1])) {
+        copy[1] = "so*";
+      }
+      versioned.add(copy);
+    }
+    return versioned;
   }
 
   private static List<String[]> unversioned(final List<String[]> patterns) {
