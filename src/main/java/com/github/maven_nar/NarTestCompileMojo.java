@@ -290,55 +290,30 @@ public class NarTestCompileMojo extends AbstractCompileMojo {
       // use methods or classes defined in them.
       if (!binding.equals(Library.JNI) && !binding.equals(Library.NONE) && !binding.equals(Library.EXECUTABLE)) {
         // check if it exists in the normal unpack directory
+        Path unpackDirectory = getUnpackDirectory();
         Path dir = getLayout()
-            .getLibDirectory(getUnpackDirectory(), dependency.getArtifactId(), dependency.getBaseVersion(),
+            .getLibDirectory(unpackDirectory, dependency.getArtifactId(), dependency.getBaseVersion(),
                 aol.toString(), binding);
         getLog().debug("Looking for Library Directory: " + dir);
         if (Files.notExists(dir)) {
           getLog().debug("Library Directory " + dir + " does NOT exist.");
 
           // otherwise try the test unpack directory
+          unpackDirectory = getTestUnpackDirectory();
           dir = getLayout()
-              .getLibDirectory(getTestUnpackDirectory(), dependency.getArtifactId(), dependency.getBaseVersion(),
+              .getLibDirectory(unpackDirectory, dependency.getArtifactId(), dependency.getBaseVersion(),
                   aol.toString(), binding);
           getLog().debug("Looking for Library Directory: " + dir);
         }
+        NarInfo narInfo = dependency.getNarInfo();
         if (Files.exists(dir)) {
+          narInfo = getAolNarInfo(dependency, aol, binding, unpackDirectory);
+
           final LibrarySet libSet = new LibrarySet();
           libSet.setProject(antProject);
 
-          // Load nar properties file from aol specific directory
-          final Path aolNarInfoFile = getLayout()
-                  .getNarInfoDirectory(getUnpackDirectory(), dependency.getGroupId(), dependency.getArtifactId(),
-                          dependency.getBaseVersion(), aol.toString(), binding);
-
-          // Read nar properties file as NarInfo
-          NarInfo aolNarInfo = new NarInfo(dependency.getGroupId(), dependency.getArtifactId(),
-                  dependency.getBaseVersion(), getLog(), aolNarInfoFile);
-
-          // Write to log about custom nar properties found in aol directory.
-          if(!aolNarInfo.getInfo().isEmpty()) {
-            getLog().debug(String.format ("Custom NAR properties identified: %s-%s-%s-%s-%s",
-                    dependency.getGroupId(),
-                    dependency.getArtifactId(),
-                    dependency.getBaseVersion(),
-                    aol.toString(),
-                    binding));
-          }
-          else {
-            getLog().debug(String.format ("Custom NAR properties not identified: %s-%s-%s-%s-%s",
-                    dependency.getGroupId(),
-                    dependency.getArtifactId(),
-                    dependency.getBaseVersion(),
-                    aol.toString(),
-                    binding));
-          }
-
-          // overlay aol nar properties file on top of the default one.
-          aolNarInfo.mergeProperties(dependency.getNarInfo().getInfo());
-
           // FIXME, no way to override
-          final String libs = aolNarInfo.getLibs(getAOL());
+          final String libs = narInfo.getLibs(getAOL());
           if (libs != null && !libs.equals("")) {
             getLog().debug("Using LIBS = " + libs);
             libSet.setLibs(new CUtil.StringArrayBuilder(libs));
@@ -346,14 +321,14 @@ public class NarTestCompileMojo extends AbstractCompileMojo {
             task.addLibset(libSet);
           }
 
-          dependencySysLibs.addAll(getDependecySysLib(aolNarInfo));
+          dependencySysLibs.addAll(getDependecySysLib(narInfo));
         } else {
           getLog().debug("Library Directory " + dir + " does NOT exist.");
         }
 
         // FIXME, look again at this, for multiple dependencies we may need to
-        // remove duplicates
-        final String options = dependency.getNarInfo().getOptions(getAOL());
+        // remove duplicates.  Only a descriptor's options override the main nar.properties.
+        final String options = narInfo.getLinkerOptions(getAOL(), dependency.getNarInfo());
         if (options != null && !options.equals("")) {
           getLog().debug("Using OPTIONS = " + options);
           final LinkerArgument arg = new LinkerArgument();
