@@ -22,6 +22,7 @@ package com.github.maven_nar.test;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Comparator;
+import java.util.List;
 import java.util.Properties;
 import java.util.stream.Stream;
 
@@ -62,30 +63,30 @@ public class TestNarDescriptor extends TestCase {
 
   public final void testLinuxShared() throws Exception {
     touch("libfoo-1.0.so", "libfoo-1.0.so.1", "libbar.so.2.3.4", "notalib.txt", "libbaz.a");
-    Assert.assertEquals("bar foo-1.0", NarDescriptor.linkNames(this.dir, "lib", "so*"));
+    Assert.assertEquals("bar foo-1.0", NarDescriptor.linkNames(this.dir, List.<String[]>of(new String[] { "lib", "so*" })));
   }
 
   public final void testLinuxStatic() throws Exception {
     touch("libfoo.a", "libfoo.so");
-    Assert.assertEquals("foo", NarDescriptor.linkNames(this.dir, "lib", "a"));
+    Assert.assertEquals("foo", NarDescriptor.linkNames(this.dir, List.<String[]>of(new String[] { "lib", "a" })));
   }
 
   public final void testWindowsImportLibraryWithDottedName() throws Exception {
     // leptonica's own build names its library after the upstream version
     touch("leptonica-1.87.0.lib", "leptonica-1.87.0.dll", "leptonica-1.87.0.pdb");
-    Assert.assertEquals("leptonica-1.87.0", NarDescriptor.linkNames(this.dir, "", "lib"));
+    Assert.assertEquals("leptonica-1.87.0", NarDescriptor.linkNames(this.dir, List.<String[]>of(new String[] { "", "lib" })));
   }
 
   public final void testNameContainingExtension() throws Exception {
     touch("libsomething.so", "libso.so.1");
-    Assert.assertEquals("so something", NarDescriptor.linkNames(this.dir, "lib", "so*"));
+    Assert.assertEquals("so something", NarDescriptor.linkNames(this.dir, List.<String[]>of(new String[] { "lib", "so*" })));
   }
 
   public final void testMissingDirectoryOrExtension() throws Exception {
-    Assert.assertEquals("", NarDescriptor.linkNames(this.dir.resolve("none"), "lib", "so"));
+    Assert.assertEquals("", NarDescriptor.linkNames(this.dir.resolve("none"), List.<String[]>of(new String[] { "lib", "so" })));
     touch("libfoo.so");
-    Assert.assertEquals("", NarDescriptor.linkNames(this.dir, "lib", null));
-    Assert.assertEquals("libfoo", NarDescriptor.linkNames(this.dir, null, "so"));
+    Assert.assertEquals("", NarDescriptor.linkNames(this.dir, List.<String[]>of(new String[] { "lib", null })));
+    Assert.assertEquals("libfoo", NarDescriptor.linkNames(this.dir, List.<String[]>of(new String[] { null, "so" })));
   }
 
   public final void testWriteIsReproducible() throws Exception {
@@ -124,7 +125,8 @@ public class TestNarDescriptor extends TestCase {
 
   private Properties describe(final NarInfo narInfo, final AOL aol, final String type, final String prefix,
       final String extension) throws Exception {
-    return NarDescriptor.describe(narInfo, aol, type, this.dir, prefix, extension, new SystemStreamLog());
+    return NarDescriptor.describe(narInfo, aol, type, this.dir,
+        NarDescriptor.linkPatterns(aol.toString(), type, prefix, extension), new SystemStreamLog());
   }
 
   public final void testOutputPresentKeepsLinkingOutput() throws Exception {
@@ -213,5 +215,26 @@ public class TestNarDescriptor extends TestCase {
     NarDescriptor.write(file, d);
     Assert.assertTrue(consumer.overlayDescriptor(file, LINUX));
     Assert.assertEquals("lib-1.0", consumer.getLibs(LINUX));
+  }
+
+  private static final AOL MINGW = new AOL("amd64-Windows-gpp");
+
+  public final void testMingwSharedOutputDllWithBundledArchive() throws Exception {
+    // the output DLL is directly linkable; a bundled static archive isn't linked
+    touch("lib-1.0.dll", "libbundled.a");
+    Assert.assertEquals("lib-1.0",
+        describe(narInfo(MINGW, "lib-1.0"), MINGW, Library.SHARED, null, "dll").getProperty("libs.names"));
+  }
+
+  public final void testMingwImportLibraries() throws Exception {
+    touch("liblib-1.0.dll.a", "lib-1.0.dll", "libbundled.dll.a", "bundled.dll");
+    Assert.assertEquals("lib-1.0",
+        describe(narInfo(MINGW, "lib-1.0"), MINGW, Library.SHARED, null, "dll").getProperty("libs.names"));
+  }
+
+  public final void testMingwRenamedImportLibrary() throws Exception {
+    touch("librenamed.dll.a", "renamed.dll");
+    Assert.assertEquals("renamed",
+        describe(narInfo(MINGW, "lib-1.0"), MINGW, Library.SHARED, null, "dll").getProperty("libs.names"));
   }
 }

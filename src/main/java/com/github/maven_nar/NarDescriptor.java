@@ -24,6 +24,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Properties;
@@ -48,34 +49,71 @@ public final class NarDescriptor {
 
   /**
    * The names to link the libraries in a directory with, as libs.names
-   * lists them: each file named prefix + name + "." + extension, where an
-   * extension ending in "*" also matches version suffixes (libfoo.so.1.2).
+   * lists them: each file named prefix + name + "." + extension for one of
+   * the patterns, where an extension ending in "*" also matches version
+   * suffixes (libfoo.so.1.2).
    *
    * @param libDir the directory
-   * @param prefix the library file prefix, for example "lib", or empty
-   * @param extension the extension to link with, for example "so*", "a" or "lib"
+   * @param patterns pairs of library file prefix (possibly empty) and extension
    * @return the space-separated names, sorted, or an empty string
    * @throws IOException if the directory can't be listed
    */
-  public static String linkNames(final Path libDir, final String prefix, final String extension)
-      throws IOException {
-    if (!Files.isDirectory(libDir) || extension == null || extension.isEmpty()) {
+  public static String linkNames(final Path libDir, final List<String[]> patterns) throws IOException {
+    if (!Files.isDirectory(libDir)) {
       return "";
     }
-    final boolean versioned = extension.endsWith("*");
-    final String ext = versioned ? extension.substring(0, extension.length() - 1) : extension;
-    final Pattern pattern = Pattern.compile(Pattern.quote(prefix == null ? "" : prefix) + "(.+)\\."
-        + Pattern.quote(ext) + (versioned ? "(\\.[0-9][0-9.]*)?" : ""));
+    final List<Pattern> regexes = new ArrayList<>();
+    for (final String[] pattern : patterns) {
+      final String prefix = pattern[0] == null ? "" : pattern[0];
+      final String extension = pattern[1];
+      if (extension == null || extension.isEmpty()) {
+        continue;
+      }
+      final boolean versioned = extension.endsWith("*");
+      final String ext = versioned ? extension.substring(0, extension.length() - 1) : extension;
+      regexes.add(Pattern.compile(Pattern.quote(prefix) + "(.+)\\." + Pattern.quote(ext)
+          + (versioned ? "(\\.[0-9][0-9.]*)?" : "")));
+    }
     final TreeSet<String> names = new TreeSet<>();
     try (Stream<Path> files = Files.list(libDir)) {
       files.filter(Files::isRegularFile).map(file -> file.getFileName().toString()).forEach(name -> {
-        final Matcher m = pattern.matcher(name);
-        if (m.matches()) {
-          names.add(m.group(1));
+        for (final Pattern regex : regexes) {
+          final Matcher m = regex.matcher(name);
+          if (m.matches()) {
+            names.add(m.group(1));
+          }
         }
       });
     }
     return String.join(" ", names);
+  }
+
+  /**
+   * The patterns a linker finds a library's files by, for
+   * {@link #linkNames}: MSVC links name.lib (an import library, for a
+   * shared one); a GNU linker on Windows a shared library's libname.dll.a,
+   * name.dll or libname.dll, and a static one's libname.a; others the
+   * prefix and extension aol.properties gives, prefix lib if none.
+   *
+   * @param aol the AOL, arch-os-linker
+   * @param type shared or static
+   * @param prefix the lib.prefix aol.properties gives, or null
+   * @param extension the extension aol.properties gives for the type
+   * @return pairs of prefix and extension
+   */
+  public static List<String[]> linkPatterns(final String aol, final String type, final String prefix,
+      final String extension) {
+    final String[] parts = aol.split("-");
+    final String linker = parts[parts.length - 1];
+    if (parts.length > 1 && OS.WINDOWS.equals(parts[1])) {
+      if ("msvc".equals(linker) || "icl".equals(linker)) {
+        return List.<String[]>of(new String[] { prefix == null ? "" : prefix, "lib" });
+      }
+      return Library.SHARED.equals(type)
+          ? List.of(new String[] { "lib", "dll.a" }, new String[] { "", "dll" }, new String[] { "lib", "dll" })
+          : List.<String[]>of(new String[] { "lib", "a" });
+    }
+    return List.<String[]>of(new String[] { prefix == null ? "lib" : prefix, extension });
   }
 
   /**
@@ -96,14 +134,14 @@ public final class NarDescriptor {
    * @param aol the NAR's AOL
    * @param type the NAR's library type
    * @param libDir the directory of the NAR's libraries
-   * @param prefix the library file prefix, or null for the usual one
-   * @param extension the extension libraries are linked with
+   * @param patterns the patterns the linker finds library files by, see
+   *          {@link #linkPatterns}
    * @param log for warnings
    * @return the descriptor's properties
    * @throws IOException if the library directory can't be listed
    */
   public static Properties describe(final NarInfo narInfo, final AOL aol, final String type, final Path libDir,
-      final String prefix, final String extension, final Log log) throws IOException {
+      final List<String[]> patterns, final Log log) throws IOException {
     final Properties descriptor = new Properties();
     descriptor.setProperty(NarInfo.DESCRIPTOR_VERSION_KEY, String.valueOf(NarInfo.DESCRIPTOR_VERSION));
     final String output = narInfo.getOutput(aol, null);
@@ -115,10 +153,7 @@ public final class NarDescriptor {
       if (configured != null) {
         descriptor.setProperty("libs.names", configured);
       } else {
-        // GNU archives are lib<name>.a on Windows too
-        final String libPrefix = prefix != null ? prefix
-            : OS.WINDOWS.equals(aol.getOS()) && !"a".equals(extension) ? "" : "lib";
-        final String found = linkNames(libDir, libPrefix, extension);
+        final String found = linkNames(libDir, patterns);
         final List<String> names = found.isEmpty() ? List.of() : Arrays.asList(found.split(" "));
         if (output != null && names.contains(output)) {
           descriptor.setProperty("libs.names", output);

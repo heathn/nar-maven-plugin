@@ -178,11 +178,10 @@ public class NarPreparePackageMojo extends AbstractCompileMojo {
       final AOL aol = new AOL(aolName);
 
       final String key = NarUtil.getAOLKey(aolName);
-      // Windows links shared libraries through their import libraries
-      final String linkType = OS.WINDOWS.equals(aol.getOS()) ? Library.STATIC : type;
       final Properties descriptor = NarDescriptor.describe(narInfo, aol, type,
-          directory.resolve("lib").resolve(aolName).resolve(type), narProperties.getProperty(key + ".lib.prefix"),
-          narProperties.getProperty(key + "." + linkType + ".extension"), getLog());
+          directory.resolve("lib").resolve(aolName).resolve(type),
+          NarDescriptor.linkPatterns(aolName, type, narProperties.getProperty(key + ".lib.prefix"),
+              narProperties.getProperty(key + "." + type + ".extension")), getLog());
 
       final Path file = directory.resolve(narInfo.getNarInfoFileName())
           .resolveSibling(NarInfo.getDescriptorFileName(aolName, type));

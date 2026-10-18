@@ -67,6 +67,12 @@
                   <fileset dir="${project.build.directory}/nar" includes="*-shared/lib/**/*${project.artifactId}-${project.version}*" />
                   <regexpmapper from="^(.*)${project.artifactId}-${project.version}(.*)$" to="\1renamed\2" handledirsep="yes" />
                 </move>
+                <!-- a dylib carries its own name, which consumers record -->
+                <apply executable="install_name_tool" osfamily="mac" failonerror="true">
+                  <arg value="-id" />
+                  <arg value="librenamed.dylib" />
+                  <fileset dir="${project.build.directory}/nar" includes="*-shared/lib/**/librenamed.dylib" />
+                </apply>
               </target>
             </configuration>
           </execution>
