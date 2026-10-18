@@ -259,4 +259,10 @@ public class TestNarDescriptor extends TestCase {
       Files.deleteIfExists(file);
     }
   }
+
+  public final void testMingwPrefixedRenamedDllLinkedOnce() throws Exception {
+    touch("librenamed.dll");
+    Assert.assertEquals("renamed",
+        describe(narInfo(MINGW, "lib-1.0"), MINGW, Library.SHARED, null, "dll").getProperty("libs.names"));
+  }
 }

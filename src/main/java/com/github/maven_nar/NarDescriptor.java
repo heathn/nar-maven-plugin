@@ -66,8 +66,26 @@ public final class NarDescriptor {
    * @throws IOException if the directory can't be listed
    */
   public static String linkNames(final Path libDir, final List<String[]> patterns) throws IOException {
+    final TreeSet<String> names = new TreeSet<>();
+    linkAliases(libDir, patterns).values().forEach(names::addAll);
+    return String.join(" ", names);
+  }
+
+  /**
+   * The names each library file in a directory can be linked by, for
+   * {@link #linkNames}; a file matching several patterns (librenamed.dll as
+   * name.dll and libname.dll) has several.
+   *
+   * @param libDir the directory
+   * @param patterns as for {@link #linkNames}
+   * @return the names, by file name
+   * @throws IOException if the directory can't be listed
+   */
+  public static java.util.Map<String, TreeSet<String>> linkAliases(final Path libDir, final List<String[]> patterns)
+      throws IOException {
+    final java.util.Map<String, TreeSet<String>> aliases = new java.util.TreeMap<>();
     if (!Files.isDirectory(libDir)) {
-      return "";
+      return aliases;
     }
     final List<Pattern> regexes = new ArrayList<>();
     for (final String[] pattern : patterns) {
@@ -82,18 +100,17 @@ public final class NarDescriptor {
       regexes.add(Pattern.compile(Pattern.quote(prefix) + "(.+)\\." + Pattern.quote(ext)
           + (versioned ? "(\\.[0-9][0-9.]*)?" : ""), ignoreCase ? Pattern.CASE_INSENSITIVE : 0));
     }
-    final TreeSet<String> names = new TreeSet<>();
     try (Stream<Path> files = Files.list(libDir)) {
       files.filter(Files::isRegularFile).map(file -> file.getFileName().toString()).forEach(name -> {
         for (final Pattern regex : regexes) {
           final Matcher m = regex.matcher(name);
           if (m.matches()) {
-            names.add(m.group(1));
+            aliases.computeIfAbsent(name, n -> new TreeSet<>()).add(m.group(1));
           }
         }
       });
     }
-    return String.join(" ", names);
+    return aliases;
   }
 
   /**
@@ -161,11 +178,16 @@ public final class NarDescriptor {
       if (configured != null) {
         descriptor.setProperty("libs.names", configured);
       } else {
-        final String found = linkNames(libDir, patterns);
-        final List<String> names = found.isEmpty() ? List.of() : Arrays.asList(found.split(" "));
+        final java.util.Map<String, TreeSet<String>> aliases = linkAliases(libDir, patterns);
+        // one name for each library, its shortest: renamed for librenamed.dll
+        final TreeSet<String> names = new TreeSet<>();
+        aliases.values().forEach(fileAliases -> names.add(fileAliases.stream()
+            .min(java.util.Comparator.comparingInt(String::length).thenComparing(java.util.Comparator.naturalOrder()))
+            .get()));
+        final String found = String.join(" ", names);
         final boolean ignoreCase = patterns.stream().anyMatch(p -> p.length > 2 && IGNORE_CASE.equals(p[2]));
-        if (output != null && names.stream().anyMatch(name -> ignoreCase ? name.equalsIgnoreCase(output)
-            : name.equals(output))) {
+        if (output != null && aliases.values().stream().flatMap(TreeSet::stream)
+            .anyMatch(name -> ignoreCase ? name.equalsIgnoreCase(output) : name.equals(output))) {
           descriptor.setProperty("libs.names", output);
         } else if (!names.isEmpty()) {
           descriptor.setProperty("libs.names", found);
