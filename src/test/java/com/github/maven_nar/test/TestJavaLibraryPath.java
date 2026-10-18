@@ -101,4 +101,13 @@ public class TestJavaLibraryPath extends TestCase {
     final String jacoco = "-javaagent:\"C:\\Users\\John Doe\\jacoco.jar\"=destfile=x -Dfoo=-Djava.library.path=x";
     Assert.assertEquals(jacoco, NarIntegrationTestMojo.addToJavaLibraryPath(jacoco, "/a"));
   }
+
+  public final void testEscapedQuotes() {
+    // an escaped quote before the definition doesn't swallow it
+    Assert.assertEquals("-Dnote=\"a\\\"b\" -Djava.library.path=/vendor" + S + "/a",
+        NarIntegrationTestMojo.addToJavaLibraryPath("-Dnote=\"a\\\"b\" -Djava.library.path=/vendor", "/a"));
+    // nor does one inside it absorb the next option
+    Assert.assertEquals("'-Djava.library.path=/v\\\"x" + S + "/a' -ea",
+        NarIntegrationTestMojo.addToJavaLibraryPath("-Djava.library.path=/v\\\"x -ea", "/a"));
+  }
 }

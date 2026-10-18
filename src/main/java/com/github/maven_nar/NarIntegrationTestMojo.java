@@ -813,7 +813,10 @@ public class NarIntegrationTestMojo extends AbstractSurefireMojo
       char quote = 0;
       while (i < argLine.length() && (quote != 0 || !Character.isWhitespace(argLine.charAt(i)))) {
         final char c = argLine.charAt(i++);
-        if (quote == 0 && (c == '"' || c == '\'')) {
+        // as in Surefire, a quote after a backslash is literal, backslash and all
+        if (c == '\\' && i < argLine.length() && (argLine.charAt(i) == '"' || argLine.charAt(i) == '\'')) {
+          token.append(c).append(argLine.charAt(i++));
+        } else if (quote == 0 && (c == '"' || c == '\'')) {
           quote = c;
         } else if (c == quote) {
           quote = 0;
@@ -852,9 +855,9 @@ public class NarIntegrationTestMojo extends AbstractSurefireMojo
     final String value = last[2];
     final String path = value.isEmpty() ? directories : value + File.pathSeparator + directories;
     String argument = JAVA_LIBRARY_PATH + path;
-    // Surefire splits argLine on whitespace outside quotes; a quote after a
-    // backslash is literal there, which this doesn't need to handle, as the
-    // argument it writes never ends in one
+    // Surefire splits argLine on whitespace outside quotes, taking a quote
+    // after a backslash literally; the argument written here never ends in a
+    // backslash, as a NAR directory comes last
     if (argument.chars().anyMatch(c -> Character.isWhitespace(c) || c == '"' || c == '\'')) {
       if (argument.indexOf('"') < 0) {
         argument = "\"" + argument + "\"";
