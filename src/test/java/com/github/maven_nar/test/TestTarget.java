@@ -184,4 +184,20 @@ public class TestTarget extends TestCase {
         log);
     Assert.assertEquals(List.of(), warnings);
   }
+
+  public final void testMappingToUnnormalizedAol() throws Exception {
+    final NarInfo narInfo = narInfo();
+    narInfo.getInfo().setProperty("x86_64-Linux-gpp", "amd64-Linux-g++");
+    declare(targets(), narInfo);
+    Assert.assertEquals("", narInfo.getProperty(new AOL("x86_64-Linux-gpp"), "nar.static"));
+  }
+
+  public final void testPresetGenericBinding() throws Exception {
+    final NarInfo narInfo = narInfo();
+    narInfo.setBinding(null, "static");
+    Target.declare(targets(), narInfo, Set.of("libs.binding"), Set.of(), COORDINATE, "lib-1.0", "lib", null);
+    // Windows ships a static library, Linux doesn't
+    Assert.assertEquals("static", narInfo.getBinding(WINDOWS, null));
+    Assert.assertEquals("shared", narInfo.getBinding(LINUX, null));
+  }
 }

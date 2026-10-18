@@ -79,7 +79,9 @@ public class Target {
    * every machine writes the same ones whatever it built:
    * &lt;aol&gt;.nar.&lt;type&gt; for each type it ships and empty for every
    * other type (so the generic nar.&lt;type&gt; doesn't claim it for this
-   * AOL), &lt;aol&gt;.libs.binding, &lt;aol&gt;.output and, when configured,
+   * AOL), &lt;aol&gt;.libs.binding (the project's generic libs.binding if the
+   * target ships that type, otherwise shared or static), &lt;aol&gt;.output and,
+   * when configured,
    * &lt;aol&gt;.libs.names.  Each replaces what was generated for the AOL
    * built here, but not a key set in the project's own nar.properties.  An
    * AOL that nar.properties maps to a target gets the target's keys too.
@@ -118,11 +120,18 @@ public class Target {
     final Map<String, Target> mapped = new LinkedHashMap<>();
     for (final String key : narInfo.getInfo().stringPropertyNames()) {
       final String value = narInfo.getInfo().getProperty(key).trim();
-      if (key.indexOf('.') < 0 && key.split("-").length == 3 && byAol.containsKey(value)
+      if (key.indexOf('.') < 0 && key.split("-").length == 3 && value.split("-").length == 3
           && !byAol.containsKey(key)) {
-        mapped.put(key, byAol.get(value));
+        // as NarInfo.getAOL reads it, so amd64-Linux-g++ is amd64-Linux-gpp
+        final Target target = byAol.get(new AOL(value).toString());
+        if (target != null) {
+          mapped.put(key, target);
+        }
       }
     }
+    // a generic libs.binding in the project's nar.properties, for the
+    // targets that ship that type
+    final String presetBinding = presetKeys.contains("libs.binding") ? narInfo.getBinding(null, null) : null;
     final Map<String, Target> describe = new LinkedHashMap<>(byAol);
     describe.putAll(mapped);
 
@@ -133,7 +142,8 @@ public class Target {
         set(narInfo, presetKeys, aol + "." + NarConstants.NAR + "." + type,
             target.getTypes().contains(type) ? coordinate + ":" + shipped + "-" + type : "");
       }
-      set(narInfo, presetKeys, aol + ".libs.binding", preferredBinding(target.getTypes()));
+      set(narInfo, presetKeys, aol + ".libs.binding", presetBinding != null && target.getTypes().contains(presetBinding)
+          ? presetBinding : preferredBinding(target.getTypes()));
       final boolean libraries = target.getTypes().stream().anyMatch(type -> !Library.EXECUTABLE.equals(type));
       set(narInfo, presetKeys, aol + ".output", libraries ? libraryOutput : executableOutput);
       if (libsName != null) {

@@ -35,6 +35,7 @@ import java.util.stream.Collectors;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
 import org.apache.maven.plugin.logging.Log;
+import org.apache.maven.model.Resource;
 import org.apache.maven.project.MavenProject;
 import org.apache.maven.project.MavenProjectHelper;
 import org.apache.maven.surefire.shared.lang3.function.Failable;
@@ -182,8 +183,18 @@ public class NarLayout21 extends AbstractNarLayout {
   @Override
   public final void prepareNarInfo(final Path baseDir, final MavenProject project, final NarInfo narInfo,
       final AbstractCompileMojo mojo) throws MojoExecutionException, MojoFailureException {
-    // the keys the project's own nar.properties sets, which declared targets don't replace
-    final Set<String> presetKeys = new HashSet<>(narInfo.getInfo().stringPropertyNames());
+    // the keys the project's own nar.properties sets, which declared targets
+    // don't replace; read from the sources, since target/classes may hold
+    // what a previous build generated
+    final Set<String> presetKeys = new HashSet<>();
+    for (final Resource resource : project.getBuild().getResources()) {
+      final Path file = project.getBasedir().toPath().resolve(resource.getDirectory())
+          .resolve(narInfo.getNarInfoFileName());
+      if (Files.isRegularFile(file)) {
+        presetKeys.addAll(new NarInfo(project.getGroupId(), project.getArtifactId(), project.getVersion(), getLog(),
+            file).getInfo().stringPropertyNames());
+      }
+    }
     if (Files.exists(getNoArchDirectory(baseDir, project.getArtifactId(), project.getVersion()))) {
       narInfo.setNar(null, NarConstants.NAR_NO_ARCH, project.getGroupId() + ":" + project.getArtifactId() + ":"
           + NarConstants.NAR_TYPE + ":" + NarConstants.NAR_NO_ARCH);
