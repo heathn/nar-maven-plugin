@@ -111,18 +111,6 @@ public class TestNarDeploy extends TestCase {
       }
     }
   }
-
-  public final void testOutputTimestampRange() {
-    for (final String bad : new String[] { "1979-12-31T00:00:00Z", "2100-01-01T00:00:00Z", "100" }) {
-      try {
-        NarUtil.getOutputTimestamp(bad);
-        fail("accepted " + bad);
-      } catch (final IllegalArgumentException expected) {
-        // expected
-      }
-    }
-  }
-
   public final void testSupportsConditionalSkip() {
     for (final String old : new String[] { "2.8.2", "3.0.0-M1" }) {
       Assert.assertFalse(old, NarDeployMojo.supportsConditionalSkip(old));

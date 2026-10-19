@@ -38,6 +38,7 @@ import java.util.stream.Stream;
 
 import org.apache.bcel.classfile.ClassParser;
 import org.apache.bcel.classfile.JavaClass;
+import org.apache.maven.archiver.MavenArchiver;
 import org.apache.maven.model.Profile;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
@@ -275,35 +276,17 @@ public final class NarUtil {
   }
 
   /**
-   * Parses project.build.outputTimestamp as Maven does: seconds since the
-   * epoch, or an ISO 8601 date and time with an offset, between 1980 and
-   * 2099.  A single character or nothing means reproducible builds are off.
+   * Parses project.build.outputTimestamp as maven-jar-plugin does, with
+   * maven-archiver: seconds since the epoch, or an ISO 8601 date and time
+   * with an offset.  Unset or a single character means reproducible builds
+   * are off, unless SOURCE_DATE_EPOCH is set.
    *
    * @param outputTimestamp the property's value, or null
    * @return the timestamp, or null if there's none
    * @throws IllegalArgumentException if it can't be parsed
    */
   public static FileTime getOutputTimestamp(final String outputTimestamp) {
-    if (outputTimestamp == null || outputTimestamp.trim().length() < 2) {
-      return null;
-    }
-    final String value = outputTimestamp.trim();
-    final java.time.Instant instant;
-    if (value.chars().allMatch(Character::isDigit)) {
-      instant = java.time.Instant.ofEpochSecond(Long.parseLong(value));
-    } else {
-      try {
-        instant = java.time.OffsetDateTime.parse(value).toInstant();
-      } catch (final java.time.format.DateTimeParseException e) {
-        throw new IllegalArgumentException("Invalid project.build.outputTimestamp: " + value, e);
-      }
-    }
-    // the range of a zip entry's time, as Maven checks it
-    if (instant.isBefore(java.time.Instant.parse("1980-01-01T00:00:02Z"))
-        || instant.isAfter(java.time.Instant.parse("2099-12-31T23:59:59Z"))) {
-      throw new IllegalArgumentException("project.build.outputTimestamp is out of range: " + value);
-    }
-    return FileTime.from(instant);
+    return MavenArchiver.parseBuildOutputTimestamp(outputTimestamp).map(FileTime::from).orElse(null);
   }
 
   public static String getAOLKey(final String aol) {
