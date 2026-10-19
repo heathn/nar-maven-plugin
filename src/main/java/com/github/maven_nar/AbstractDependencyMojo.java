@@ -729,16 +729,18 @@ public abstract class AbstractDependencyMojo extends AbstractNarMojo {
   }
 
   public final NarInfo getNarInfo(final Artifact dependency) throws MojoExecutionException {
+    // getFile(), not getPath(), which Maven 3.9's resolver 1.9 doesn't have
+    final Path path = dependency.getFile().toPath();
 
-    if (Files.isDirectory(dependency.getFile().toPath())) {
-      getLog().debug("Dependency is not packaged: " + dependency.getPath());
+    if (Files.isDirectory(path)) {
+      getLog().debug("Dependency is not packaged: " + path);
 
       return new NarInfo(dependency.getGroupId(), dependency.getArtifactId(), dependency.getBaseVersion(), getLog(),
-          dependency.getPath());
+          path);
     }
 
-    if (!Files.exists(dependency.getFile().toPath())) {
-      getLog().debug("Dependency nar file does not exist: " + dependency.getPath());
+    if (!Files.exists(path)) {
+      getLog().debug("Dependency nar file does not exist: " + path);
       return null;  
     }
 
@@ -748,20 +750,20 @@ public abstract class AbstractDependencyMojo extends AbstractNarMojo {
         return null;
       }
     } catch (IOException e) {
-      throw new MojoExecutionException("Error while testing for zip file " + dependency.getPath(), e);
+      throw new MojoExecutionException("Error while testing for zip file " + path, e);
     }
 
     try (JarFile jar = new JarFile(dependency.getFile())) {
       final NarInfo info = new NarInfo(dependency.getGroupId(), dependency.getArtifactId(),
           dependency.getBaseVersion(), getLog());
       if (!info.exists(jar)) {
-        getLog().debug("Dependency nar file does not contain this artifact: " + dependency.getPath());
+        getLog().debug("Dependency nar file does not contain this artifact: " + path);
         return null;
       }
       info.read(jar);
       return info;
     } catch (final IOException e) {
-      throw new MojoExecutionException("Error while reading " + dependency.getPath(), e);
+      throw new MojoExecutionException("Error while reading " + path, e);
     }
   }
 

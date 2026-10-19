@@ -51,8 +51,9 @@ public class NarPackageMojo extends AbstractNarMojo {
   /**
    * The time to give every entry of the NARs, as Maven's archivers do,
    * evaluated like their parameter: seconds since the epoch or an ISO 8601
-   * date and time with an offset.  Unset, or a single character, leaves
-   * the NARs as they are.
+   * date and time with an offset.  Unset, or a single non-digit character,
+   * falls back to the SOURCE_DATE_EPOCH environment variable, and without
+   * that leaves the NARs as they are.
    */
   @Parameter(defaultValue = "${project.build.outputTimestamp}")
   private String outputTimestamp;

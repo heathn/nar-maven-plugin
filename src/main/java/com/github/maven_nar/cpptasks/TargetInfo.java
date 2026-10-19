@@ -27,7 +27,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
 
-import org.apache.maven.surefire.shared.lang3.function.Failable;
+import org.apache.commons.lang3.function.Failable;
 
 import com.github.maven_nar.cpptasks.compiler.ProcessorConfiguration;
 

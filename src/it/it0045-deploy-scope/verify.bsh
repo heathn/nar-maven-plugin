@@ -18,7 +18,6 @@
  * #L%
  */
 import java.io.File;
-import java.util.Enumeration;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
@@ -54,14 +53,17 @@ for (int i = 0; i < nars.length; i++) {
     continue;
   }
   ZipFile zip = new ZipFile(nars[i]);
-  for (Enumeration e = zip.entries(); e.hasMoreElements();) {
-    ZipEntry entry = (ZipEntry) e.nextElement();
+  // indexed, as BeanShell calls methods on their runtime class, and Java 17
+  // doesn't let it call those of the JDK's internal enumerations and iterators
+  java.util.ArrayList entries = java.util.Collections.list(zip.entries());
+  for (int j = 0; j < entries.size(); j++) {
+    ZipEntry entry = (ZipEntry) entries.get(j);
     long seconds = java.time.Duration.between(expected, entry.getTimeLocal()).getSeconds();
     if (Math.abs(seconds) > 2) {
       throw new RuntimeException(nars[i].getName() + "!" + entry.getName() + " has time " + entry.getTimeLocal());
     }
     if (entry.getName().endsWith("nar.properties")) {
-      String text = new String(zip.getInputStream(entry).readAllBytes(), "ISO-8859-1");
+      String text = new String(new java.io.BufferedInputStream(zip.getInputStream(entry)).readAllBytes(), "ISO-8859-1");
       if (text.startsWith("#")) {
         throw new RuntimeException(entry.getName() + " still has a timestamp comment: " + text);
       }

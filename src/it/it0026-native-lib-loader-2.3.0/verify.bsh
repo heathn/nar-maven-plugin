@@ -65,9 +65,11 @@ print("Starting java -classpath '" + classPath + "' it0026.test.Hello");
 process = new ProcessBuilder(new String[] {
 		"java", "-classpath", classPath, "it0026.test.Hello"
 	}).start();
-printInputStream(process.getErrorStream());
-printInputStream(process.getInputStream());
-exitCode = process.waitFor();
+// Through Process itself: BeanShell otherwise looks these up on the runtime
+// class, java.lang.ProcessImpl, which Java 17 doesn't let it call
+printInputStream(Process.class.getMethod("getErrorStream", new Class[0]).invoke(process, new Object[0]));
+printInputStream(Process.class.getMethod("getInputStream", new Class[0]).invoke(process, new Object[0]));
+exitCode = Process.class.getMethod("waitFor", new Class[0]).invoke(process, new Object[0]).intValue();
 
 if (exitCode != 108) {
 	print("Unexpected exit code: " + exitCode);

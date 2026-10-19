@@ -26,7 +26,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 import org.apache.maven.artifact.Artifact;
 import org.apache.maven.artifact.repository.ArtifactRepository;
@@ -69,18 +68,15 @@ import org.eclipse.aether.repository.RemoteRepository;
  * pom.  maven.deploy.skip set on the command line, or a skip configured on
  * maven-deploy-plugin, would also keep this goal from stopping
  * maven-deploy-plugin, so with "aol" the build fails if one would leave it
- * deploying: one that skips (true, or releases or snapshots with
- * maven-deploy-plugin 3) skips this goal too.  It also fails with
+ * deploying: one that skips (true, releases or snapshots) skips this goal
+ * too.  "aol" needs maven-deploy-plugin 3.0.0-M2 or later, which reads
+ * releases and snapshots as conditional skips.  It also fails with
  * maven-deploy-plugin's deployAtEnd, which this goal, deploying right
  * away, would bypass, and with a deploy execution bound to an earlier phase.
  */
 @Mojo(name = "nar-deploy", defaultPhase = LifecyclePhase.DEPLOY, requiresProject = true, threadSafe = true)
 public class NarDeployMojo extends AbstractMojo {
 
-  /**
-   * "all" to deploy everything, or "aol" to deploy only this build's
-   * AOL-specific artifacts.
-   */
   // The default lifecycle's phases, up to deploy
   private static final List<String> PHASES_TO_DEPLOY = List.of("validate", "initialize", "generate-sources",
       "process-sources", "generate-resources", "process-resources", "compile", "process-classes",
@@ -88,6 +84,10 @@ public class NarDeployMojo extends AbstractMojo {
       "test-compile", "process-test-classes", "test", "prepare-package", "package", "pre-integration-test",
       "integration-test", "post-integration-test", "verify", "install", "deploy");
 
+  /**
+   * "all" to deploy everything, or "aol" to deploy only this build's
+   * AOL-specific artifacts.
+   */
   @Parameter(property = "nar.deployScope", defaultValue = "all")
   private String deployScope;
 
@@ -120,6 +120,14 @@ public class NarDeployMojo extends AbstractMojo {
     if (!"aol".equals(this.deployScope)) {
       throw new MojoExecutionException("nar.deployScope must be all or aol, not " + this.deployScope);
     }
+    // older versions read skip as a boolean, so would deploy despite
+    // releases or snapshots
+    final Plugin deployPlugin = deployPlugin();
+    final String version = deployPlugin == null ? null : deployPlugin.getVersion();
+    if (version != null && !supportsDeployPlugin(version)) {
+      throw new MojoExecutionException("nar.deployScope=aol needs maven-deploy-plugin 3.0.0-M2 or later, not "
+          + version);
+    }
     // What each maven-deploy-plugin deploy execution's skip is set to: in its
     // configuration (with the plugin's merged in) or on the command line.
     // Unset, the project property set below makes it skip.
@@ -127,16 +135,6 @@ public class NarDeployMojo extends AbstractMojo {
     final String userSkip = skipValue(this.session.getUserProperties().getProperty("maven.deploy.skip",
         this.session.getSystemProperties().getProperty("maven.deploy.skip")));
     final List<String> explicitSkips = deployExecutionSkips(userSkip);
-    // maven-deploy-plugin before 3.0.0-M2 takes skip as a boolean, so it
-    // would deploy despite a conditional value
-    final Plugin deployPlugin = deployPlugin();
-    final String version = deployPlugin == null ? null : deployPlugin.getVersion();
-    final boolean conditional = Stream.concat(explicitSkips.stream(), Stream.of(this.deploySkip))
-        .anyMatch(value -> "releases".equals(value) || "snapshots".equals(value));
-    if (conditional && version != null && !supportsConditionalSkip(version)) {
-      throw new MojoExecutionException("maven.deploy.skip=releases or snapshots needs maven-deploy-plugin 3.0.0-M2 "
-          + "or later, not " + version);
-    }
     final List<String> blocking = explicitSkips.stream()
         .filter(value -> value != null && !skips(value, snapshot)).collect(Collectors.toList());
     if (!blocking.isEmpty()) {
@@ -333,10 +331,10 @@ public class NarDeployMojo extends AbstractMojo {
 
   /**
    * @param version a maven-deploy-plugin version
-   * @return whether it takes maven.deploy.skip=releases or snapshots, which
-   *         came in 3.0.0-M2; earlier versions read skip as a boolean
+   * @return whether nar.deployScope=aol supports it: 3.0.0-M2 or later, which
+   *         takes maven.deploy.skip=releases or snapshots
    */
-  public static boolean supportsConditionalSkip(final String version) {
+  public static boolean supportsDeployPlugin(final String version) {
     return new ComparableVersion(version).compareTo(new ComparableVersion("3.0.0-M2")) >= 0;
   }
 

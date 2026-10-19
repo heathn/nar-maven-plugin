@@ -23,7 +23,6 @@ import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.LinkedHashSet;
@@ -246,7 +245,7 @@ public class NarIntegrationTestMojo extends AbstractSurefireMojo
    * Specify this parameter to run individual tests by file name, overriding the <code>includes/excludes</code>
    * parameters. Each pattern you specify here will be used to create an include pattern formatted like
    * <code>**&#47;${test}.java</code>, so you can just type "-Dtest=MyTest" to run a single test called
-   * "foo/MyTest.java". This parameter will override the TestNG suiteXmlFiles parameter.
+   * "foo/MyTest.java".
    * 
    */
   @Parameter(property = "test")
@@ -352,9 +351,7 @@ public class NarIntegrationTestMojo extends AbstractSurefireMojo
    * </code>
    * <p/>
    * Each include item may also contain a comma-separated sublist of items, which will be treated as multiple
-   * &nbsp;&lt;include> entries.<br/>
-   * <p/>
-   * This parameter is ignored if the TestNG <code>suiteXmlFiles</code> parameter is specified.
+   * &nbsp;&lt;include> entries.
    */
   @Parameter
   private List<String> includes;
@@ -368,8 +365,6 @@ public class NarIntegrationTestMojo extends AbstractSurefireMojo
    * {@literal </excludes>}
    * </code></pre>
    * (which excludes all inner classes).
-   * <br>
-   * This parameter is ignored if the TestNG {@code suiteXmlFiles} parameter is specified.
    * <br>
    * Each exclude item may also contain a comma-separated sub-list of items, which will be treated as multiple
    * {@literal <exclude>} entries.<br>
@@ -436,14 +431,12 @@ public class NarIntegrationTestMojo extends AbstractSurefireMojo
   private int failOnFlakeCount;
 
   /**
-   * (TestNG) List of &lt;suiteXmlFile> elements specifying TestNG suite xml file locations. Note that
-   * <code>suiteXmlFiles</code> is incompatible with several other parameters of this plugin, like
-   * <code>includes/excludes</code>.<br/>
-   * This parameter is ignored if the <code>test</code> parameter is specified (allowing you to run a single test
-   * instead of an entire suite).
+   * (TestNG) List of &lt;suiteXmlFile> elements specifying TestNG suite xml file locations.
    *
    * @since 2.2
+   * @deprecated ignored, as in Surefire, which dropped TestNG suite files in 3.6.0
    */
+  @Deprecated
   @Parameter( property = "surefire.suiteXmlFiles" )
   private File[] suiteXmlFiles;
 
@@ -485,6 +478,15 @@ public class NarIntegrationTestMojo extends AbstractSurefireMojo
    */
   @Parameter( property = "failsafe.runOrder.random.seed" )
   private Long runOrderRandomSeed;
+
+  /**
+   * Used to override the checksum in the name of the statistics file
+   * when {@code surefire.runOrder} is set to "balanced".
+   *
+   * @since 3.5.5
+   */
+  @Parameter( property = "surefire.runOrder.statisticsFile.checksum" )
+  private String runOrderStatisticsFileChecksum;
 
   /**
    * A file containing include patterns. Blank lines, or lines starting with # are ignored. If {@code includes} are
@@ -1217,16 +1219,15 @@ public class NarIntegrationTestMojo extends AbstractSurefireMojo
   }
 
   @Override
-  public File[] getSuiteXmlFiles()
+  public String getRunOrderStatisticsFileChecksum()
   {
-    return suiteXmlFiles.clone();
+    return runOrderStatisticsFileChecksum;
   }
 
   @Override
-  @SuppressWarnings( "UnusedDeclaration" )
-  public void setSuiteXmlFiles( File[] suiteXmlFiles )
+  public void setRunOrderStatisticsFileChecksum( String runOrderStatisticsFileChecksum )
   {
-    this.suiteXmlFiles = suiteXmlFiles.clone();
+    this.runOrderStatisticsFileChecksum = runOrderStatisticsFileChecksum;
   }
 
   @Override
@@ -1278,17 +1279,6 @@ public class NarIntegrationTestMojo extends AbstractSurefireMojo
     this.useModulePath = useModulePath;
   }
 
-  @Override
-  protected final List<File> suiteXmlFiles()
-  {
-    return hasSuiteXmlFiles() ? Arrays.asList( suiteXmlFiles ) : Collections.<File>emptyList();
-  }
-
-  @Override
-  protected final boolean hasSuiteXmlFiles()
-  {
-    return suiteXmlFiles != null && suiteXmlFiles.length != 0;
-  }
 
   @Override
   protected final String[] getExcludedEnvironmentVariables()

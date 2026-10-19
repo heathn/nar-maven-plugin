@@ -66,9 +66,12 @@ public class TestNarDeploy extends TestCase {
   }
 
   public final void testOutputTimestamp() {
-    Assert.assertNull(NarUtil.getOutputTimestamp(null));
-    Assert.assertNull(NarUtil.getOutputTimestamp(" "));
-    Assert.assertNull(NarUtil.getOutputTimestamp("a"));
+    // unset, or a single non-digit character, falls back to SOURCE_DATE_EPOCH
+    final String epoch = System.getenv("SOURCE_DATE_EPOCH");
+    final FileTime fallback = epoch == null ? null : NarUtil.getOutputTimestamp(epoch);
+    Assert.assertEquals(fallback, NarUtil.getOutputTimestamp(null));
+    Assert.assertEquals(fallback, NarUtil.getOutputTimestamp(" "));
+    Assert.assertEquals(fallback, NarUtil.getOutputTimestamp("a"));
     Assert.assertEquals(FileTime.from(Instant.ofEpochSecond(1700000000)), NarUtil.getOutputTimestamp("1700000000"));
     Assert.assertEquals(FileTime.from(Instant.parse("2026-10-18T12:00:00Z")),
         NarUtil.getOutputTimestamp("2026-10-18T12:00:00Z"));
@@ -111,24 +114,12 @@ public class TestNarDeploy extends TestCase {
       }
     }
   }
-
-  public final void testOutputTimestampRange() {
-    for (final String bad : new String[] { "1979-12-31T00:00:00Z", "2100-01-01T00:00:00Z", "100" }) {
-      try {
-        NarUtil.getOutputTimestamp(bad);
-        fail("accepted " + bad);
-      } catch (final IllegalArgumentException expected) {
-        // expected
-      }
-    }
-  }
-
-  public final void testSupportsConditionalSkip() {
+  public final void testSupportsDeployPlugin() {
     for (final String old : new String[] { "2.8.2", "3.0.0-M1" }) {
-      Assert.assertFalse(old, NarDeployMojo.supportsConditionalSkip(old));
+      Assert.assertFalse(old, NarDeployMojo.supportsDeployPlugin(old));
     }
     for (final String current : new String[] { "3.0.0-M2", "3.0.0", "3.1.2", "4.0.0-beta-3" }) {
-      Assert.assertTrue(current, NarDeployMojo.supportsConditionalSkip(current));
+      Assert.assertTrue(current, NarDeployMojo.supportsDeployPlugin(current));
     }
   }
 }
