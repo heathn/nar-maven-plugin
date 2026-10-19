@@ -33,15 +33,15 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 import org.apache.commons.lang3.function.Failable;
+import org.apache.maven.model.Resource;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
 import org.apache.maven.plugin.logging.Log;
-import org.apache.maven.model.Resource;
 import org.apache.maven.project.MavenProject;
 import org.apache.maven.project.MavenProjectHelper;
 import org.codehaus.plexus.archiver.manager.ArchiverManager;
-import org.codehaus.plexus.util.SelectorUtils;
 import org.codehaus.plexus.util.FileUtils;
+import org.codehaus.plexus.util.SelectorUtils;
 
 /**
  * Layout which expands a nar file into:
@@ -244,7 +244,7 @@ public class NarLayout21 extends AbstractNarLayout {
         // with targets declared, an <aol>.libs.names the project sets wins,
         // as it does on the other AOLs' builds
         if (mojo.getLibsName() != null
-            && (mojo.getTargets().isEmpty() || !presetKeys.contains(aol + ".libs.names"))) {
+            && (mojo.getTargets().isEmpty() || !presetKeys.contains(NarInfo.aolKey(aol.toString(), NarInfo.LIBS_NAMES)))) {
           narInfo.setLibs(aol, mojo.getLibsName());
         }
         
@@ -288,11 +288,9 @@ public class NarLayout21 extends AbstractNarLayout {
 
         // If the more-specific platform key has been set, skip setting the
         // generic key.
-        if (narInfo.getProperty(aol, NarConstants.NAR_TYPE + "." + type,
-            (String)null) == null) {
-          narInfo.setNar(null, type, project.getGroupId() + ":" +
-              project.getArtifactId() + ":" + NarConstants.NAR_TYPE + ":" +
-              "${aol}" + "-" + type);
+        if (narInfo.getProperty(aol, NarInfo.narKey(type), (String) null) == null) {
+          narInfo.setNar(null, type, NarInfo.genericNar(project.getGroupId() + ":"
+              + project.getArtifactId() + ":" + NarConstants.NAR_TYPE, type));
         }
         
         // set the system includes

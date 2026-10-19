@@ -150,15 +150,15 @@ public class Target {
     }
     // a generic libs.binding in the project's nar.properties, for the
     // targets that ship that type
-    final String presetBinding = presetKeys.contains("libs.binding") ? narInfo.getBinding(null, null) : null;
+    final String presetBinding = presetKeys.contains(NarInfo.LIBS_BINDING) ? narInfo.getBinding(null, null) : null;
 
     final List<String> suffixes = new ArrayList<>();
-    allTypes.forEach(type -> suffixes.add(NarConstants.NAR + "." + type));
-    suffixes.addAll(List.of("libs.binding", "output", "libs.names"));
+    allTypes.forEach(type -> suffixes.add(NarInfo.narKey(type)));
+    suffixes.addAll(List.of(NarInfo.LIBS_BINDING, NarInfo.OUTPUT, NarInfo.LIBS_NAMES));
     byAol.forEach((aol, target) -> {
       for (final String type : allTypes) {
         // a generic nar.<type> the project sets applies to the types it ships
-        final String generic = NarConstants.NAR + "." + type;
+        final String generic = NarInfo.narKey(type);
         final String value;
         if (!target.getTypes().contains(type)) {
           value = "";
@@ -170,31 +170,32 @@ public class Target {
         } else {
           value = coordinate + ":" + aol + "-" + type;
         }
-        set(narInfo, presetKeys, aol + "." + generic, value);
+        set(narInfo, presetKeys, NarInfo.aolKey(aol, generic), value);
       }
-      set(narInfo, presetKeys, aol + ".libs.binding", presetBinding != null && target.getTypes().contains(presetBinding)
+      set(narInfo, presetKeys, NarInfo.aolKey(aol, NarInfo.LIBS_BINDING),
+          presetBinding != null && target.getTypes().contains(presetBinding)
           ? presetBinding : preferredBinding(target.getTypes()));
       final boolean libraries = target.getTypes().stream().anyMatch(type -> !Library.EXECUTABLE.equals(type));
-      set(narInfo, presetKeys, aol + ".output", libraries ? libraryOutput : executableOutput);
+      set(narInfo, presetKeys, NarInfo.aolKey(aol, NarInfo.OUTPUT), libraries ? libraryOutput : executableOutput);
       if (libsName != null) {
-        set(narInfo, presetKeys, aol + ".libs.names", libsName);
+        set(narInfo, presetKeys, NarInfo.aolKey(aol, NarInfo.LIBS_NAMES), libsName);
       }
     });
     // an AOL mapped to a target gets the target's entries as they end up
     mapped.forEach((alias, target) -> {
       final String aol = new AOL(target.getAol().trim()).toString();
       for (final String suffix : suffixes) {
-        final String value = narInfo.getInfo().getProperty(aol + "." + suffix);
+        final String value = narInfo.getInfo().getProperty(NarInfo.aolKey(aol, suffix));
         if (value != null) {
-          set(narInfo, presetKeys, alias + "." + suffix, value);
+          set(narInfo, presetKeys, NarInfo.aolKey(alias, suffix), value);
         }
       }
     });
 
     for (final String type : declaredTypes) {
-      final String key = NarConstants.NAR + "." + type;
+      final String key = NarInfo.narKey(type);
       if (narInfo.getInfo().getProperty(key) == null) {
-        narInfo.getInfo().setProperty(key, coordinate + ":${aol}-" + type);
+        narInfo.getInfo().setProperty(key, NarInfo.genericNar(coordinate, type));
       }
     }
   }

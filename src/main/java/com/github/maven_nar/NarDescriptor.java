@@ -175,18 +175,18 @@ public final class NarDescriptor {
     descriptor.setProperty(NarInfo.DESCRIPTOR_VERSION_KEY, String.valueOf(NarInfo.DESCRIPTOR_VERSION));
     final String output = narInfo.getOutput(aol, null);
     if (output != null) {
-      descriptor.setProperty("output", output);
+      descriptor.setProperty(NarInfo.OUTPUT, output);
     }
     if (Library.SHARED.equals(type) || Library.STATIC.equals(type)) {
-      final String configured = narInfo.getProperty(aol, "libs.names");
+      final String configured = narInfo.getProperty(aol, NarInfo.LIBS_NAMES);
       if (configured != null) {
-        descriptor.setProperty("libs.names", configured);
+        descriptor.setProperty(NarInfo.LIBS_NAMES, configured);
       } else {
         final Map<String, TreeSet<String>> aliases = linkAliases(libDir, patterns);
         final boolean ignoreCase = patterns.stream().anyMatch(p -> p.length > 2 && IGNORE_CASE.equals(p[2]));
         if (output != null && aliases.values().stream().flatMap(TreeSet::stream)
             .anyMatch(name -> ignoreCase ? name.equalsIgnoreCase(output) : name.equals(output))) {
-          descriptor.setProperty("libs.names", output);
+          descriptor.setProperty(NarInfo.LIBS_NAMES, output);
         } else {
           // The output's library isn't there, as when a third-party build
           // names its own.  Only an unambiguous replacement is recorded: one
@@ -198,7 +198,7 @@ public final class NarDescriptor {
           // a libfoo.so.1 could be the output's by its SONAME
           final TreeSet<String> all = shortestNames(linkAliases(libDir, versioned(patterns)));
           if (names.size() == 1 && all.equals(names)) {
-            descriptor.setProperty("libs.names", names.first());
+            descriptor.setProperty(NarInfo.LIBS_NAMES, names.first());
           } else if (all.size() > 1) {
             log.warn("The " + aol + " " + type + " libraries " + all + " don't include "
                 + (output == null ? "the output" : output) + "; set libsName so that consumers link the right ones");
@@ -206,7 +206,7 @@ public final class NarDescriptor {
         }
       }
     }
-    for (final String key : new String[] { "syslibs.names", "linker.options" }) {
+    for (final String key : new String[] { NarInfo.SYSLIBS_NAMES, NarInfo.LINKER_OPTIONS }) {
       final String value = narInfo.getProperty(aol, key);
       descriptor.setProperty(key, value == null ? "" : value);
     }
