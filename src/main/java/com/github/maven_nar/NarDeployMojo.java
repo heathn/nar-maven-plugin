@@ -122,8 +122,8 @@ public class NarDeployMojo extends AbstractMojo {
     // configuration (with the plugin's merged in) or on the command line.
     // Unset, the project property set below makes it skip.
     final boolean snapshot = this.project.getArtifact().isSnapshot();
-    final String userSkip = this.session.getUserProperties().getProperty("maven.deploy.skip",
-        this.session.getSystemProperties().getProperty("maven.deploy.skip"));
+    final String userSkip = evaluate(this.session.getUserProperties().getProperty("maven.deploy.skip",
+        this.session.getSystemProperties().getProperty("maven.deploy.skip")));
     final List<String> explicitSkips = deployExecutionSkips(userSkip);
     // maven-deploy-plugin before 3.0.0-M2 takes skip as a boolean, so it
     // would deploy despite a conditional value
@@ -151,9 +151,7 @@ public class NarDeployMojo extends AbstractMojo {
     }
     // deploying at the end defers deploying until every module has built,
     // which this goal, deploying now, would bypass
-    final String deployAtEnd = deployConfiguration("deployAtEnd", this.session.getUserProperties()
-        .getProperty("deployAtEnd", this.session.getSystemProperties().getProperty("deployAtEnd",
-            this.project.getProperties().getProperty("deployAtEnd"))));
+    final String deployAtEnd = deployConfiguration("deployAtEnd", evaluate(rawProperty("deployAtEnd")));
     if (deployAtEnd != null && Boolean.parseBoolean(deployAtEnd)) {
       throw new MojoExecutionException("nar.deployScope=aol doesn't support maven-deploy-plugin's deployAtEnd");
     }
@@ -355,7 +353,8 @@ public class NarDeployMojo extends AbstractMojo {
         // One bound to an earlier phase would deploy everything before this
         // goal runs, unless it skipped, by its own settings or the project's
         // maven.deploy.skip, which this goal hasn't changed yet
-        final String earlierSkip = skip != null ? skip : this.project.getProperties().getProperty("maven.deploy.skip");
+        final String earlierSkip = skip != null ? skip
+            : evaluate(this.project.getProperties().getProperty("maven.deploy.skip"));
         if (phase != null && !"deploy".equals(phase) && !skips(earlierSkip, this.project.getArtifact().isSnapshot())) {
           throw new MojoExecutionException("maven-deploy-plugin's " + execution.getId() + " execution in the "
               + execution.getPhase() + " phase, before this goal, has deployed everything, which nar.deployScope=aol "

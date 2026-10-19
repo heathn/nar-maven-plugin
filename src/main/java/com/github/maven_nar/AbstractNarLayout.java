@@ -90,13 +90,15 @@ public abstract class AbstractNarLayout implements NarLayout, NarConstants {
     }
     try {
       final Archiver archiver = archiverManager.getArchiver(NarConstants.NAR_ROLE_HINT);
+      // before adding files, as the file set takes the archiver's ordering
+      // when it's added
+      if (this.outputTimestamp != null) {
+        archiver.configureReproducibleBuild(this.outputTimestamp);
+      }
       DefaultFileSet fs = DefaultFileSet.fileSet(dir.toFile());
       fs.setIncludes(new String[] { include });
       archiver.addFileSet(fs);
       archiver.setDestFile(narFile);
-      if (this.outputTimestamp != null) {
-        archiver.configureReproducibleBuild(this.outputTimestamp);
-      }
       archiver.createArchive();
     } catch (final NoSuchArchiverException e) {
       throw new MojoExecutionException("NAR: cannot find archiver", e);
