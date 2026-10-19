@@ -84,7 +84,7 @@ public class AOL {
 
   // FIXME, maybe change to something like isCompatible (AOL).
   public final boolean hasLinker(final String linker) {
-    return this.linkerName.equals(linker);
+    return linker != null && linker.equals(this.linkerName);
   }
 
   /**

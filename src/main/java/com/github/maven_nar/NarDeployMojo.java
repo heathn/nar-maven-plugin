@@ -178,8 +178,8 @@ public class NarDeployMojo extends AbstractMojo {
     final Set<String> aols = new LinkedHashSet<>();
     for (final Artifact artifact : attached) {
       final Classifier classifier = Classifier.parse(artifact.getClassifier());
-      if (NarConstants.NAR_TYPE.equals(artifact.getType()) && classifier != null
-          && !NarConstants.NAR_NO_ARCH.equals(artifact.getClassifier())) {
+      // noarch has no AOL, so no classifier
+      if (NarConstants.NAR_TYPE.equals(artifact.getType()) && classifier != null) {
         aols.add(classifier.aol());
       }
     }

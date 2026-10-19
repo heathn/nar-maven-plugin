@@ -25,6 +25,7 @@ import java.nio.file.Path;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Properties;
 import java.util.TreeMap;
 import java.util.TreeSet;
@@ -117,7 +118,7 @@ public final class NarDescriptor {
     if (!Files.isDirectory(libDir)) {
       return aliases;
     }
-    final List<Pattern> regexes = patterns.stream().map(LinkPattern::regex).filter(regex -> regex != null)
+    final List<Pattern> regexes = patterns.stream().map(LinkPattern::regex).filter(Objects::nonNull)
         .collect(Collectors.toList());
     try (Stream<Path> files = Files.list(libDir)) {
       files.filter(Files::isRegularFile).map(file -> file.getFileName().toString()).forEach(name -> {

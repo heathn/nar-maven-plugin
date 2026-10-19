@@ -165,7 +165,7 @@ final class DeployPluginModel {
       }
     }
     // unset, the project property nar-deploy sets makes it skip
-    return !explicit.isEmpty() && explicit.stream().allMatch(Objects::nonNull) || skips(ownSkip);
+    return (!explicit.isEmpty() && explicit.stream().allMatch(Objects::nonNull)) || skips(ownSkip);
   }
 
   /**

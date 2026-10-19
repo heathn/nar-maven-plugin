@@ -50,20 +50,10 @@ public class NarPreparePackageMojo extends AbstractCompileMojo {
     getLayout().prepareNarInfo(getTargetDirectory(), getMavenProject(), getNarInfo(), this);
     getNarInfo().writeToDirectory(getClassesDirectory());
 
-    final String artifactIdVersion = getMavenProject().getArtifactId() + "-" + getMavenProject().getVersion();
-
-    // Scan target directory to identify project classifier directories, skipping noarch
-    try {
-      Path[] files = Files.list(getTargetDirectory())
-        .filter(f -> f.getFileName().toString().startsWith(artifactIdVersion) && !f.getFileName().toString().endsWith(NarConstants.NAR_NO_ARCH))
-        .toArray(Path[]::new);
-
-      // Write nar info to project classifier directories
-      getNarInfo().writeToDirectory(files);
-      getLayout().writeDescriptors(getTargetDirectory(), getMavenProject(), getNarInfo());
-    } catch (IOException e) {
-      throw new MojoExecutionException(e);
-    }
+    // write nar info to the project's AOL-specific directories
+    getNarInfo().writeToDirectory(AbstractNarLayout.aolDirectories(getTargetDirectory(), getMavenProject()).values()
+        .toArray(Path[]::new));
+    getLayout().writeDescriptors(getTargetDirectory(), getMavenProject(), getNarInfo());
     
     // process the replay files here
     if (replay != null && replay.getScripts() != null && !replay.getScripts().isEmpty()) {

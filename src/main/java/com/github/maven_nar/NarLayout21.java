@@ -31,10 +31,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
-import org.apache.commons.lang3.function.Failable;
 import org.apache.maven.model.Resource;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
@@ -80,21 +77,8 @@ public class NarLayout21 extends AbstractNarLayout {
           getNoArchDirectory(baseDir, project.getArtifactId(), project.getVersion()), "*/**");
     }
 
-    // list all directories in basedir, scan them for classifiers
-    try {
-      final String artifactIdVersion = project.getArtifactId() + "-" + project.getVersion();
-      Files.list(baseDir)
-        // Include only entries belonging to this project
-        .filter(dir -> dir.getFileName().toString().startsWith(artifactIdVersion))
-        // Skip noarch
-        .filter(dir -> !dir.getFileName().toString().endsWith(NarConstants.NAR_NO_ARCH))
-        .forEach(Failable.asConsumer(dir -> {
-          String classifier = dir.getFileName().toString().substring(artifactIdVersion.length() + 1);
-          Path path = baseDir.resolve(dir);
-          attachNar(archiverManager, projectHelper, project, classifier, path, "*/**");
-        }));
-    } catch (IOException | RuntimeException e) {
-      throw new MojoExecutionException(e);
+    for (final Map.Entry<String, Path> directory : aolDirectories(baseDir, project).entrySet()) {
+      attachNar(archiverManager, projectHelper, project, directory.getKey(), directory.getValue(), "*/**");
     }
   }
 
@@ -192,7 +176,7 @@ public class NarLayout21 extends AbstractNarLayout {
           + NarConstants.NAR_TYPE + ":" + NarConstants.NAR_NO_ARCH);
     }
 
-    final List<String> classifiers = classifiers(baseDir, project);
+    final List<String> classifiers = new ArrayList<>(aolDirectories(baseDir, project).keySet());
 
     if (!classifiers.isEmpty()) {
 
@@ -364,7 +348,7 @@ public class NarLayout21 extends AbstractNarLayout {
   public void writeDescriptors(final Path baseDir, final MavenProject project, final NarInfo narInfo)
       throws MojoExecutionException, MojoFailureException {
     final NarProperties narProperties = NarProperties.getInstance(project);
-    for (final String classifier : classifiers(baseDir, project)) {
+    for (final String classifier : new ArrayList<>(aolDirectories(baseDir, project).keySet())) {
       final Classifier parsed = Classifier.parse(classifier);
       if (parsed == null) {
         continue;
@@ -374,7 +358,7 @@ public class NarLayout21 extends AbstractNarLayout {
       // only shared and static libraries are described by their files
       final Path libDir = Library.SHARED.equals(type) || Library.STATIC.equals(type)
           ? getLibDirectory(baseDir, project.getArtifactId(), project.getVersion(), parsed.aol(), type) : null;
-      final String key = aol.getKey();
+      final String key = NarUtil.getAOLKey(parsed.aol());
       final Path file = getAolDirectory(baseDir, project.getArtifactId(), project.getVersion(), parsed.aol(), type)
           .resolve(narInfo.getNarInfoFileName()).resolveSibling(NarInfo.getDescriptorFileName(parsed.aol(), type));
       try {
@@ -388,26 +372,6 @@ public class NarLayout21 extends AbstractNarLayout {
       }
     }
   }
-
-  /**
-   * The classifiers of this project's AOL-specific directories in baseDir,
-   * named &lt;artifactId&gt;-&lt;version&gt;-&lt;classifier&gt;, other than
-   * noarch.
-   */
-  private static List<String> classifiers(final Path baseDir, final MavenProject project)
-      throws MojoExecutionException {
-    final String prefix = project.getArtifactId() + "-" + project.getVersion() + "-";
-    try (Stream<Path> entries = Files.list(baseDir)) {
-      return entries.filter(Files::isDirectory).map(entry -> entry.getFileName().toString())
-          .filter(name -> name.startsWith(prefix) && name.length() > prefix.length())
-          .map(name -> name.substring(prefix.length()))
-          .filter(classifier -> !classifier.equals(NarConstants.NAR_NO_ARCH))
-          .collect(Collectors.toList());
-    } catch (final IOException e) {
-      throw new MojoExecutionException(e);
-    }
-  }
-
 
   @Override
   public void unpackNar(final Path unpackDirectory, final ArchiverManager archiverManager, final Path file,

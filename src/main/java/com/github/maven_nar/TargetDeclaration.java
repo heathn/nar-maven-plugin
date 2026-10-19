@@ -89,8 +89,15 @@ public final class TargetDeclaration {
         // a generic nar.<type> the project sets applies to the types it
         // ships; if another resource replaced that file, as if it weren't set
         final String preset = presetKeys.contains(generic) ? narInfo.getInfo().getProperty(generic) : null;
-        set(narInfo, presetKeys, NarInfo.aolKey(aol, generic),
-            !types.contains(type) ? "" : preset != null ? preset : defaults.coordinate() + ":" + aol + "-" + type);
+        final String nar;
+        if (!types.contains(type)) {
+          nar = "";
+        } else if (preset != null) {
+          nar = preset;
+        } else {
+          nar = defaults.coordinate() + ":" + aol + "-" + type;
+        }
+        set(narInfo, presetKeys, NarInfo.aolKey(aol, generic), nar);
       }
       set(narInfo, presetKeys, NarInfo.aolKey(aol, NarInfo.LIBS_BINDING),
           presetBinding != null && types.contains(presetBinding) ? presetBinding : preferredBinding(types));
@@ -143,7 +150,7 @@ public final class TargetDeclaration {
   }
 
   // The AOLs the project's nar.properties maps to a declared one, as
-  // &lt;alias&gt;=&lt;aol&gt;, with the declared AOL each maps to
+  // <alias>=<aol>, with the declared AOL each maps to
   private static Map<String, String> aliases(final NarInfo narInfo, final Set<String> declared) {
     final Map<String, String> aliases = new LinkedHashMap<>();
     for (final String key : narInfo.getInfo().stringPropertyNames()) {
