@@ -24,7 +24,6 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -47,27 +46,58 @@ import org.apache.maven.plugin.logging.Log;
 public final class NarDescriptor {
 
   /**
-   * Marks a {@link #linkNames} pattern of a linker that ignores case.
+   * How a linker finds a library's files: prefix + name + "." + extension,
+   * such as lib + foo + .so.
+   *
+   * @param prefix the file name prefix, possibly empty
+   * @param extension the extension, or null for none (the pattern matches
+   *          nothing)
+   * @param versioned whether version suffixes match too: libfoo.so.1.2
+   * @param ignoreCase whether the linker ignores case, as MSVC's does
    */
-  public static final String IGNORE_CASE = "ignoreCase";
+  public record LinkPattern(String prefix, String extension, boolean versioned, boolean ignoreCase) {
+
+    /**
+     * A pattern as aol.properties gives it, where an extension ending in
+     * "*" (so*) also matches version suffixes.
+     *
+     * @param prefix the prefix, or null for none
+     * @param extension the extension, or null
+     * @return the pattern
+     */
+    public static LinkPattern of(final String prefix, final String extension) {
+      final boolean versioned = extension != null && extension.endsWith("*");
+      return new LinkPattern(prefix == null ? "" : prefix,
+          versioned ? extension.substring(0, extension.length() - 1) : extension, versioned, false);
+    }
+
+    LinkPattern withVersioned(final boolean versioned) {
+      return new LinkPattern(this.prefix, this.extension, versioned, this.ignoreCase);
+    }
+
+    // group 1 is the name; null when the pattern matches nothing
+    Pattern regex() {
+      if (this.extension == null || this.extension.isEmpty()) {
+        return null;
+      }
+      return Pattern.compile(Pattern.quote(this.prefix) + "(.+)\\." + Pattern.quote(this.extension)
+          + (this.versioned ? "(\\.[0-9][0-9.]*)?" : ""), this.ignoreCase ? Pattern.CASE_INSENSITIVE : 0);
+    }
+  }
 
   private NarDescriptor() {
   }
 
   /**
    * The names to link the libraries in a directory with, as libs.names
-   * lists them: each file named prefix + name + "." + extension for one of
-   * the patterns, where an extension ending in "*" also matches version
-   * suffixes (libfoo.so.1.2).
+   * lists them: the name of each file matching one of the patterns.
    *
    * @param libDir the directory
-   * @param patterns pairs of library file prefix (possibly empty) and
-   *          extension, with a third element "ignoreCase" for a linker that
-   *          ignores case
+   * @param patterns the patterns the linker finds library files by
    * @return the space-separated names, sorted, or an empty string
    * @throws IOException if the directory can't be listed
    */
-  public static String linkNames(final Path libDir, final List<String[]> patterns) throws IOException {
+  public static String linkNames(final Path libDir, final List<LinkPattern> patterns) throws IOException {
     final TreeSet<String> names = new TreeSet<>();
     linkAliases(libDir, patterns).values().forEach(names::addAll);
     return String.join(" ", names);
@@ -83,25 +113,14 @@ public final class NarDescriptor {
    * @return the names, by file name
    * @throws IOException if the directory can't be listed
    */
-  public static Map<String, TreeSet<String>> linkAliases(final Path libDir, final List<String[]> patterns)
+  public static Map<String, TreeSet<String>> linkAliases(final Path libDir, final List<LinkPattern> patterns)
       throws IOException {
     final Map<String, TreeSet<String>> aliases = new TreeMap<>();
     if (!Files.isDirectory(libDir)) {
       return aliases;
     }
-    final List<Pattern> regexes = new ArrayList<>();
-    for (final String[] pattern : patterns) {
-      final String prefix = pattern[0] == null ? "" : pattern[0];
-      final String extension = pattern[1];
-      if (extension == null || extension.isEmpty()) {
-        continue;
-      }
-      final boolean versioned = extension.endsWith("*");
-      final String ext = versioned ? extension.substring(0, extension.length() - 1) : extension;
-      final boolean ignoreCase = pattern.length > 2 && IGNORE_CASE.equals(pattern[2]);
-      regexes.add(Pattern.compile(Pattern.quote(prefix) + "(.+)\\." + Pattern.quote(ext)
-          + (versioned ? "(\\.[0-9][0-9.]*)?" : ""), ignoreCase ? Pattern.CASE_INSENSITIVE : 0));
-    }
+    final List<Pattern> regexes = patterns.stream().map(LinkPattern::regex).filter(regex -> regex != null)
+        .collect(Collectors.toList());
     try (Stream<Path> files = Files.list(libDir)) {
       files.filter(Files::isRegularFile).map(file -> file.getFileName().toString()).forEach(name -> {
         for (final Pattern regex : regexes) {
@@ -126,22 +145,21 @@ public final class NarDescriptor {
    * @param type shared or static
    * @param prefix the lib.prefix aol.properties gives, or null
    * @param extension the extension aol.properties gives for the type
-   * @return pairs of prefix and extension
+   * @return the patterns
    */
-  public static List<String[]> linkPatterns(final String aol, final String type, final String prefix,
+  public static List<LinkPattern> linkPatterns(final String aol, final String type, final String prefix,
       final String extension) {
-    final String[] parts = aol.split("-");
-    final String linker = parts[parts.length - 1];
-    if (parts.length > 1 && OS.WINDOWS.equals(parts[1])) {
-      if ("msvc".equals(linker) || "icl".equals(linker)) {
-        return List.<String[]>of(new String[] { prefix == null ? "" : prefix, "lib", IGNORE_CASE });
+    final AOL parsed = new AOL(aol);
+    if (OS.WINDOWS.equals(parsed.getOS())) {
+      if (parsed.hasLinker("msvc") || parsed.hasLinker("icl")) {
+        return List.of(new LinkPattern(prefix == null ? "" : prefix, "lib", false, true));
       }
       return Library.SHARED.equals(type)
-          ? List.of(new String[] { "lib", "dll.a" }, new String[] { "", "dll.a" }, new String[] { "", "dll" },
-              new String[] { "lib", "dll" })
-          : List.<String[]>of(new String[] { "lib", "a" });
+          ? List.of(LinkPattern.of("lib", "dll.a"), LinkPattern.of("", "dll.a"), LinkPattern.of("", "dll"),
+              LinkPattern.of("lib", "dll"))
+          : List.of(LinkPattern.of("lib", "a"));
     }
-    return List.<String[]>of(new String[] { prefix == null ? "lib" : prefix, extension });
+    return List.of(LinkPattern.of(prefix == null ? "lib" : prefix, extension));
   }
 
   /**
@@ -170,7 +188,7 @@ public final class NarDescriptor {
    * @throws IOException if the library directory can't be listed
    */
   public static Properties describe(final NarInfo narInfo, final AOL aol, final String type, final Path libDir,
-      final List<String[]> patterns, final Log log) throws IOException {
+      final List<LinkPattern> patterns, final Log log) throws IOException {
     final Properties descriptor = new Properties();
     descriptor.setProperty(NarInfo.DESCRIPTOR_VERSION_KEY, String.valueOf(NarInfo.DESCRIPTOR_VERSION));
     final String output = narInfo.getOutput(aol, null);
@@ -179,31 +197,9 @@ public final class NarDescriptor {
     }
     if (Library.SHARED.equals(type) || Library.STATIC.equals(type)) {
       final String configured = narInfo.getProperty(aol, NarInfo.LIBS_NAMES);
-      if (configured != null) {
-        descriptor.setProperty(NarInfo.LIBS_NAMES, configured);
-      } else {
-        final Map<String, TreeSet<String>> aliases = linkAliases(libDir, patterns);
-        final boolean ignoreCase = patterns.stream().anyMatch(p -> p.length > 2 && IGNORE_CASE.equals(p[2]));
-        if (output != null && aliases.values().stream().flatMap(TreeSet::stream)
-            .anyMatch(name -> ignoreCase ? name.equalsIgnoreCase(output) : name.equals(output))) {
-          descriptor.setProperty(NarInfo.LIBS_NAMES, output);
-        } else {
-          // The output's library isn't there, as when a third-party build
-          // names its own.  Only an unambiguous replacement is recorded: one
-          // name, of files the linker takes as they are (not libfoo.so.1,
-          // which only a link made at unpack, from its SONAME, makes linkable),
-          // each file by its shortest name (renamed for librenamed.dll).
-          final TreeSet<String> names = shortestNames(linkAliases(libDir, unversioned(patterns)));
-          // and every library there, versioned ones included, has that name;
-          // a libfoo.so.1 could be the output's by its SONAME
-          final TreeSet<String> all = shortestNames(linkAliases(libDir, versioned(patterns)));
-          if (names.size() == 1 && all.equals(names)) {
-            descriptor.setProperty(NarInfo.LIBS_NAMES, names.first());
-          } else if (all.size() > 1) {
-            log.warn("The " + aol + " " + type + " libraries " + all + " don't include "
-                + (output == null ? "the output" : output) + "; set libsName so that consumers link the right ones");
-          }
-        }
+      final String names = configured != null ? configured : inferLibsNames(output, libDir, patterns, aol, type, log);
+      if (names != null) {
+        descriptor.setProperty(NarInfo.LIBS_NAMES, names);
       }
     }
     for (final String key : new String[] { NarInfo.SYSLIBS_NAMES, NarInfo.LINKER_OPTIONS }) {
@@ -213,37 +209,49 @@ public final class NarDescriptor {
     return descriptor;
   }
 
+  /**
+   * The names to link a NAR's libraries by when libsName isn't configured:
+   * the output, when its library is among the files, so consumers link what
+   * they link now whatever the main nar.properties says.  Otherwise, as when
+   * a third-party build names its own library, the one name all the files
+   * share: unversioned, as the linker takes libfoo.so but not libfoo.so.1,
+   * which only a link made at unpack (from its SONAME) makes linkable, and
+   * with no versioned file that could be the output's by its SONAME.  Each
+   * file counts by its shortest name, renamed for librenamed.dll.
+   *
+   * @return the names, or null (with a warning if there are several)
+   */
+  private static String inferLibsNames(final String output, final Path libDir, final List<LinkPattern> patterns,
+      final AOL aol, final String type, final Log log) throws IOException {
+    final boolean ignoreCase = patterns.stream().anyMatch(LinkPattern::ignoreCase);
+    if (output != null && linkAliases(libDir, patterns).values().stream().flatMap(TreeSet::stream)
+        .anyMatch(name -> ignoreCase ? name.equalsIgnoreCase(output) : name.equals(output))) {
+      return output;
+    }
+    final TreeSet<String> unversioned = shortestNames(linkAliases(libDir, withVersioned(patterns, false)));
+    // so, as some AOLs give it, versioned too: libfoo.so.1
+    final TreeSet<String> all = shortestNames(linkAliases(libDir, patterns.stream()
+        .map(p -> "so".equals(p.extension()) ? p.withVersioned(true) : p).collect(Collectors.toList())));
+    if (unversioned.size() == 1 && all.equals(unversioned)) {
+      return unversioned.first();
+    }
+    if (all.size() > 1) {
+      log.warn("The " + aol + " " + type + " libraries " + all + " don't include "
+          + (output == null ? "the output" : output) + "; set libsName so that consumers link the right ones");
+    }
+    return null;
+  }
+
+  private static List<LinkPattern> withVersioned(final List<LinkPattern> patterns, final boolean versioned) {
+    return patterns.stream().map(p -> p.withVersioned(versioned)).collect(Collectors.toList());
+  }
+
   // each file's shortest name: renamed for librenamed.dll
   private static TreeSet<String> shortestNames(final Map<String, TreeSet<String>> aliases) {
     final TreeSet<String> names = new TreeSet<>();
     aliases.values().forEach(fileAliases -> names.add(fileAliases.stream()
         .min(Comparator.comparingInt(String::length).thenComparing(Comparator.naturalOrder())).get()));
     return names;
-  }
-
-  // so, as some AOLs give it, versioned too: libfoo.so.1
-  private static List<String[]> versioned(final List<String[]> patterns) {
-    final List<String[]> versioned = new ArrayList<>();
-    for (final String[] pattern : patterns) {
-      final String[] copy = pattern.clone();
-      if ("so".equals(copy[1])) {
-        copy[1] = "so*";
-      }
-      versioned.add(copy);
-    }
-    return versioned;
-  }
-
-  private static List<String[]> unversioned(final List<String[]> patterns) {
-    final List<String[]> unversioned = new ArrayList<>();
-    for (final String[] pattern : patterns) {
-      final String[] copy = pattern.clone();
-      if (copy[1] != null && copy[1].endsWith("*")) {
-        copy[1] = copy[1].substring(0, copy[1].length() - 1);
-      }
-      unversioned.add(copy);
-    }
-    return unversioned;
   }
 
   /**
