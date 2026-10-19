@@ -28,6 +28,7 @@ import java.util.stream.Stream;
 
 import org.apache.maven.artifact.Artifact;
 import org.apache.maven.artifact.repository.ArtifactRepository;
+import org.apache.maven.artifact.versioning.ComparableVersion;
 import org.apache.maven.execution.MavenSession;
 import org.apache.maven.plugin.MojoExecution;
 import org.apache.maven.plugin.PluginParameterExpressionEvaluator;
@@ -94,15 +95,6 @@ public class NarDeployMojo extends AbstractMojo {
   @Parameter(property = "maven.deploy.skip", defaultValue = "false")
   private String deploySkip;
 
-  @Parameter(property = "altDeploymentRepository")
-  private String altDeploymentRepository;
-
-  @Parameter(property = "altReleaseDeploymentRepository")
-  private String altReleaseDeploymentRepository;
-
-  @Parameter(property = "altSnapshotDeploymentRepository")
-  private String altSnapshotDeploymentRepository;
-
   @Parameter(defaultValue = "${project}", readonly = true, required = true)
   private MavenProject project;
 
@@ -133,15 +125,15 @@ public class NarDeployMojo extends AbstractMojo {
     final String userSkip = this.session.getUserProperties().getProperty("maven.deploy.skip",
         this.session.getSystemProperties().getProperty("maven.deploy.skip"));
     final List<String> explicitSkips = deployExecutionSkips(userSkip);
-    // maven-deploy-plugin before 3.0 takes skip as a boolean, so it would
-    // deploy despite a conditional value
+    // maven-deploy-plugin before 3.0.0-M2 takes skip as a boolean, so it
+    // would deploy despite a conditional value
     final Plugin deployPlugin = deployPlugin();
     final String version = deployPlugin == null ? null : deployPlugin.getVersion();
     final boolean conditional = Stream.concat(explicitSkips.stream(), Stream.of(this.deploySkip))
         .anyMatch(value -> "releases".equals(value) || "snapshots".equals(value));
-    if (conditional && version != null && version.matches("[0-2]\\..*")) {
-      throw new MojoExecutionException("maven.deploy.skip=releases or snapshots needs maven-deploy-plugin 3.0 or "
-          + "later, not " + version);
+    if (conditional && version != null && !supportsConditionalSkip(version)) {
+      throw new MojoExecutionException("maven.deploy.skip=releases or snapshots needs maven-deploy-plugin 3.0.0-M2 "
+          + "or later, not " + version);
     }
     final List<String> blocking = explicitSkips.stream()
         .filter(value -> value != null && !skips(value, snapshot)).collect(Collectors.toList());
@@ -300,10 +292,10 @@ public class NarDeployMojo extends AbstractMojo {
   private String destination(final Object configuration) throws MojoExecutionException {
     final boolean snapshot = this.project.getArtifact().isSnapshot();
     String alt = configured(configuration, snapshot ? "altSnapshotDeploymentRepository"
-        : "altReleaseDeploymentRepository", snapshot ? this.altSnapshotDeploymentRepository
-        : this.altReleaseDeploymentRepository);
+        : "altReleaseDeploymentRepository", rawProperty(snapshot ? "altSnapshotDeploymentRepository"
+        : "altReleaseDeploymentRepository"));
     if (alt == null || alt.isEmpty()) {
-      alt = configured(configuration, "altDeploymentRepository", this.altDeploymentRepository);
+      alt = configured(configuration, "altDeploymentRepository", rawProperty("altDeploymentRepository"));
     }
     if (alt != null && !alt.isEmpty()) {
       final RemoteRepository repository = parseRepository(alt);
@@ -316,7 +308,29 @@ public class NarDeployMojo extends AbstractMojo {
   private String configured(final Object configuration, final String name, final String property)
       throws MojoExecutionException {
     final String value = evaluate(valueOf(configuration, name));
-    return value != null ? value : property;
+    return value != null ? value : evaluate(property);
+  }
+
+  /**
+   * A property as set, before Maven evaluates expressions in it for this
+   * goal, which would be nar-deploy's rather than maven-deploy-plugin's: on
+   * the command line (user or system property), else in the project.
+   */
+  private String rawProperty(final String name) {
+    String value = this.session.getUserProperties().getProperty(name);
+    if (value == null) {
+      value = this.session.getSystemProperties().getProperty(name);
+    }
+    return value != null ? value : this.project.getProperties().getProperty(name);
+  }
+
+  /**
+   * @param version a maven-deploy-plugin version
+   * @return whether it takes maven.deploy.skip=releases or snapshots, which
+   *         came in 3.0.0-M2; earlier versions read skip as a boolean
+   */
+  public static boolean supportsConditionalSkip(final String version) {
+    return new ComparableVersion(version).compareTo(new ComparableVersion("3.0.0-M2")) >= 0;
   }
 
   /**
