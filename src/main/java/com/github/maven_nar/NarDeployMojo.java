@@ -44,28 +44,28 @@ import org.eclipse.aether.deployment.DeploymentException;
 import org.eclipse.aether.repository.RemoteRepository;
 
 /**
- * Chooses what the deploy phase deploys.  With deployScope "all" (the
- * default) it does nothing, and maven-deploy-plugin deploys everything as
- * usual.  With "aol" it deploys only the AOL-specific artifacts this build
- * attached (classifier &lt;aol&gt;-&lt;type&gt;, or the AOL itself, for
- * the AOLs built here) and skips maven-deploy-plugin, so that when each AOL
- * is built on its own machine, only one build deploys the pom, the main
- * artifact, the noarch NAR and the other attachments, which every build
- * would otherwise deploy again under the same version.  It deploys to the
- * repository maven-deploy-plugin would: altSnapshotDeploymentRepository or
- * altReleaseDeploymentRepository, altDeploymentRepository, or the
- * distributionManagement repository.
- * <p>
- * Other modules in the reactor, such as a parent pom, are still deployed
- * by every build; skip them with maven.deploy.skip in a profile of their
- * pom.  maven.deploy.skip set on the command line, or a skip configured on
- * maven-deploy-plugin, would also keep this goal from stopping
- * maven-deploy-plugin, so with "aol" the build fails if one would leave it
- * deploying: one that skips (true, releases or snapshots) skips this goal
- * too.  "aol" needs maven-deploy-plugin 3.0.0-M2 or later, which reads
- * releases and snapshots as conditional skips.  It also fails with
- * maven-deploy-plugin's deployAtEnd, which this goal, deploying right
- * away, would bypass, and with a deploy execution bound to an earlier phase.
+ * Chooses what the deploy phase deploys, for projects whose AOLs are built
+ * on separate machines, each of which would otherwise deploy the pom, the
+ * main artifact, the noarch NAR and the other attachments again under the
+ * same version.
+ * <ul>
+ * <li>deployScope "all", the default: nothing; maven-deploy-plugin deploys
+ * everything as usual.</li>
+ * <li>"aol": deploys only the AOL-specific artifacts this build attached
+ * (classified &lt;aol&gt;-&lt;type&gt;, or with an AOL built here or
+ * prefixed with one) and stops maven-deploy-plugin, so one build deploys
+ * the rest.  They go where maven-deploy-plugin would deploy:
+ * altSnapshotDeploymentRepository or altReleaseDeploymentRepository,
+ * altDeploymentRepository, or distributionManagement.</li>
+ * </ul>
+ * With "aol" the build fails before deploying anything when nar-deploy
+ * can't be sure maven-deploy-plugin won't deploy: a skip set to false on the
+ * command line or on that plugin, a deploy execution bound to an earlier
+ * phase, deployAtEnd, or maven-deploy-plugin before 3.0.0-M2, which reads
+ * skip as a boolean.  A skip that skips (true, releases or snapshots) skips
+ * this goal too.  Other modules in the reactor, such as a parent pom, are
+ * still deployed by every build; skip them with maven.deploy.skip in a
+ * profile of their pom.
  */
 @Mojo(name = "nar-deploy", defaultPhase = LifecyclePhase.DEPLOY, requiresProject = true, threadSafe = true)
 public class NarDeployMojo extends AbstractMojo {
@@ -78,7 +78,9 @@ public class NarDeployMojo extends AbstractMojo {
   private String deployScope;
 
   /**
-   * maven-deploy-plugin's skip, which this goal follows.
+   * Skips this goal: true, false, releases or snapshots, as
+   * maven-deploy-plugin reads maven.deploy.skip.  With "aol", skipping also
+   * skips maven-deploy-plugin.
    */
   @Parameter(property = "maven.deploy.skip", defaultValue = "false")
   private String deploySkip;
@@ -103,45 +105,20 @@ public class NarDeployMojo extends AbstractMojo {
     if ("all".equals(this.deployScope)) {
       return;
     }
-    final DeployPluginModel model = new DeployPluginModel(this.project, this.session.getUserProperties(),
-        this.session.getSystemProperties(), new PluginParameterExpressionEvaluator(this.session, this.mojoExecution));
     if (!"aol".equals(this.deployScope)) {
       throw new MojoExecutionException("nar.deployScope must be all or aol, not " + this.deployScope);
     }
-    // older versions read skip as a boolean, so would deploy despite
-    // releases or snapshots
-    final Plugin deployPlugin = model.deployPlugin();
-    final String version = deployPlugin == null ? null : deployPlugin.getVersion();
-    if (version != null && !DeployPluginModel.supportsDeployPlugin(version)) {
-      throw new MojoExecutionException("nar.deployScope=aol needs maven-deploy-plugin 3.0.0-M2 or later, not "
-          + version);
-    }
-    // What each maven-deploy-plugin deploy execution's skip is set to: in its
-    // configuration (with the plugin's merged in) or on the command line.
-    // Unset, the project property set below makes it skip.
-    final boolean snapshot = this.project.getArtifact().isSnapshot();
-    final String userSkip = model.skipValue(this.session.getUserProperties().getProperty("maven.deploy.skip",
-        this.session.getSystemProperties().getProperty("maven.deploy.skip")));
-    final List<String> explicitSkips = model.deployExecutionSkips(userSkip);
-    final List<String> blocking = explicitSkips.stream()
-        .filter(value -> value != null && !DeployPluginModel.skips(value, snapshot)).collect(Collectors.toList());
-    if (!blocking.isEmpty()) {
-      throw new MojoExecutionException("nar.deployScope=aol can't stop maven-deploy-plugin from deploying the "
-          + "shared artifacts while maven.deploy.skip is set to " + blocking.get(0)
-          + " on the command line or in its configuration");
-    }
-    final boolean disabled = !explicitSkips.isEmpty() && explicitSkips.stream().allMatch(value -> value != null);
-    if (disabled || DeployPluginModel.skips(this.deploySkip, snapshot)) {
+    final DeployPluginModel deployPlugin = new DeployPluginModel(this.project, this.session.getUserProperties(),
+        this.session.getSystemProperties(), new PluginParameterExpressionEvaluator(this.session, this.mojoExecution));
+    deployPlugin.requireSupportedVersion();
+    if (deployPlugin.skipsDeploying(this.deploySkip)) {
       getLog().info("Skipping the deployment of the AOL-specific artifacts");
-      // and of everything else, which maven-deploy-plugin would deploy
-      this.project.getProperties().setProperty("maven.deploy.skip", "true");
+      skipDeployPlugin();
       return;
     }
-    // deploying at the end defers deploying until every module has built,
-    // which this goal, deploying now, would bypass
-    final String deployAtEnd = model.deployConfiguration("deployAtEnd",
-        model.evaluate(model.rawProperty("deployAtEnd")));
-    if (deployAtEnd != null && Boolean.parseBoolean(deployAtEnd)) {
+    if (deployPlugin.deploysAtEnd()) {
+      // deferring until every module has built, which this goal, deploying
+      // now, would bypass
       throw new MojoExecutionException("nar.deployScope=aol doesn't support maven-deploy-plugin's deployAtEnd");
     }
 
@@ -149,31 +126,45 @@ public class NarDeployMojo extends AbstractMojo {
     if (artifacts.isEmpty()) {
       getLog().warn("No AOL-specific artifacts to deploy");
     } else {
-      final RemoteRepository repository = this.repoSystem.newDeploymentRepository(this.repoSession,
-          model.deploymentRepository());
-      final DeployRequest request = new DeployRequest();
-      request.setRepository(repository);
-      for (final Artifact artifact : artifacts) {
-        if (artifact.getFile() == null) {
-          // rather than deploy only some of them and report success
-          throw new MojoExecutionException("Can't deploy " + artifact + ", which has no file");
-        }
-        getLog().info("Deploying " + artifact.getFile().getName() + " to " + repository.getUrl());
-        request.addArtifact(new DefaultArtifact(artifact.getGroupId(), artifact.getArtifactId(),
-            artifact.getClassifier(), artifact.getArtifactHandler().getExtension(), artifact.getVersion())
-            .setFile(artifact.getFile()));
-      }
-      try {
-        this.repoSystem.deploy(this.repoSession, request);
-      } catch (final DeploymentException e) {
-        throw new MojoExecutionException("Could not deploy the AOL-specific artifacts", e);
-      }
+      deploy(artifacts, deployPlugin.destination().toRemoteRepository());
     }
-
-    // maven-deploy-plugin runs next in the deploy phase
     getLog().info("Leaving the pom, main artifact and other attachments to another build");
+    skipDeployPlugin();
+  }
+
+  private void deploy(final List<Artifact> artifacts, final RemoteRepository destination)
+      throws MojoExecutionException {
+    final RemoteRepository repository = this.repoSystem.newDeploymentRepository(this.repoSession, destination);
+    final DeployRequest request = new DeployRequest();
+    request.setRepository(repository);
+    for (final Artifact artifact : artifacts) {
+      if (artifact.getFile() == null) {
+        // rather than deploy only some of them and report success
+        throw new MojoExecutionException("Can't deploy " + artifact + ", which has no file");
+      }
+      getLog().info("Deploying " + artifact.getFile().getName() + " to " + repository.getUrl());
+      request.addArtifact(new DefaultArtifact(artifact.getGroupId(), artifact.getArtifactId(),
+          artifact.getClassifier(), artifact.getArtifactHandler().getExtension(), artifact.getVersion())
+          .setFile(artifact.getFile()));
+    }
+    try {
+      this.repoSystem.deploy(this.repoSession, request);
+    } catch (final DeploymentException e) {
+      throw new MojoExecutionException("Could not deploy the AOL-specific artifacts", e);
+    }
+  }
+
+  /**
+   * Stops maven-deploy-plugin deploying.  The nar lifecycle binds this goal
+   * ahead of deploy:deploy in the deploy phase, and maven-deploy-plugin reads
+   * its skip, ${maven.deploy.skip}, when it runs, from this project property
+   * unless the command line or its configuration sets it, which
+   * {@link DeployPluginModel#skipsDeploying} has ruled out.
+   */
+  private void skipDeployPlugin() {
     this.project.getProperties().setProperty("maven.deploy.skip", "true");
   }
+
 
   /**
    * The attached artifacts specific to an AOL built here: the

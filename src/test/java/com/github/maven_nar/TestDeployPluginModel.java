@@ -38,7 +38,6 @@ import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.project.MavenProject;
 import org.codehaus.plexus.component.configurator.expression.ExpressionEvaluator;
 import org.codehaus.plexus.util.xml.Xpp3Dom;
-import org.eclipse.aether.repository.RemoteRepository;
 import org.junit.Assert;
 
 /**
@@ -124,7 +123,7 @@ public class TestDeployPluginModel extends TestCase {
   public final void testNoDeployPlugin() throws Exception {
     final DeployPluginModel model = model(project("1.0", null));
     Assert.assertNull(model.deployPlugin());
-    Assert.assertEquals(List.of("true"), model.deployExecutionSkips("true"));
+    Assert.assertEquals(List.of("true"), model.explicitSkips("true"));
   }
 
   public final void testExecutionSkips() throws Exception {
@@ -132,14 +131,14 @@ public class TestDeployPluginModel extends TestCase {
     final DeployPluginModel model = model(project("1.0", deployPlugin("3.1.1", null,
         execution("default-deploy", "deploy", configuration("skip", "releases")),
         execution("publish", null, configuration()))));
-    Assert.assertEquals(List.of("releases", "false"), model.deployExecutionSkips("false"));
+    Assert.assertEquals(List.of("releases", "false"), model.explicitSkips("false"));
   }
 
   public final void testExecutionNotRun() throws Exception {
     // bound to none, a phase mvn deploy doesn't reach
     final DeployPluginModel model = model(project("1.0", deployPlugin("3.1.1", null,
         execution("default-deploy", "none", configuration("skip", "false")))));
-    Assert.assertTrue(model.deployExecutionSkips(null).isEmpty());
+    Assert.assertTrue(model.explicitSkips(null).isEmpty());
   }
 
   public final void testEarlierExecution() {
@@ -147,7 +146,7 @@ public class TestDeployPluginModel extends TestCase {
     final DeployPluginModel model = model(project("1.0", deployPlugin("3.1.1", null,
         execution("early", "install", configuration()))));
     try {
-      model.deployExecutionSkips(null);
+      model.explicitSkips(null);
       fail("accepted an execution before the deploy phase");
     } catch (final MojoExecutionException expected) {
       Assert.assertTrue(expected.getMessage(), expected.getMessage().contains("early execution in the install phase"));
@@ -156,7 +155,7 @@ public class TestDeployPluginModel extends TestCase {
     final DeployPluginModel skipping = model(project("1.0", deployPlugin("3.1.1", null,
         execution("early", "install", configuration("skip", "true")))));
     try {
-      Assert.assertEquals(List.of("true"), skipping.deployExecutionSkips(null));
+      Assert.assertEquals(List.of("true"), skipping.explicitSkips(null));
     } catch (final MojoExecutionException e) {
       fail(e.getMessage());
     }
@@ -167,17 +166,17 @@ public class TestDeployPluginModel extends TestCase {
     final DeployPluginModel release = model(project("1.0", null,
         "altDeploymentRepository", "any::file:///any", "altReleaseDeploymentRepository", "rel::file:///rel",
         "altSnapshotDeploymentRepository", "snap::file:///snap"));
-    final RemoteRepository repository = release.deploymentRepository();
-    Assert.assertEquals("rel", repository.getId());
-    Assert.assertEquals("file:///rel", repository.getUrl());
+    final DeployPluginModel.Destination repository = release.destination();
+    Assert.assertEquals("rel", repository.id());
+    Assert.assertEquals("file:///rel", repository.url());
     // and the snapshot one for a snapshot
     Assert.assertEquals("snap", model(project("1.0-SNAPSHOT", null,
         "altDeploymentRepository", "any::file:///any", "altSnapshotDeploymentRepository", "snap::file:///snap"))
-        .deploymentRepository().getId());
+        .destination().id());
     // configured on the plugin, it wins over the property
     Assert.assertEquals("conf", model(project("1.0", deployPlugin("3.1.1",
         configuration("altDeploymentRepository", "conf::file:///conf")), "altDeploymentRepository", "any::file:///any"))
-        .deploymentRepository().getId());
+        .destination().id());
   }
 
   public final void testConflictingDestinations() {
@@ -185,7 +184,7 @@ public class TestDeployPluginModel extends TestCase {
         execution("a", "deploy", configuration("altDeploymentRepository", "a::file:///a")),
         execution("b", "deploy", configuration("altDeploymentRepository", "b::file:///b")))));
     try {
-      model.deploymentRepository();
+      model.destination();
       fail("accepted two destinations");
     } catch (final MojoExecutionException expected) {
       Assert.assertTrue(expected.getMessage(), expected.getMessage().contains("different repositories"));
@@ -194,7 +193,7 @@ public class TestDeployPluginModel extends TestCase {
 
   public final void testNoDestination() {
     try {
-      model(project("1.0", null)).deploymentRepository();
+      model(project("1.0", null)).destination();
       fail("found a repository");
     } catch (final MojoExecutionException expected) {
       Assert.assertTrue(expected.getMessage(), expected.getMessage().startsWith("No deployment repository"));
@@ -204,13 +203,13 @@ public class TestDeployPluginModel extends TestCase {
   public final void testDeployAtEnd() throws Exception {
     // as configured on the deploy-phase executions, else the property
     Assert.assertEquals("true", model(project("1.0", deployPlugin("3.1.1", null,
-        execution("default-deploy", "deploy", configuration("deployAtEnd", "true"))))).deployConfiguration(
+        execution("default-deploy", "deploy", configuration("deployAtEnd", "true"))))).sameForDeployPhase(
             "deployAtEnd", null));
-    Assert.assertEquals("false", model(project("1.0", null)).deployConfiguration("deployAtEnd", "false"));
+    Assert.assertEquals("false", model(project("1.0", null)).sameForDeployPhase("deployAtEnd", "false"));
     try {
       model(project("1.0", deployPlugin("3.1.1", null,
           execution("a", "deploy", configuration("deployAtEnd", "true")),
-          execution("b", "deploy", configuration("deployAtEnd", "false"))))).deployConfiguration("deployAtEnd", null);
+          execution("b", "deploy", configuration("deployAtEnd", "false"))))).sameForDeployPhase("deployAtEnd", null);
       fail("accepted different deployAtEnd settings");
     } catch (final MojoExecutionException expected) {
       // expected
@@ -247,27 +246,82 @@ public class TestDeployPluginModel extends TestCase {
         .rawProperty("altDeploymentRepository"));
   }
 
+  private static DeployPluginModel withCommandLine(final MavenProject project, final String... nameValues) {
+    final Properties user = new Properties();
+    for (int i = 0; i < nameValues.length; i += 2) {
+      user.setProperty(nameValues[i], nameValues[i + 1]);
+    }
+    return new DeployPluginModel(project, user, new Properties(), evaluator(Map.of()));
+  }
+
+  public final void testSkipsDeploying() throws Exception {
+    // unset anywhere: nar-deploy deploys, and stops maven-deploy-plugin
+    Assert.assertFalse(model(project("1.0", null)).skipsDeploying("false"));
+    // nar-deploy's own skip
+    Assert.assertTrue(model(project("1.0", null)).skipsDeploying("true"));
+    Assert.assertTrue(model(project("1.0", null)).skipsDeploying("releases"));
+    Assert.assertFalse(model(project("1.0-SNAPSHOT", null)).skipsDeploying("releases"));
+    // the command line's, which maven-deploy-plugin sees too
+    Assert.assertTrue(withCommandLine(project("1.0", null), "maven.deploy.skip", "true").skipsDeploying("false"));
+    // every execution skipping
+    Assert.assertTrue(model(project("1.0", deployPlugin("3.1.1", null,
+        execution("default-deploy", "deploy", configuration("skip", "true"))))).skipsDeploying("false"));
+  }
+
+  public final void testCantStopDeployPlugin() {
+    for (final DeployPluginModel model : List.of(
+        withCommandLine(project("1.0", null), "maven.deploy.skip", "false"),
+        model(project("1.0", deployPlugin("3.1.1", null,
+            execution("default-deploy", "deploy", configuration("skip", "false"))))))) {
+      try {
+        model.skipsDeploying("false");
+        fail("accepted an explicit skip=false");
+      } catch (final MojoExecutionException expected) {
+        Assert.assertTrue(expected.getMessage(), expected.getMessage().contains("can't stop maven-deploy-plugin"));
+      }
+    }
+  }
+
+  public final void testRequireSupportedVersion() throws Exception {
+    model(project("1.0", deployPlugin("3.1.1", null))).requireSupportedVersion();
+    // no version: Maven's default, 3.x
+    model(project("1.0", deployPlugin(null, null))).requireSupportedVersion();
+    model(project("1.0", null)).requireSupportedVersion();
+    try {
+      model(project("1.0", deployPlugin("2.8.2", null))).requireSupportedVersion();
+      fail("accepted 2.8.2");
+    } catch (final MojoExecutionException expected) {
+      Assert.assertTrue(expected.getMessage(), expected.getMessage().contains("needs maven-deploy-plugin 3.0.0-M2"));
+    }
+  }
+
+  public final void testDeploysAtEnd() throws Exception {
+    Assert.assertFalse(model(project("1.0", null)).deploysAtEnd());
+    Assert.assertTrue(model(project("1.0", null, "deployAtEnd", "true")).deploysAtEnd());
+    Assert.assertTrue(withCommandLine(project("1.0", null), "deployAtEnd", "true").deploysAtEnd());
+  }
+
   public final void testParseRepository() throws Exception {
     Assert.assertEquals("https://repo.example/maven",
-        DeployPluginModel.parseRepository("id::https://repo.example/maven").getUrl());
-    Assert.assertEquals("id", DeployPluginModel.parseRepository("id::default::file:///tmp/repo").getId());
+        DeployPluginModel.parseRepository("id::https://repo.example/maven").url());
+    Assert.assertEquals("id", DeployPluginModel.parseRepository("id::default::file:///tmp/repo").id());
     // compressed IPv6 addresses contain the separator too
     Assert.assertEquals("http://[::1]:8081/repository",
-        DeployPluginModel.parseRepository("local::http://[::1]:8081/repository").getUrl());
+        DeployPluginModel.parseRepository("local::http://[::1]:8081/repository").url());
     Assert.assertEquals("http://[::1]:8081/repository",
-        DeployPluginModel.parseRepository("local::default::http://[::1]:8081/repository").getUrl());
+        DeployPluginModel.parseRepository("local::default::http://[::1]:8081/repository").url());
     // padded parts are trimmed, as maven-deploy-plugin does
-    final RemoteRepository padded = DeployPluginModel
+    final DeployPluginModel.Destination padded = DeployPluginModel
         .parseRepository(" releases :: https://repo.example/maven ");
-    Assert.assertEquals("releases", padded.getId());
-    Assert.assertEquals("https://repo.example/maven", padded.getUrl());
-    final RemoteRepository legacy = DeployPluginModel
+    Assert.assertEquals("releases", padded.id());
+    Assert.assertEquals("https://repo.example/maven", padded.url());
+    final DeployPluginModel.Destination legacy = DeployPluginModel
         .parseRepository("releases :: default :: http://[::1]:8081/repository ");
-    Assert.assertEquals("releases", legacy.getId());
-    Assert.assertEquals("http://[::1]:8081/repository", legacy.getUrl());
+    Assert.assertEquals("releases", legacy.id());
+    Assert.assertEquals("http://[::1]:8081/repository", legacy.url());
     // only one layout is taken, as maven-deploy-plugin does
     Assert.assertEquals("default::http://h/",
-        DeployPluginModel.parseRepository("id::default::default::http://h/").getUrl());
+        DeployPluginModel.parseRepository("id::default::default::http://h/").url());
     for (final String bad : new String[] { "id", "id::", "id::legacy::file:///tmp", "::file:///tmp", "a::b::c::d",
         " ::file:///tmp", "id:: ", "id::default:: " }) {
       try {

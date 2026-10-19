@@ -19,13 +19,14 @@
  */
 package com.github.maven_nar;
 
-import java.util.AbstractMap;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Map;
+import java.util.Objects;
 import java.util.Properties;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 import org.apache.maven.artifact.repository.ArtifactRepository;
@@ -44,8 +45,50 @@ import org.eclipse.aether.repository.RemoteRepository;
  * deploys, whether it defers deploying.  nar-deploy, which deploys some
  * artifacts itself and stops maven-deploy-plugin from deploying the rest,
  * must deploy where it would and stop when it can't be sure.
+ * <p>
+ * Maven merges the plugin's configuration into each execution's, honoring
+ * combine.self, so an execution's configuration is read on its own.  The
+ * plugin's own applies only to the lifecycle's default deploy, which runs
+ * when the pom declares no deploy execution.
  */
 final class DeployPluginModel {
+
+  /**
+   * Where a deploy execution deploys.
+   *
+   * @param id the repository id, for its credentials
+   * @param url the repository URL
+   */
+  record Destination(String id, String url) {
+
+    RemoteRepository toRemoteRepository() {
+      return new RemoteRepository.Builder(this.id, "default", this.url).build();
+    }
+
+    @Override
+    public String toString() {
+      return this.id + "::" + this.url;
+    }
+  }
+
+  // chooses deploy executions; reading a skip can fail
+  private interface ExecutionFilter {
+    boolean test(PluginExecution execution) throws MojoExecutionException;
+  }
+
+  private static final String GROUP_ID = "org.apache.maven.plugins";
+
+  private static final String ARTIFACT_ID = "maven-deploy-plugin";
+
+  // the goal, and the phase it's bound to by default
+  private static final String DEPLOY = "deploy";
+
+  private static final String SKIP = "skip";
+
+  private static final String SKIP_PROPERTY = "maven.deploy.skip";
+
+  // the first version that reads skip as true, false, releases or snapshots
+  private static final String CONDITIONAL_SKIP_VERSION = "3.0.0-M2";
 
   // The default lifecycle's phases, up to deploy
   private static final List<String> PHASES_TO_DEPLOY = List.of("validate", "initialize", "generate-sources",
@@ -53,6 +96,12 @@ final class DeployPluginModel {
       "generate-test-sources", "process-test-sources", "generate-test-resources", "process-test-resources",
       "test-compile", "process-test-classes", "test", "prepare-package", "package", "pre-integration-test",
       "integration-test", "post-integration-test", "verify", "install", "deploy");
+
+  // a layout is a plain word, unlike a URL's scheme, which ends with a colon
+  private static final Pattern LAYOUT = Pattern.compile("\\s*([A-Za-z0-9_-]+)\\s*::(.*)");
+
+  // expressions that would evaluate as nar-deploy's, not maven-deploy-plugin's
+  private static final Pattern PLUGIN_SCOPED = Pattern.compile("\\$\\{(plugin|mojo|mojoExecution)[.}]");
 
   private final MavenProject project;
 
@@ -62,6 +111,8 @@ final class DeployPluginModel {
 
   // maven-deploy-plugin's, so that ${...} evaluates as for that plugin
   private final ExpressionEvaluator evaluator;
+
+  private final boolean snapshot;
 
   /**
    * @param project the project
@@ -75,24 +126,99 @@ final class DeployPluginModel {
     this.userProperties = userProperties;
     this.systemProperties = systemProperties;
     this.evaluator = evaluator;
+    this.snapshot = project.getArtifact().isSnapshot();
+  }
+
+  /**
+   * Fails for a maven-deploy-plugin before 3.0.0-M2, which reads skip as a
+   * boolean, so would deploy despite releases or snapshots.
+   *
+   * @throws MojoExecutionException if the plugin is older
+   */
+  void requireSupportedVersion() throws MojoExecutionException {
+    final Plugin plugin = deployPlugin();
+    final String version = plugin == null ? null : plugin.getVersion();
+    if (version != null && !supportsDeployPlugin(version)) {
+      throw new MojoExecutionException("nar.deployScope=aol needs maven-deploy-plugin " + CONDITIONAL_SKIP_VERSION
+          + " or later, not " + version);
+    }
+  }
+
+  /**
+   * Whether nothing is to be deployed: every deploy execution skips by its
+   * own skip or the command line's, or nar-deploy's own skip says so.
+   *
+   * @param ownSkip nar-deploy's skip
+   * @return whether to skip
+   * @throws MojoExecutionException if an execution would deploy whatever
+   *           nar-deploy does: one that has deployed in an earlier phase, or
+   *           one whose skip is explicitly false
+   */
+  boolean skipsDeploying(final String ownSkip) throws MojoExecutionException {
+    final String userSkip = skipValue(commandLineProperty(SKIP_PROPERTY));
+    final List<String> explicit = explicitSkips(userSkip);
+    for (final String skip : explicit) {
+      if (skip != null && !skips(skip)) {
+        throw new MojoExecutionException("nar.deployScope=aol can't stop maven-deploy-plugin from deploying the "
+            + "shared artifacts while maven.deploy.skip is set to " + skip
+            + " on the command line or in its configuration");
+      }
+    }
+    // unset, the project property nar-deploy sets makes it skip
+    return !explicit.isEmpty() && explicit.stream().allMatch(Objects::nonNull) || skips(ownSkip);
+  }
+
+  /**
+   * @return whether maven-deploy-plugin defers deploying until every module
+   *         has built (deployAtEnd)
+   * @throws MojoExecutionException if its deploy executions disagree
+   */
+  boolean deploysAtEnd() throws MojoExecutionException {
+    final String deployAtEnd = sameForDeployPhase("deployAtEnd", evaluate(rawProperty("deployAtEnd")));
+    return Boolean.parseBoolean(deployAtEnd);
+  }
+
+  /**
+   * Where maven-deploy-plugin's executions that deploy would deploy: those
+   * in the deploy phase that don't skip, or the lifecycle's default.
+   *
+   * @return the repository
+   * @throws MojoExecutionException if they deploy to different ones, or
+   *           there's none
+   */
+  Destination destination() throws MojoExecutionException {
+    final List<Object> configurations = configurations(
+        execution -> runsInDeployPhase(execution) && !skips(skipValue(configValue(execution.getConfiguration(), SKIP))));
+    final Set<Destination> destinations = new LinkedHashSet<>();
+    for (final Object configuration : configurations) {
+      destinations.add(destination(configuration));
+    }
+    if (destinations.size() > 1) {
+      throw new MojoExecutionException("maven-deploy-plugin's deploy executions deploy to different repositories, "
+          + destinations.stream().map(d -> d == null ? "none" : d.toString()).collect(Collectors.toList())
+          + "; nar.deployScope=aol deploys to one");
+    }
+    final Destination destination = destinations.iterator().next();
+    if (destination == null) {
+      throw new MojoExecutionException("No deployment repository: set distributionManagement or "
+          + "altDeploymentRepository");
+    }
+    return destination;
   }
 
   /**
    * Parses a deployment repository given as id::url, or the older
-   * id::default::url.
+   * id::default::url, trimming each part as maven-deploy-plugin does.
    *
    * @param repository the repository
    * @return the repository
    * @throws MojoExecutionException if it isn't in either form
    */
-  public static RemoteRepository parseRepository(final String repository) throws MojoExecutionException {
-    // maven-deploy-plugin trims each part
+  static Destination parseRepository(final String repository) throws MojoExecutionException {
     final int separator = repository.indexOf("::");
     final String id = separator < 0 ? "" : repository.substring(0, separator).trim();
     String url = separator < 0 ? "" : repository.substring(separator + 2);
-    // a layout is a plain word, unlike a URL's scheme, which ends with a colon
-    final java.util.regex.Matcher layout = java.util.regex.Pattern.compile("\\s*([A-Za-z0-9_-]+)\\s*::(.*)")
-        .matcher(url);
+    final Matcher layout = LAYOUT.matcher(url);
     if (layout.matches()) {
       if (!"default".equals(layout.group(1))) {
         throw new MojoExecutionException("Invalid deployment repository " + repository + ", expected id::url");
@@ -103,97 +229,7 @@ final class DeployPluginModel {
     if (id.isEmpty() || url.isEmpty()) {
       throw new MojoExecutionException("Invalid deployment repository " + repository + ", expected id::url");
     }
-    return new RemoteRepository.Builder(id, "default", url).build();
-  }
-
-  /**
-   * @return whether a maven.deploy.skip value skips deploying this project
-   */
-  static boolean skips(final String value, final boolean snapshot) {
-    // as maven-deploy-plugin reads it: a boolean, or releases or snapshots
-    // untrimmed, as maven-deploy-plugin reads it
-    return Boolean.parseBoolean(value) || ("releases".equals(value) && !snapshot)
-        || ("snapshots".equals(value) && snapshot);
-  }
-
-  RemoteRepository deploymentRepository() throws MojoExecutionException {
-    // where each maven-deploy-plugin execution that runs in the deploy phase,
-    // and doesn't skip itself, would deploy, which must be the same for all
-    final Plugin plugin = deployPlugin();
-    final List<Object> configurations = new ArrayList<>();
-    if (plugin != null) {
-      final boolean snapshot = this.project.getArtifact().isSnapshot();
-      for (final PluginExecution execution : plugin.getExecutions()) {
-        final String phase = execution.getPhase();
-        if (execution.getGoals().contains("deploy") && (phase == null || "deploy".equals(phase))
-            && !skips(skipValue(valueOf(execution.getConfiguration(), "skip")), snapshot)) {
-          configurations.add(execution.getConfiguration());
-        }
-      }
-    }
-    // Maven merges the plugin's configuration into each execution's (honoring
-    // combine.self), so the plugin's own is only for when there's none
-    if (configurations.isEmpty()) {
-      configurations.add(plugin == null ? null : plugin.getConfiguration());
-    }
-    // as id and URL: a RemoteRepository's equality covers more
-    final Set<Map.Entry<String, String>> destinations = new LinkedHashSet<>();
-    for (final Object configuration : configurations) {
-      destinations.add(destination(configuration));
-    }
-    if (destinations.size() > 1) {
-      throw new MojoExecutionException("maven-deploy-plugin's deploy executions deploy to different repositories, "
-          + destinations.stream().map(d -> d == null ? "none" : d.getKey() + "::" + d.getValue())
-              .collect(Collectors.toList())
-          + "; nar.deployScope=aol deploys to one");
-    }
-    final Map.Entry<String, String> destination = destinations.iterator().next();
-    if (destination == null) {
-      throw new MojoExecutionException("No deployment repository: set distributionManagement or "
-          + "altDeploymentRepository");
-    }
-    return new RemoteRepository.Builder(destination.getKey(), "default", destination.getValue()).build();
-  }
-
-  /**
-   * The repository a deploy execution with this configuration deploys to, as
-   * maven-deploy-plugin chooses it: the snapshot or release repository, else
-   * altDeploymentRepository (each configured, else the property), else
-   * distributionManagement; as its id and URL, or null if there's none.
-   */
-  private Map.Entry<String, String> destination(final Object configuration) throws MojoExecutionException {
-    final boolean snapshot = this.project.getArtifact().isSnapshot();
-    String alt = configured(configuration, snapshot ? "altSnapshotDeploymentRepository"
-        : "altReleaseDeploymentRepository", rawProperty(snapshot ? "altSnapshotDeploymentRepository"
-        : "altReleaseDeploymentRepository"));
-    if (alt == null || alt.isEmpty()) {
-      alt = configured(configuration, "altDeploymentRepository", rawProperty("altDeploymentRepository"));
-    }
-    if (alt != null && !alt.isEmpty()) {
-      final RemoteRepository repository = parseRepository(alt);
-      return new AbstractMap.SimpleImmutableEntry<>(repository.getId(), repository.getUrl());
-    }
-    final ArtifactRepository repository = this.project.getDistributionManagementArtifactRepository();
-    return repository == null ? null : new AbstractMap.SimpleImmutableEntry<>(repository.getId(), repository.getUrl());
-  }
-
-  private String configured(final Object configuration, final String name, final String property)
-      throws MojoExecutionException {
-    final String value = evaluate(valueOf(configuration, name));
-    return value != null ? value : evaluate(property);
-  }
-
-  /**
-   * A property as set, before Maven evaluates expressions in it for this
-   * goal, which would be nar-deploy's rather than maven-deploy-plugin's: on
-   * the command line (user or system property), else in the project.
-   */
-  String rawProperty(final String name) {
-    String value = this.userProperties.getProperty(name);
-    if (value == null) {
-      value = this.systemProperties.getProperty(name);
-    }
-    return value != null ? value : this.project.getProperties().getProperty(name);
+    return new Destination(id, url);
   }
 
   /**
@@ -201,76 +237,62 @@ final class DeployPluginModel {
    * @return whether nar.deployScope=aol supports it: 3.0.0-M2 or later, which
    *         takes maven.deploy.skip=releases or snapshots
    */
-  public static boolean supportsDeployPlugin(final String version) {
-    return new ComparableVersion(version).compareTo(new ComparableVersion("3.0.0-M2")) >= 0;
+  static boolean supportsDeployPlugin(final String version) {
+    return new ComparableVersion(version).compareTo(new ComparableVersion(CONDITIONAL_SKIP_VERSION)) >= 0;
   }
 
   /**
-   * The skip value each maven-deploy-plugin deploy execution will see when
-   * it's set explicitly: in the execution's configuration (with the plugin's
-   * merged in) or on the command line; null where it isn't.
+   * The skip each deploy execution that mvn deploy runs will see when it's
+   * set explicitly, in its configuration or on the command line; null where
+   * it isn't.  Executions in an earlier phase count, as they deploy before
+   * nar-deploy runs.
    */
-  List<String> deployExecutionSkips(final String userSkip) throws MojoExecutionException {
-    final List<String> skips = new java.util.ArrayList<>();
+  List<String> explicitSkips(final String userSkip) throws MojoExecutionException {
+    final List<String> skips = new ArrayList<>();
     final Plugin plugin = deployPlugin();
-    if (plugin == null) {
-      skips.add(userSkip);
+    if (plugin == null || plugin.getExecutions().stream().noneMatch(DeployPluginModel::deploys)) {
+      // the lifecycle's default deploy
+      final String pluginSkip = plugin == null ? null : skipValue(configValue(plugin.getConfiguration(), SKIP));
+      skips.add(pluginSkip != null ? pluginSkip : userSkip);
       return skips;
     }
     for (final PluginExecution execution : plugin.getExecutions()) {
-      // one bound to none, or to a phase mvn deploy doesn't run, never runs
-      final String phase = execution.getPhase();
-      if (execution.getGoals().contains("deploy") && (phase == null || PHASES_TO_DEPLOY.contains(phase))) {
-        final String executionSkip = skipValue(valueOf(execution.getConfiguration(), "skip"));
-        // the execution's configuration already has the plugin's merged in
+      if (deploys(execution) && runsBeforeOrInDeployPhase(execution)) {
+        final String executionSkip = skipValue(configValue(execution.getConfiguration(), SKIP));
         final String skip = executionSkip != null ? executionSkip : userSkip;
-        // One bound to an earlier phase would deploy everything before this
-        // goal runs, unless it skipped, by its own settings or the project's
-        // maven.deploy.skip, which this goal hasn't changed yet
-        final String earlierSkip = skip != null ? skip
-            : evaluate(this.project.getProperties().getProperty("maven.deploy.skip"));
-        if (phase != null && !"deploy".equals(phase) && !skips(earlierSkip, this.project.getArtifact().isSnapshot())) {
-          throw new MojoExecutionException("maven-deploy-plugin's " + execution.getId() + " execution in the "
-              + execution.getPhase() + " phase, before this goal, has deployed everything, which nar.deployScope=aol "
-              + "can't prevent");
-        }
+        requireNotDeployedEarlier(execution, skip);
         skips.add(skip);
       }
-    }
-    // with no deploy execution at all, the lifecycle's would use these
-    if (plugin.getExecutions().stream().noneMatch(execution -> execution.getGoals().contains("deploy"))) {
-      final String pluginSkip = skipValue(valueOf(plugin.getConfiguration(), "skip"));
-      skips.add(pluginSkip != null ? pluginSkip : userSkip);
     }
     return skips;
   }
 
+  // One bound to an earlier phase has deployed everything before nar-deploy
+  // runs, unless it skipped: by its own settings or the project's
+  // maven.deploy.skip, which nar-deploy hasn't set yet
+  private void requireNotDeployedEarlier(final PluginExecution execution, final String skip)
+      throws MojoExecutionException {
+    final String phase = execution.getPhase();
+    final String effective = skip != null ? skip : evaluate(this.project.getProperties().getProperty(SKIP_PROPERTY));
+    if (phase != null && !DEPLOY.equals(phase) && !skips(effective)) {
+      throw new MojoExecutionException("maven-deploy-plugin's " + execution.getId() + " execution in the "
+          + phase + " phase, before this goal, has deployed everything, which nar.deployScope=aol can't prevent");
+    }
+  }
+
   /**
-   * A parameter configured on maven-deploy-plugin for the deploy executions
-   * that will run in the deploy phase (in each execution's configuration, with
-   * the plugin's merged in; the plugin's only when there's no such execution),
-   * which wins over the property, as in that plugin; otherwise the
-   * property's value.  Fails if those executions are configured differently,
-   * as this goal deploys once, to one repository.
+   * A parameter configured for the deploy-phase executions, skipping or not,
+   * or for the lifecycle's default deploy, which wins over the property, as
+   * in maven-deploy-plugin; otherwise the property's value.
+   *
+   * @throws MojoExecutionException if those executions are configured
+   *           differently, as nar-deploy deploys once
    */
-  String deployConfiguration(final String name, final String property) throws MojoExecutionException {
-    final Plugin plugin = deployPlugin();
-    if (plugin == null) {
-      return property;
-    }
-    final java.util.Set<String> values = new java.util.LinkedHashSet<>();
-    boolean active = false;
-    for (final PluginExecution execution : plugin.getExecutions()) {
-      final String phase = execution.getPhase();
-      if (execution.getGoals().contains("deploy") && (phase == null || "deploy".equals(phase))) {
-        active = true;
-        final String value = evaluate(valueOf(execution.getConfiguration(), name));
-        values.add(value != null ? value : property);
-      }
-    }
-    if (!active) {
-      final String pluginValue = evaluate(valueOf(plugin.getConfiguration(), name));
-      values.add(pluginValue != null ? pluginValue : property);
+  String sameForDeployPhase(final String name, final String property) throws MojoExecutionException {
+    final Set<String> values = new LinkedHashSet<>();
+    for (final Object configuration : configurations(DeployPluginModel::runsInDeployPhase)) {
+      final String value = evaluate(configValue(configuration, name));
+      values.add(value != null ? value : property);
     }
     values.remove(null);
     if (values.size() > 1) {
@@ -278,6 +300,74 @@ final class DeployPluginModel {
           + " differently, " + values + "; nar.deployScope=aol deploys to one repository");
     }
     return values.isEmpty() ? null : values.iterator().next();
+  }
+
+  // The configurations of the deploy executions chosen, or the plugin's own,
+  // as for the lifecycle's default deploy, when there's none (null without the
+  // plugin)
+  private List<Object> configurations(final ExecutionFilter chosen) throws MojoExecutionException {
+    final Plugin plugin = deployPlugin();
+    final List<Object> configurations = new ArrayList<>();
+    if (plugin != null) {
+      for (final PluginExecution execution : plugin.getExecutions()) {
+        if (deploys(execution) && chosen.test(execution)) {
+          configurations.add(execution.getConfiguration());
+        }
+      }
+    }
+    if (configurations.isEmpty()) {
+      configurations.add(plugin == null ? null : plugin.getConfiguration());
+    }
+    return configurations;
+  }
+
+  /**
+   * The repository a deploy execution with this configuration deploys to, as
+   * maven-deploy-plugin chooses it: the snapshot or release repository, else
+   * altDeploymentRepository (each configured, else the property), else
+   * distributionManagement; null if there's none.
+   */
+  private Destination destination(final Object configuration) throws MojoExecutionException {
+    final String specific = this.snapshot ? "altSnapshotDeploymentRepository" : "altReleaseDeploymentRepository";
+    String alt = configured(configuration, specific);
+    if (alt == null || alt.isEmpty()) {
+      alt = configured(configuration, "altDeploymentRepository");
+    }
+    if (alt != null && !alt.isEmpty()) {
+      return parseRepository(alt);
+    }
+    final ArtifactRepository repository = this.project.getDistributionManagementArtifactRepository();
+    return repository == null ? null : new Destination(repository.getId(), repository.getUrl());
+  }
+
+  // A parameter as configured, else as its property, evaluated
+  private String configured(final Object configuration, final String name) throws MojoExecutionException {
+    final String value = evaluate(configValue(configuration, name));
+    return value != null ? value : evaluate(rawProperty(name));
+  }
+
+  /**
+   * A property as set, before Maven evaluates expressions in it for this
+   * goal, which would be nar-deploy's rather than maven-deploy-plugin's: on
+   * the command line, else in the project.
+   */
+  String rawProperty(final String name) {
+    final String value = commandLineProperty(name);
+    return value != null ? value : this.project.getProperties().getProperty(name);
+  }
+
+  // A user property (-D), else a system property
+  private String commandLineProperty(final String name) {
+    final String value = this.userProperties.getProperty(name);
+    return value != null ? value : this.systemProperties.getProperty(name);
+  }
+
+  // A skip value as maven-deploy-plugin reads it: a boolean, or releases or
+  // snapshots; the property isn't trimmed, configured values are (see
+  // configValue)
+  private boolean skips(final String value) {
+    return Boolean.parseBoolean(value) || ("releases".equals(value) && !this.snapshot)
+        || ("snapshots".equals(value) && this.snapshot);
   }
 
   /**
@@ -292,13 +382,15 @@ final class DeployPluginModel {
   /**
    * Evaluates the expressions Maven leaves in plugin configuration until the
    * plugin runs, such as ${session.executionRootDirectory}.
+   *
+   * @throws MojoExecutionException for one that would evaluate as
+   *           nar-deploy's rather than maven-deploy-plugin's
    */
   String evaluate(final String value) throws MojoExecutionException {
     if (value == null || value.indexOf("${") < 0) {
       return value;
     }
-    // these would be nar-deploy's, not maven-deploy-plugin's
-    if (java.util.regex.Pattern.compile("\\$\\{(plugin|mojo|mojoExecution)[.}]").matcher(value).find()) {
+    if (PLUGIN_SCOPED.matcher(value).find()) {
       throw new MojoExecutionException("Can't evaluate maven-deploy-plugin's " + value + " for nar.deployScope=aol; "
           + "use an expression that doesn't depend on the plugin");
     }
@@ -312,23 +404,36 @@ final class DeployPluginModel {
 
   Plugin deployPlugin() {
     for (final Plugin plugin : this.project.getBuildPlugins()) {
-      if ("org.apache.maven.plugins".equals(plugin.getGroupId())
-          && "maven-deploy-plugin".equals(plugin.getArtifactId())) {
+      if (GROUP_ID.equals(plugin.getGroupId()) && ARTIFACT_ID.equals(plugin.getArtifactId())) {
         return plugin;
       }
     }
     return null;
   }
 
-  // The configuration is an Xpp3Dom, from a library this plugin doesn't
-  // compile against.
-  private static String valueOf(final Object configuration, final String name) throws MojoExecutionException {
+  private static boolean deploys(final PluginExecution execution) {
+    return execution.getGoals().contains(DEPLOY);
+  }
+
+  private static boolean runsInDeployPhase(final PluginExecution execution) {
+    return execution.getPhase() == null || DEPLOY.equals(execution.getPhase());
+  }
+
+  // run by mvn deploy: not bound to none or a later phase
+  private static boolean runsBeforeOrInDeployPhase(final PluginExecution execution) {
+    return execution.getPhase() == null || PHASES_TO_DEPLOY.contains(execution.getPhase());
+  }
+
+  // A configured value, trimmed.  The configuration is an Xpp3Dom, read by
+  // reflection so that this plugin needn't compile against the plexus-xml
+  // Maven provides.
+  private static String configValue(final Object configuration, final String name) throws MojoExecutionException {
     if (configuration == null) {
       return null;
     }
     try {
-      final Object skip = configuration.getClass().getMethod("getChild", String.class).invoke(configuration, name);
-      final Object value = skip == null ? null : skip.getClass().getMethod("getValue").invoke(skip);
+      final Object child = configuration.getClass().getMethod("getChild", String.class).invoke(configuration, name);
+      final Object value = child == null ? null : child.getClass().getMethod("getValue").invoke(child);
       return value == null ? null : value.toString().trim();
     } catch (final ReflectiveOperationException e) {
       // fail rather than act as if it weren't configured
