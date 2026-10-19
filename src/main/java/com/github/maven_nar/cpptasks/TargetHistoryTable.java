@@ -39,7 +39,7 @@ import java.util.stream.Collectors;
 import javax.xml.parsers.SAXParser;
 import javax.xml.parsers.SAXParserFactory;
 
-import org.apache.maven.surefire.shared.lang3.function.Failable;
+import org.apache.commons.lang3.function.Failable;
 import org.apache.tools.ant.BuildException;
 import org.xml.sax.Attributes;
 import org.xml.sax.SAXException;
