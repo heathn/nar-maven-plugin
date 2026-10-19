@@ -90,7 +90,17 @@ public class TestNarDeploy extends TestCase {
         NarDeployMojo.parseRepository("local::http://[::1]:8081/repository").getUrl());
     Assert.assertEquals("http://[::1]:8081/repository",
         NarDeployMojo.parseRepository("local::default::http://[::1]:8081/repository").getUrl());
-    for (final String bad : new String[] { "id", "id::", "id::legacy::file:///tmp", "::file:///tmp", "a::b::c::d" }) {
+    // padded parts are trimmed, as maven-deploy-plugin does
+    final org.eclipse.aether.repository.RemoteRepository padded = NarDeployMojo
+        .parseRepository(" releases :: https://repo.example/maven ");
+    Assert.assertEquals("releases", padded.getId());
+    Assert.assertEquals("https://repo.example/maven", padded.getUrl());
+    final org.eclipse.aether.repository.RemoteRepository legacy = NarDeployMojo
+        .parseRepository("releases :: default :: http://[::1]:8081/repository ");
+    Assert.assertEquals("releases", legacy.getId());
+    Assert.assertEquals("http://[::1]:8081/repository", legacy.getUrl());
+    for (final String bad : new String[] { "id", "id::", "id::legacy::file:///tmp", "::file:///tmp", "a::b::c::d",
+        " ::file:///tmp", "id:: ", "id::default:: " }) {
       try {
         NarDeployMojo.parseRepository(bad);
         fail("accepted " + bad);

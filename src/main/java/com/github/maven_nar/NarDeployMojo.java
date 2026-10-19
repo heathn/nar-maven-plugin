@@ -219,20 +219,24 @@ public class NarDeployMojo extends AbstractMojo {
    * @throws MojoExecutionException if it isn't in either form
    */
   public static RemoteRepository parseRepository(final String repository) throws MojoExecutionException {
+    // maven-deploy-plugin trims each part
     final int separator = repository.indexOf("::");
+    final String id = separator < 0 ? "" : repository.substring(0, separator).trim();
     String url = separator < 0 ? "" : repository.substring(separator + 2);
     // a layout is a plain word, unlike a URL's scheme, which ends with a colon
-    final java.util.regex.Matcher layout = java.util.regex.Pattern.compile("([A-Za-z0-9_-]+)::(.*)").matcher(url);
+    final java.util.regex.Matcher layout = java.util.regex.Pattern.compile("\\s*([A-Za-z0-9_-]+)\\s*::(.*)")
+        .matcher(url);
     if (layout.matches()) {
       if (!"default".equals(layout.group(1))) {
         throw new MojoExecutionException("Invalid deployment repository " + repository + ", expected id::url");
       }
       url = layout.group(2);
     }
-    if (separator <= 0 || url.isEmpty()) {
+    url = url.trim();
+    if (id.isEmpty() || url.isEmpty()) {
       throw new MojoExecutionException("Invalid deployment repository " + repository + ", expected id::url");
     }
-    return new RemoteRepository.Builder(repository.substring(0, separator), "default", url).build();
+    return new RemoteRepository.Builder(id, "default", url).build();
   }
 
   /**
