@@ -245,7 +245,7 @@ public class NarIntegrationTestMojo extends AbstractSurefireMojo
    * Specify this parameter to run individual tests by file name, overriding the <code>includes/excludes</code>
    * parameters. Each pattern you specify here will be used to create an include pattern formatted like
    * <code>**&#47;${test}.java</code>, so you can just type "-Dtest=MyTest" to run a single test called
-   * "foo/MyTest.java". This parameter will override the TestNG suiteXmlFiles parameter.
+   * "foo/MyTest.java".
    * 
    */
   @Parameter(property = "test")
@@ -351,9 +351,7 @@ public class NarIntegrationTestMojo extends AbstractSurefireMojo
    * </code>
    * <p/>
    * Each include item may also contain a comma-separated sublist of items, which will be treated as multiple
-   * &nbsp;&lt;include> entries.<br/>
-   * <p/>
-   * This parameter is ignored if the TestNG <code>suiteXmlFiles</code> parameter is specified.
+   * &nbsp;&lt;include> entries.
    */
   @Parameter
   private List<String> includes;
@@ -367,8 +365,6 @@ public class NarIntegrationTestMojo extends AbstractSurefireMojo
    * {@literal </excludes>}
    * </code></pre>
    * (which excludes all inner classes).
-   * <br>
-   * This parameter is ignored if the TestNG {@code suiteXmlFiles} parameter is specified.
    * <br>
    * Each exclude item may also contain a comma-separated sub-list of items, which will be treated as multiple
    * {@literal <exclude>} entries.<br>
@@ -435,14 +431,10 @@ public class NarIntegrationTestMojo extends AbstractSurefireMojo
   private int failOnFlakeCount;
 
   /**
-   * (TestNG) List of &lt;suiteXmlFile> elements specifying TestNG suite xml file locations. Note that
-   * <code>suiteXmlFiles</code> is incompatible with several other parameters of this plugin, like
-   * <code>includes/excludes</code>.<br/>
-   * This parameter is ignored if the <code>test</code> parameter is specified (allowing you to run a single test
-   * instead of an entire suite).
+   * (TestNG) List of &lt;suiteXmlFile> elements specifying TestNG suite xml file locations.
    *
    * @since 2.2
-   * @deprecated ignored, as in Surefire, which dropped TestNG suite files after 3.6.0
+   * @deprecated ignored, as in Surefire, which dropped TestNG suite files in 3.6.0
    */
   @Deprecated
   @Parameter( property = "surefire.suiteXmlFiles" )

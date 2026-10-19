@@ -278,8 +278,8 @@ public final class NarUtil {
   /**
    * Parses project.build.outputTimestamp as maven-jar-plugin does, with
    * maven-archiver: seconds since the epoch, or an ISO 8601 date and time
-   * with an offset.  Unset or a single character means reproducible builds
-   * are off, unless SOURCE_DATE_EPOCH is set.
+   * with an offset.  Unset or a single non-digit character means
+   * reproducible builds are off, unless SOURCE_DATE_EPOCH is set.
    *
    * @param outputTimestamp the property's value, or null
    * @return the timestamp, or null if there's none
