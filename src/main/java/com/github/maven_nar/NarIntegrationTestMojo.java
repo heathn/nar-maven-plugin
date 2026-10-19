@@ -23,7 +23,6 @@ import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.LinkedHashSet;
@@ -443,7 +442,9 @@ public class NarIntegrationTestMojo extends AbstractSurefireMojo
    * instead of an entire suite).
    *
    * @since 2.2
+   * @deprecated ignored, as in Surefire, which dropped TestNG suite files after 3.6.0
    */
+  @Deprecated
   @Parameter( property = "surefire.suiteXmlFiles" )
   private File[] suiteXmlFiles;
 
@@ -485,6 +486,15 @@ public class NarIntegrationTestMojo extends AbstractSurefireMojo
    */
   @Parameter( property = "failsafe.runOrder.random.seed" )
   private Long runOrderRandomSeed;
+
+  /**
+   * Used to override the checksum in the name of the statistics file
+   * when {@code surefire.runOrder} is set to "balanced".
+   *
+   * @since 3.5.5
+   */
+  @Parameter( property = "surefire.runOrder.statisticsFile.checksum" )
+  private String runOrderStatisticsFileChecksum;
 
   /**
    * A file containing include patterns. Blank lines, or lines starting with # are ignored. If {@code includes} are
@@ -1217,16 +1227,15 @@ public class NarIntegrationTestMojo extends AbstractSurefireMojo
   }
 
   @Override
-  public File[] getSuiteXmlFiles()
+  public String getRunOrderStatisticsFileChecksum()
   {
-    return suiteXmlFiles.clone();
+    return runOrderStatisticsFileChecksum;
   }
 
   @Override
-  @SuppressWarnings( "UnusedDeclaration" )
-  public void setSuiteXmlFiles( File[] suiteXmlFiles )
+  public void setRunOrderStatisticsFileChecksum( String runOrderStatisticsFileChecksum )
   {
-    this.suiteXmlFiles = suiteXmlFiles.clone();
+    this.runOrderStatisticsFileChecksum = runOrderStatisticsFileChecksum;
   }
 
   @Override
@@ -1278,17 +1287,6 @@ public class NarIntegrationTestMojo extends AbstractSurefireMojo
     this.useModulePath = useModulePath;
   }
 
-  @Override
-  protected final List<File> suiteXmlFiles()
-  {
-    return hasSuiteXmlFiles() ? Arrays.asList( suiteXmlFiles ) : Collections.<File>emptyList();
-  }
-
-  @Override
-  protected final boolean hasSuiteXmlFiles()
-  {
-    return suiteXmlFiles != null && suiteXmlFiles.length != 0;
-  }
 
   @Override
   protected final String[] getExcludedEnvironmentVariables()
