@@ -197,10 +197,10 @@ public class NarDeployMojo extends AbstractMojo {
   public static List<Artifact> aolArtifacts(final List<Artifact> attached) {
     final Set<String> aols = new LinkedHashSet<>();
     for (final Artifact artifact : attached) {
-      final String classifier = artifact.getClassifier();
+      final Classifier classifier = Classifier.parse(artifact.getClassifier());
       if (NarConstants.NAR_TYPE.equals(artifact.getType()) && classifier != null
-          && !NarConstants.NAR_NO_ARCH.equals(classifier) && classifier.lastIndexOf('-') > 0) {
-        aols.add(classifier.substring(0, classifier.lastIndexOf('-')));
+          && !NarConstants.NAR_NO_ARCH.equals(artifact.getClassifier())) {
+        aols.add(classifier.aol());
       }
     }
     return attached.stream()

@@ -173,12 +173,12 @@ public class NarPreparePackageMojo extends AbstractCompileMojo {
         continue;
       }
       final String classifier = name.substring(artifactIdVersion.length() + 1);
-      final int dash = classifier.lastIndexOf('-');
-      if (dash <= 0) {
+      final Classifier parsed = Classifier.parse(classifier);
+      if (parsed == null) {
         continue;
       }
-      final String aolName = classifier.substring(0, dash);
-      final String type = classifier.substring(dash + 1);
+      final String aolName = parsed.aol();
+      final String type = parsed.type();
       final AOL aol = new AOL(aolName);
 
       final String key = NarUtil.getAOLKey(aolName);

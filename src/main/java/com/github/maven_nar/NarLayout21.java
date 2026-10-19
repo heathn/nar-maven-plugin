@@ -229,9 +229,12 @@ public class NarLayout21 extends AbstractNarLayout {
       final String presetDfltBinding = narInfo.getBinding(null, null);
       final Map<AOL, String> presetAOLBinding = new HashMap<>();
       for (final String classifier : classifiers) {
-        final int lastDash = classifier.lastIndexOf('-');
-        final String type = classifier.substring(lastDash + 1);
-        final AOL aol = new AOL(classifier.substring(0, lastDash));
+        final Classifier parsed = Classifier.parse(classifier);
+        if (parsed == null) {
+          continue;
+        }
+        final String type = parsed.type();
+        final AOL aol = new AOL(parsed.aol());
 
         if (!presetAOLBinding.containsKey(aol)) {
            presetAOLBinding.put(aol, narInfo.getBinding(aol, null));
@@ -347,9 +350,10 @@ public class NarLayout21 extends AbstractNarLayout {
     if (!targets.isEmpty()) {
       final Map<String, Set<String>> built = new HashMap<>();
       for (final String classifier : classifiers) {
-        final int lastDash = classifier.lastIndexOf('-');
-        built.computeIfAbsent(classifier.substring(0, lastDash), aol -> new LinkedHashSet<>())
-            .add(classifier.substring(lastDash + 1));
+        final Classifier parsed = Classifier.parse(classifier);
+        if (parsed != null) {
+          built.computeIfAbsent(parsed.aol(), aol -> new LinkedHashSet<>()).add(parsed.type());
+        }
       }
       final Set<String> builtTypes = new HashSet<>();
       built.values().forEach(builtTypes::addAll);
