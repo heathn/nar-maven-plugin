@@ -122,7 +122,7 @@ public class NarDeployMojo extends AbstractMojo {
     // configuration (with the plugin's merged in) or on the command line.
     // Unset, the project property set below makes it skip.
     final boolean snapshot = this.project.getArtifact().isSnapshot();
-    final String userSkip = evaluate(this.session.getUserProperties().getProperty("maven.deploy.skip",
+    final String userSkip = skipValue(this.session.getUserProperties().getProperty("maven.deploy.skip",
         this.session.getSystemProperties().getProperty("maven.deploy.skip")));
     final List<String> explicitSkips = deployExecutionSkips(userSkip);
     // maven-deploy-plugin before 3.0.0-M2 takes skip as a boolean, so it
@@ -255,7 +255,7 @@ public class NarDeployMojo extends AbstractMojo {
       for (final PluginExecution execution : plugin.getExecutions()) {
         final String phase = execution.getPhase();
         if (execution.getGoals().contains("deploy") && (phase == null || "deploy".equals(phase))
-            && !skips(evaluate(valueOf(execution.getConfiguration(), "skip")), snapshot)) {
+            && !skips(skipValue(valueOf(execution.getConfiguration(), "skip")), snapshot)) {
           configurations.add(execution.getConfiguration());
         }
       }
@@ -347,7 +347,7 @@ public class NarDeployMojo extends AbstractMojo {
       // one bound to none, or to a phase mvn deploy doesn't run, never runs
       final String phase = execution.getPhase();
       if (execution.getGoals().contains("deploy") && (phase == null || PHASES_TO_DEPLOY.contains(phase))) {
-        final String executionSkip = evaluate(valueOf(execution.getConfiguration(), "skip"));
+        final String executionSkip = skipValue(valueOf(execution.getConfiguration(), "skip"));
         // the execution's configuration already has the plugin's merged in
         final String skip = executionSkip != null ? executionSkip : userSkip;
         // One bound to an earlier phase would deploy everything before this
@@ -365,7 +365,7 @@ public class NarDeployMojo extends AbstractMojo {
     }
     // with no deploy execution at all, the lifecycle's would use these
     if (plugin.getExecutions().stream().noneMatch(execution -> execution.getGoals().contains("deploy"))) {
-      final String pluginSkip = evaluate(valueOf(plugin.getConfiguration(), "skip"));
+      final String pluginSkip = skipValue(valueOf(plugin.getConfiguration(), "skip"));
       skips.add(pluginSkip != null ? pluginSkip : userSkip);
     }
     return skips;
@@ -404,6 +404,15 @@ public class NarDeployMojo extends AbstractMojo {
           + " differently, " + values + "; nar.deployScope=aol deploys to one repository");
     }
     return values.isEmpty() ? null : values.iterator().next();
+  }
+
+  /**
+   * A skip value, evaluated; one set to an expression that doesn't resolve is
+   * maven-deploy-plugin's default, false, rather than unset.
+   */
+  private String skipValue(final String value) throws MojoExecutionException {
+    final String evaluated = evaluate(value);
+    return value != null && evaluated == null ? "false" : evaluated;
   }
 
   /**

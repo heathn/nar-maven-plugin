@@ -27,8 +27,10 @@ import java.nio.file.attribute.FileTime;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Random;
+import java.util.stream.Stream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
@@ -45,9 +47,22 @@ import org.codehaus.plexus.archiver.manager.ArchiverManager;
  * created.
  */
 public class TestReproducibleNar extends TestCase {
+  private Path dir;
+
+  @Override
+  protected void setUp() throws Exception {
+    this.dir = Files.createTempDirectory("nar-order");
+  }
+
+  @Override
+  protected void tearDown() throws Exception {
+    try (Stream<Path> paths = Files.walk(this.dir)) {
+      paths.sorted(Comparator.reverseOrder()).forEach(p -> p.toFile().delete());
+    }
+  }
 
   public final void testEntryOrder() throws Exception {
-    final Path dir = Files.createTempDirectory("nar-order");
+    final Path dir = this.dir;
     final List<String> names = new ArrayList<>();
     for (int i = 0; i < 40; i++) {
       names.add(String.format("f%02d.h", i));
