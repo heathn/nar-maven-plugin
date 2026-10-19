@@ -26,14 +26,14 @@
     <version>1.0-SNAPSHOT</version>
     <relativePath>../it-parent/pom.xml</relativePath>
   </parent>
-  <artifactId>it0048-deploy-skip-old-plugin</artifactId>
+  <artifactId>it0048-deploy-old-plugin</artifactId>
   <packaging>nar</packaging>
-  <name>Deploy scope: a conditional skip an old deploy plugin ignores</name>
+  <name>Deploy scope: maven-deploy-plugin before 3.0.0-M2</name>
   <version>1.0-SNAPSHOT</version>
   <description>
-    maven-deploy-plugin 2.x takes maven.deploy.skip as a boolean, so with
-    maven.deploy.skip=snapshots it would deploy a snapshot after all; with
-    nar.deployScope=aol the build fails before deploying anything.
+    nar.deployScope=aol needs maven-deploy-plugin 3.0.0-M2 or later, which
+    takes maven.deploy.skip=releases or snapshots; with 2.8.2 the build fails
+    before deploying anything.
   </description>
   <properties>
     <nar.deployScope>aol</nar.deployScope>

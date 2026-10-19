@@ -111,12 +111,12 @@ public class TestNarDeploy extends TestCase {
       }
     }
   }
-  public final void testSupportsConditionalSkip() {
+  public final void testSupportsDeployPlugin() {
     for (final String old : new String[] { "2.8.2", "3.0.0-M1" }) {
-      Assert.assertFalse(old, NarDeployMojo.supportsConditionalSkip(old));
+      Assert.assertFalse(old, NarDeployMojo.supportsDeployPlugin(old));
     }
     for (final String current : new String[] { "3.0.0-M2", "3.0.0", "3.1.2", "4.0.0-beta-3" }) {
-      Assert.assertTrue(current, NarDeployMojo.supportsConditionalSkip(current));
+      Assert.assertTrue(current, NarDeployMojo.supportsDeployPlugin(current));
     }
   }
 }
