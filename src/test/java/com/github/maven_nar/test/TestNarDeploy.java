@@ -99,6 +99,8 @@ public class TestNarDeploy extends TestCase {
         .parseRepository("releases :: default :: http://[::1]:8081/repository ");
     Assert.assertEquals("releases", legacy.getId());
     Assert.assertEquals("http://[::1]:8081/repository", legacy.getUrl());
+    // only one layout is taken, as maven-deploy-plugin does
+    Assert.assertEquals("default::http://h/", NarDeployMojo.parseRepository("id::default::default::http://h/").getUrl());
     for (final String bad : new String[] { "id", "id::", "id::legacy::file:///tmp", "::file:///tmp", "a::b::c::d",
         " ::file:///tmp", "id:: ", "id::default:: " }) {
       try {

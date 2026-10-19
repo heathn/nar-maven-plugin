@@ -19,9 +19,11 @@
  */
 package com.github.maven_nar;
 
+import java.util.AbstractMap;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -269,29 +271,32 @@ public class NarDeployMojo extends AbstractMojo {
     if (configurations.isEmpty()) {
       configurations.add(plugin == null ? null : plugin.getConfiguration());
     }
-    final Set<String> destinations = new LinkedHashSet<>();
+    // as id and URL: a RemoteRepository's equality covers more
+    final Set<Map.Entry<String, String>> destinations = new LinkedHashSet<>();
     for (final Object configuration : configurations) {
       destinations.add(destination(configuration));
     }
     if (destinations.size() > 1) {
       throw new MojoExecutionException("maven-deploy-plugin's deploy executions deploy to different repositories, "
-          + destinations + "; nar.deployScope=aol deploys to one");
+          + destinations.stream().map(d -> d == null ? "none" : d.getKey() + "::" + d.getValue())
+              .collect(Collectors.toList())
+          + "; nar.deployScope=aol deploys to one");
     }
-    final String destination = destinations.iterator().next();
-    if (destination.isEmpty()) {
+    final Map.Entry<String, String> destination = destinations.iterator().next();
+    if (destination == null) {
       throw new MojoExecutionException("No deployment repository: set distributionManagement or "
           + "altDeploymentRepository");
     }
-    return parseRepository(destination);
+    return new RemoteRepository.Builder(destination.getKey(), "default", destination.getValue()).build();
   }
 
   /**
-   * The repository, as id::url, a deploy execution with this configuration
-   * deploys to, as maven-deploy-plugin chooses it: the snapshot or release
-   * repository, else altDeploymentRepository (each configured, else the
-   * property), else distributionManagement; empty if there's none.
+   * The repository a deploy execution with this configuration deploys to, as
+   * maven-deploy-plugin chooses it: the snapshot or release repository, else
+   * altDeploymentRepository (each configured, else the property), else
+   * distributionManagement; as its id and URL, or null if there's none.
    */
-  private String destination(final Object configuration) throws MojoExecutionException {
+  private Map.Entry<String, String> destination(final Object configuration) throws MojoExecutionException {
     final boolean snapshot = this.project.getArtifact().isSnapshot();
     String alt = configured(configuration, snapshot ? "altSnapshotDeploymentRepository"
         : "altReleaseDeploymentRepository", rawProperty(snapshot ? "altSnapshotDeploymentRepository"
@@ -301,10 +306,10 @@ public class NarDeployMojo extends AbstractMojo {
     }
     if (alt != null && !alt.isEmpty()) {
       final RemoteRepository repository = parseRepository(alt);
-      return repository.getId() + "::" + repository.getUrl();
+      return new AbstractMap.SimpleImmutableEntry<>(repository.getId(), repository.getUrl());
     }
     final ArtifactRepository repository = this.project.getDistributionManagementArtifactRepository();
-    return repository == null ? "" : repository.getId() + "::" + repository.getUrl();
+    return repository == null ? null : new AbstractMap.SimpleImmutableEntry<>(repository.getId(), repository.getUrl());
   }
 
   private String configured(final Object configuration, final String name, final String property)
