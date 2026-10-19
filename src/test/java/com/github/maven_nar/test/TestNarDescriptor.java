@@ -37,6 +37,7 @@ import com.github.maven_nar.Library;
 import com.github.maven_nar.NarDescriptor;
 import com.github.maven_nar.NarDescriptor.LinkPattern;
 import com.github.maven_nar.NarInfo;
+import com.github.maven_nar.NarUtil;
 
 /**
  * Tests deriving and writing the descriptor of an AOL-specific NAR.
@@ -101,8 +102,8 @@ public class TestNarDescriptor extends TestCase {
     b.setProperty("output", "foo");
     final Path fa = this.dir.resolve("a/d.properties");
     final Path fb = this.dir.resolve("b/d.properties");
-    NarDescriptor.write(fa, a);
-    NarDescriptor.write(fb, b);
+    NarUtil.storeProperties(fa, a);
+    NarUtil.storeProperties(fb, b);
     Assert.assertArrayEquals(Files.readAllBytes(fa), Files.readAllBytes(fb));
     Assert.assertEquals("libs.names=foo bar\nnar.descriptor.version=2\noutput=foo\n", Files.readString(fa));
     final Properties read = new Properties();
@@ -198,7 +199,7 @@ public class TestNarDescriptor extends TestCase {
     p.setProperty("linker.options", "-L/opt/\u5e93");
     p.setProperty("output", "caf\u00e9");
     final Path file = this.dir.resolve("u/d.properties");
-    NarDescriptor.write(file, p);
+    NarUtil.storeProperties(file, p);
     final Properties read = new Properties();
     try (var in = Files.newInputStream(file)) {
       read.load(in);
@@ -213,7 +214,7 @@ public class TestNarDescriptor extends TestCase {
     final NarInfo consumer = narInfo(LINUX, "lib-1.0");
     consumer.getInfo().setProperty("libs.names", "other");
     final Path file = this.dir.resolve("m/amd64-Linux-gpp-shared.properties");
-    NarDescriptor.write(file, d);
+    NarUtil.storeProperties(file, d);
     Assert.assertTrue(consumer.overlayDescriptor(file, LINUX));
     Assert.assertEquals("lib-1.0", consumer.getLibs(LINUX));
   }
@@ -254,7 +255,7 @@ public class TestNarDescriptor extends TestCase {
     try {
       final Properties p = new Properties();
       p.setProperty("output", "foo");
-      NarDescriptor.write(file, p);
+      NarUtil.storeProperties(file, p);
       Assert.assertTrue(Files.exists(file));
     } finally {
       Files.deleteIfExists(file);

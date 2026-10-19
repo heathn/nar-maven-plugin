@@ -29,8 +29,10 @@ import java.util.Iterator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Properties;
 import java.util.Set;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import org.apache.commons.lang3.function.Failable;
 import org.apache.maven.model.Resource;
@@ -41,7 +43,6 @@ import org.apache.maven.project.MavenProject;
 import org.apache.maven.project.MavenProjectHelper;
 import org.codehaus.plexus.archiver.manager.ArchiverManager;
 import org.codehaus.plexus.util.FileUtils;
-import org.codehaus.plexus.util.SelectorUtils;
 
 /**
  * Layout which expands a nar file into:
@@ -184,45 +185,14 @@ public class NarLayout21 extends AbstractNarLayout {
   @Override
   public final void prepareNarInfo(final Path baseDir, final MavenProject project, final NarInfo narInfo,
       final AbstractCompileMojo mojo) throws MojoExecutionException, MojoFailureException {
-    // With targets declared, the keys the project's own nar.properties sets,
-    // which they don't replace: read from the source file the last resource
-    // supplying it copies, since target/classes may hold what a previous
-    // build generated
-    final Set<String> presetKeys = new HashSet<>();
-    if (mojo != null && !mojo.getTargets().isEmpty()) {
-      Path source = null;
-      for (final Resource resource : project.getBuild().getResources()) {
-        final String path = resourceSource(resource, narInfo.getNarInfoFileName());
-        final Path file = path == null ? null
-            : project.getBasedir().toPath().resolve(resource.getDirectory()).resolve(path);
-        if (file != null && Files.isRegularFile(file)) {
-          source = file;
-        }
-      }
-      if (source != null) {
-        presetKeys.addAll(new NarInfo(project.getGroupId(), project.getArtifactId(), project.getVersion(), getLog(),
-            source).getInfo().stringPropertyNames());
-      }
-    }
+    final Set<String> presetKeys = mojo == null || mojo.getTargets().isEmpty() ? Set.of()
+        : readPresetKeys(project, narInfo);
     if (Files.exists(getNoArchDirectory(baseDir, project.getArtifactId(), project.getVersion()))) {
       narInfo.setNar(null, NarConstants.NAR_NO_ARCH, project.getGroupId() + ":" + project.getArtifactId() + ":"
           + NarConstants.NAR_TYPE + ":" + NarConstants.NAR_NO_ARCH);
     }
 
-    final String artifactIdVersion = project.getArtifactId() + "-" + project.getVersion();
-    final List<String> classifiers;
-    try {
-      // list all directories in basedir, scan them for classifiers
-      classifiers = Files.list(baseDir)
-        // skip entries not belonging to this project
-        .filter(dir -> dir.getFileName().toString().startsWith(artifactIdVersion))
-        .map(dir -> dir.getFileName().toString().substring(artifactIdVersion.length() + 1))
-        // skip noarch here
-        .filter(classifier -> !classifier.equals(NarConstants.NAR_NO_ARCH))
-        .collect(Collectors.toList());
-    } catch (IOException e) {
-      throw new MojoExecutionException(e);
-    }
+    final List<String> classifiers = classifiers(baseDir, project);
 
     if (!classifiers.isEmpty()) {
 
@@ -345,66 +315,98 @@ public class NarLayout21 extends AbstractNarLayout {
       }
     }
 
-    // describe every declared target, not just those built here
-    final List<Target> targets = mojo == null ? List.of() : mojo.getTargets();
-    if (!targets.isEmpty()) {
-      final Map<String, Set<String>> built = new HashMap<>();
-      for (final String classifier : classifiers) {
-        final Classifier parsed = Classifier.parse(classifier);
-        if (parsed != null) {
-          built.computeIfAbsent(parsed.aol(), aol -> new LinkedHashSet<>()).add(parsed.type());
-        }
-      }
-      final Set<String> builtTypes = new HashSet<>();
-      built.values().forEach(builtTypes::addAll);
-      Target.declare(targets, narInfo, presetKeys, builtTypes, project.getGroupId() + ":" + project.getArtifactId()
-          + ":" + NarConstants.NAR_TYPE, mojo.getOutput(true), mojo.getOutput(false), mojo.getLibsName());
-      Target.checkBuilt(targets, built, getLog());
+    if (mojo != null && !mojo.getTargets().isEmpty()) {
+      declareTargets(project, narInfo, mojo, presetKeys, classifiers);
     }
   }
 
   /**
-   * The path, in a resource directory, of the file the resource copies to a
-   * destination in target/classes, taking its targetPath, includes and
-   * excludes into account, or null if it doesn't copy one there.
-   *
-   * @param resource the resource
-   * @param destination the destination, relative to target/classes
-   * @return the source path relative to the resource's directory, or null
+   * The keys the project's own nar.properties sets, which declared targets
+   * don't replace: read from the source file the last resource supplying it
+   * copies, since target/classes may hold what a previous build generated.
    */
-  public static String resourceSource(final Resource resource, final String destination) {
-    // relative to target/classes, without . segments
-    String targetPath = resource.getTargetPath() == null ? "" : resource.getTargetPath().replace('\\', '/');
-    while (targetPath.startsWith("/")) {
-      targetPath = targetPath.substring(1);
+  private Set<String> readPresetKeys(final MavenProject project, final NarInfo narInfo)
+      throws MojoExecutionException {
+    Path source = null;
+    for (final Resource resource : project.getBuild().getResources()) {
+      final String path = ResourceSource.of(resource, narInfo.getNarInfoFileName());
+      final Path file = path == null ? null
+          : project.getBasedir().toPath().resolve(resource.getDirectory()).resolve(path);
+      if (file != null && Files.isRegularFile(file)) {
+        source = file;
+      }
     }
-    targetPath = targetPath.isEmpty() ? "" : Path.of(targetPath).normalize().toString().replace('\\', '/');
-    while (targetPath.endsWith("/")) {
-      targetPath = targetPath.substring(0, targetPath.length() - 1);
-    }
-    final String source;
-    if (targetPath.isEmpty()) {
-      source = destination;
-    } else if (destination.startsWith(targetPath + "/")) {
-      source = destination.substring(targetPath.length() + 1);
-    } else {
-      return null;
-    }
-    final boolean included = resource.getIncludes().isEmpty()
-        || resource.getIncludes().stream().anyMatch(pattern -> matches(pattern, source));
-    final boolean excluded = resource.getExcludes().stream().anyMatch(pattern -> matches(pattern, source));
-    return included && !excluded ? source : null;
+    return source == null ? Set.of()
+        : new NarInfo(project.getGroupId(), project.getArtifactId(), project.getVersion(), getLog(), source)
+            .getInfo().stringPropertyNames();
   }
 
-  // An Ant-style resource pattern, as Maven matches them, where a trailing
-  // / means everything below
-  private static boolean matches(final String pattern, final String path) {
-    String normalized = pattern.replace('\\', '/');
-    if (normalized.endsWith("/")) {
-      normalized += "**";
+  // Describes every declared target, not just those built here
+  private void declareTargets(final MavenProject project, final NarInfo narInfo, final AbstractCompileMojo mojo,
+      final Set<String> presetKeys, final List<String> classifiers) throws MojoExecutionException {
+    final Map<String, Set<String>> built = new HashMap<>();
+    for (final String classifier : classifiers) {
+      final Classifier parsed = Classifier.parse(classifier);
+      if (parsed != null) {
+        built.computeIfAbsent(parsed.aol(), aol -> new LinkedHashSet<>()).add(parsed.type());
+      }
     }
-    return SelectorUtils.matchPath(normalized, path, "/", true);
+    final Set<String> builtTypes = new HashSet<>();
+    built.values().forEach(builtTypes::addAll);
+    Target.declare(mojo.getTargets(), narInfo, presetKeys, builtTypes, project.getGroupId() + ":"
+        + project.getArtifactId() + ":" + NarConstants.NAR_TYPE, mojo.getOutput(true), mojo.getOutput(false),
+        mojo.getLibsName());
+    Target.checkBuilt(mojo.getTargets(), built, getLog());
   }
+
+  @Override
+  public void writeDescriptors(final Path baseDir, final MavenProject project, final NarInfo narInfo)
+      throws MojoExecutionException, MojoFailureException {
+    final NarProperties narProperties = NarProperties.getInstance(project);
+    for (final String classifier : classifiers(baseDir, project)) {
+      final Classifier parsed = Classifier.parse(classifier);
+      if (parsed == null) {
+        continue;
+      }
+      final AOL aol = new AOL(parsed.aol());
+      final String type = parsed.type();
+      // only shared and static libraries are described by their files
+      final Path libDir = Library.SHARED.equals(type) || Library.STATIC.equals(type)
+          ? getLibDirectory(baseDir, project.getArtifactId(), project.getVersion(), parsed.aol(), type) : null;
+      final String key = aol.getKey();
+      final Path file = getAolDirectory(baseDir, project.getArtifactId(), project.getVersion(), parsed.aol(), type)
+          .resolve(narInfo.getNarInfoFileName()).resolveSibling(NarInfo.getDescriptorFileName(parsed.aol(), type));
+      try {
+        final Properties descriptor = NarDescriptor.describe(narInfo, aol, type, libDir,
+            NarDescriptor.linkPatterns(parsed.aol(), type, narProperties.getProperty(key + ".lib.prefix"),
+                narProperties.getProperty(key + "." + type + ".extension")), getLog());
+        getLog().debug("Writing " + file + ": " + descriptor);
+        NarUtil.storeProperties(file, descriptor);
+      } catch (final IOException e) {
+        throw new MojoExecutionException("Cannot write the descriptor " + file, e);
+      }
+    }
+  }
+
+  /**
+   * The classifiers of this project's AOL-specific directories in baseDir,
+   * named &lt;artifactId&gt;-&lt;version&gt;-&lt;classifier&gt;, other than
+   * noarch.
+   */
+  private static List<String> classifiers(final Path baseDir, final MavenProject project)
+      throws MojoExecutionException {
+    final String prefix = project.getArtifactId() + "-" + project.getVersion() + "-";
+    try (Stream<Path> entries = Files.list(baseDir)) {
+      return entries.filter(Files::isDirectory).map(entry -> entry.getFileName().toString())
+          .filter(name -> name.startsWith(prefix) && name.length() > prefix.length())
+          .map(name -> name.substring(prefix.length()))
+          .filter(classifier -> !classifier.equals(NarConstants.NAR_NO_ARCH))
+          .collect(Collectors.toList());
+    } catch (final IOException e) {
+      throw new MojoExecutionException(e);
+    }
+  }
+
 
   @Override
   public void unpackNar(final Path unpackDirectory, final ArchiverManager archiverManager, final Path file,

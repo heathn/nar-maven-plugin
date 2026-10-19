@@ -26,7 +26,7 @@ import junit.framework.TestCase;
 import org.apache.maven.model.Resource;
 import org.junit.Assert;
 
-import com.github.maven_nar.NarLayout21;
+import com.github.maven_nar.ResourceSource;
 
 /**
  * Tests finding the resource file that becomes a project's nar.properties.
@@ -44,38 +44,38 @@ public class TestResourceSource extends TestCase {
   }
 
   public final void testPlainResource() {
-    Assert.assertEquals(DESTINATION, NarLayout21.resourceSource(resource(null, List.of(), List.of()), DESTINATION));
+    Assert.assertEquals(DESTINATION, ResourceSource.of(resource(null, List.of(), List.of()), DESTINATION));
   }
 
   public final void testTargetPath() {
     Assert.assertEquals("nar.properties",
-        NarLayout21.resourceSource(resource("META-INF/nar/com.example/lib", List.of(), List.of()), DESTINATION));
+        ResourceSource.of(resource("META-INF/nar/com.example/lib", List.of(), List.of()), DESTINATION));
     Assert.assertEquals("nar.properties",
-        NarLayout21.resourceSource(resource("/META-INF/nar/com.example/lib/", List.of(), List.of()), DESTINATION));
-    Assert.assertNull(NarLayout21.resourceSource(resource("other", List.of(), List.of()), DESTINATION));
+        ResourceSource.of(resource("/META-INF/nar/com.example/lib/", List.of(), List.of()), DESTINATION));
+    Assert.assertNull(ResourceSource.of(resource("other", List.of(), List.of()), DESTINATION));
   }
 
   public final void testIncludesAndExcludes() {
     Assert.assertEquals(DESTINATION,
-        NarLayout21.resourceSource(resource(null, List.of("**/*.properties"), List.of()), DESTINATION));
-    Assert.assertNull(NarLayout21.resourceSource(resource(null, List.of("**/*.xml"), List.of()), DESTINATION));
-    Assert.assertNull(NarLayout21.resourceSource(resource(null, List.of(), List.of("META-INF/")), DESTINATION));
-    Assert.assertEquals("nar.properties", NarLayout21.resourceSource(
+        ResourceSource.of(resource(null, List.of("**/*.properties"), List.of()), DESTINATION));
+    Assert.assertNull(ResourceSource.of(resource(null, List.of("**/*.xml"), List.of()), DESTINATION));
+    Assert.assertNull(ResourceSource.of(resource(null, List.of(), List.of("META-INF/")), DESTINATION));
+    Assert.assertEquals("nar.properties", ResourceSource.of(
         resource("META-INF/nar/com.example/lib", List.of("*.properties"), List.of()), DESTINATION));
   }
 
   public final void testAntStyleDoubleStar() {
     Assert.assertEquals(DESTINATION,
-        NarLayout21.resourceSource(resource(null, List.of("**/META-INF/**"), List.of()), DESTINATION));
+        ResourceSource.of(resource(null, List.of("**/META-INF/**"), List.of()), DESTINATION));
     Assert.assertEquals(DESTINATION,
-        NarLayout21.resourceSource(resource(null, List.of("META-INF/**/nar/**"), List.of()), DESTINATION));
-    Assert.assertNull(NarLayout21.resourceSource(resource(null, List.of(), List.of("**/nar.properties")),
+        ResourceSource.of(resource(null, List.of("META-INF/**/nar/**"), List.of()), DESTINATION));
+    Assert.assertNull(ResourceSource.of(resource(null, List.of(), List.of("**/nar.properties")),
         DESTINATION));
   }
 
   public final void testDotSegments() {
-    Assert.assertEquals(DESTINATION, NarLayout21.resourceSource(resource(".", List.of(), List.of()), DESTINATION));
+    Assert.assertEquals(DESTINATION, ResourceSource.of(resource(".", List.of(), List.of()), DESTINATION));
     Assert.assertEquals("nar.properties",
-        NarLayout21.resourceSource(resource("./META-INF/nar/com.example/lib", List.of(), List.of()), DESTINATION));
+        ResourceSource.of(resource("./META-INF/nar/com.example/lib", List.of(), List.of()), DESTINATION));
   }
 }

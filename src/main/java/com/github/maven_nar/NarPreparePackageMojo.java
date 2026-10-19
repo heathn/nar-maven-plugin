@@ -24,7 +24,6 @@ import java.io.PrintWriter;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.Properties;
 
 import org.apache.maven.artifact.Artifact;
 import org.apache.maven.plugin.MojoExecutionException;
@@ -61,7 +60,7 @@ public class NarPreparePackageMojo extends AbstractCompileMojo {
 
       // Write nar info to project classifier directories
       getNarInfo().writeToDirectory(files);
-      writeDescriptors(files, artifactIdVersion);
+      getLayout().writeDescriptors(getTargetDirectory(), getMavenProject(), getNarInfo());
     } catch (IOException e) {
       throw new MojoExecutionException(e);
     }
@@ -153,44 +152,5 @@ public class NarPreparePackageMojo extends AbstractCompileMojo {
   @Override
   protected ScopeFilter getArtifactScopeFilter() {
     return new ScopeFilter(Artifact.SCOPE_COMPILE, null);
-  }
-
-  /**
-   * Writes the descriptor of each AOL-specific NAR: what was packaged in it,
-   * so that consumers needn't rely on the main nar.properties, which may be
-   * deployed by a build for another AOL.  See {@link NarDescriptor#describe}.
-   */
-  private void writeDescriptors(final Path[] classifierDirectories, final String artifactIdVersion)
-      throws MojoExecutionException, MojoFailureException, IOException {
-    if (!(getLayout() instanceof NarLayout21)) {
-      return;
-    }
-    final NarInfo narInfo = getNarInfo();
-    final NarProperties narProperties = NarProperties.getInstance(getMavenProject());
-    for (final Path directory : classifierDirectories) {
-      final String name = directory.getFileName().toString();
-      if (!Files.isDirectory(directory) || name.length() <= artifactIdVersion.length() + 1) {
-        continue;
-      }
-      final String classifier = name.substring(artifactIdVersion.length() + 1);
-      final Classifier parsed = Classifier.parse(classifier);
-      if (parsed == null) {
-        continue;
-      }
-      final String aolName = parsed.aol();
-      final String type = parsed.type();
-      final AOL aol = new AOL(aolName);
-
-      final String key = NarUtil.getAOLKey(aolName);
-      final Properties descriptor = NarDescriptor.describe(narInfo, aol, type,
-          directory.resolve("lib").resolve(aolName).resolve(type),
-          NarDescriptor.linkPatterns(aolName, type, narProperties.getProperty(key + ".lib.prefix"),
-              narProperties.getProperty(key + "." + type + ".extension")), getLog());
-
-      final Path file = directory.resolve(narInfo.getNarInfoFileName())
-          .resolveSibling(NarInfo.getDescriptorFileName(aolName, type));
-      getLog().debug("Writing " + file + ": " + descriptor);
-      NarDescriptor.write(file, descriptor);
-    }
   }
 }

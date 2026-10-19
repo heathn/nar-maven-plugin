@@ -118,6 +118,12 @@ public abstract class AbstractNarLayout implements NarLayout, NarConstants {
     this.outputTimestamp = outputTimestamp;
   }
 
+  @Override
+  public void writeDescriptors(final Path baseDir, final MavenProject project, final NarInfo narInfo)
+      throws MojoExecutionException, MojoFailureException {
+    // none
+  }
+
   protected Log getLog() {
     return this.log;
   }

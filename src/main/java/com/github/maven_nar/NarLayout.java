@@ -99,6 +99,16 @@ public interface NarLayout {
       throws MojoExecutionException, MojoFailureException;
 
   /**
+   * Called after {@link #prepareNarInfo} to write the descriptor of each
+   * AOL-specific NAR prepared under baseDir: what was packaged in it, so
+   * that consumers needn't rely on the main nar.properties, which may be
+   * deployed by a build for another AOL.  Layouts without descriptors write
+   * nothing.
+   */
+  void writeDescriptors(Path baseDir, MavenProject project, NarInfo narInfo)
+      throws MojoExecutionException, MojoFailureException;
+
+  /**
    * Called to unpack a nar file
    * 
    * @param defaultAOL

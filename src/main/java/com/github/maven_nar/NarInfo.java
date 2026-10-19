@@ -422,12 +422,8 @@ public class NarInfo {
   }
 
   public final void writeToFile(final Path file) throws IOException {
-    final Path parent = file.getParent();
-    if (parent != null) {
-      Files.createDirectories(parent);
-    }
     log.debug("Write NAR Properties: " + file.toString());
     // sorted and without a timestamp, so the same properties give the same file
-    NarDescriptor.write(file, this.info);
+    NarUtil.storeProperties(file, this.info);
   }
 }
