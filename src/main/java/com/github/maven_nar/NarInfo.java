@@ -391,7 +391,7 @@ public class NarInfo {
       Files.createDirectories(parent);
     }
     log.debug("Write NAR Properties: " + file.toString());
-    this.info.store(Files.newOutputStream(file), "NAR Properties for " + this.groupId + "." + this.artifactId + "-"
-        + this.version);
+    // sorted and without a timestamp, so the same properties give the same file
+    NarDescriptor.write(file, this.info);
   }
 }

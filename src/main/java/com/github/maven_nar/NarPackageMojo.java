@@ -24,6 +24,7 @@ import org.apache.maven.plugin.MojoFailureException;
 import org.apache.maven.plugins.annotations.Component;
 import org.apache.maven.plugins.annotations.LifecyclePhase;
 import org.apache.maven.plugins.annotations.Mojo;
+import org.apache.maven.plugins.annotations.Parameter;
 import org.apache.maven.project.MavenProjectHelper;
 import org.codehaus.plexus.archiver.manager.ArchiverManager;
 
@@ -47,10 +48,26 @@ public class NarPackageMojo extends AbstractNarMojo {
   @Component
   private MavenProjectHelper projectHelper;
 
+  /**
+   * The time to give every entry of the NARs, as Maven's archivers do,
+   * evaluated like their parameter: seconds since the epoch or an ISO 8601
+   * date and time with an offset.  Unset, or a single character, leaves
+   * the NARs as they are.
+   */
+  @Parameter(defaultValue = "${project.build.outputTimestamp}")
+  private String outputTimestamp;
+
   // TODO: this is working of what is present rather than what was requested to
   // be built, POM ~/= artifacts!
   @Override
   public final void narExecute() throws MojoExecutionException, MojoFailureException {
+    if (getLayout() instanceof AbstractNarLayout) {
+      try {
+        ((AbstractNarLayout) getLayout()).setOutputTimestamp(NarUtil.getOutputTimestamp(this.outputTimestamp));
+      } catch (final IllegalArgumentException e) {
+        throw new MojoExecutionException(e.getMessage(), e);
+      }
+    }
     // let the layout decide which nars to attach
     getLayout().attachNars(getTargetDirectory(), this.archiverManager, this.projectHelper, getMavenProject());
 
