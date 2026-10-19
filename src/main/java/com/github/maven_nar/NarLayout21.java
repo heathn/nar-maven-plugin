@@ -216,8 +216,8 @@ public class NarLayout21 extends AbstractNarLayout {
 
         // with targets declared, an <aol>.libs.names the project sets wins,
         // as it does on the other AOLs' builds
-        if (mojo.getLibsName() != null
-            && (mojo.getTargets().isEmpty() || !presetKeys.contains(NarInfo.aolKey(aol.toString(), NarInfo.LIBS_NAMES)))) {
+        if (mojo.getLibsName() != null && (mojo.getTargets().isEmpty()
+            || !presetKeys.contains(NarInfo.aolKey(aol.toString(), NarInfo.LIBS_NAMES)))) {
           narInfo.setLibs(aol, mojo.getLibsName());
         }
         

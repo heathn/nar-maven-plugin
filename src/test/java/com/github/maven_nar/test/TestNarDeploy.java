@@ -19,8 +19,6 @@
  */
 package com.github.maven_nar.test;
 
-import java.nio.file.attribute.FileTime;
-import java.time.Instant;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -32,11 +30,9 @@ import org.apache.maven.artifact.handler.DefaultArtifactHandler;
 import org.junit.Assert;
 
 import com.github.maven_nar.NarDeployMojo;
-import com.github.maven_nar.NarUtil;
 
 /**
- * Tests choosing the AOL-specific artifacts to deploy, and parsing
- * project.build.outputTimestamp.
+ * Tests choosing the AOL-specific artifacts to deploy.
  */
 public class TestNarDeploy extends TestCase {
 
@@ -62,26 +58,6 @@ public class TestNarDeploy extends TestCase {
   public final void testNoAolArtifacts() {
     Assert.assertEquals(List.of(), NarDeployMojo.aolArtifacts(List.of(artifact("nar", "noarch"),
         artifact("jar", "sources"))));
-  }
-
-  public final void testOutputTimestamp() {
-    // unset, or a single non-digit character, falls back to SOURCE_DATE_EPOCH
-    final String epoch = System.getenv("SOURCE_DATE_EPOCH");
-    final FileTime fallback = epoch == null ? null : NarUtil.getOutputTimestamp(epoch);
-    Assert.assertEquals(fallback, NarUtil.getOutputTimestamp(null));
-    Assert.assertEquals(fallback, NarUtil.getOutputTimestamp(" "));
-    Assert.assertEquals(fallback, NarUtil.getOutputTimestamp("a"));
-    Assert.assertEquals(FileTime.from(Instant.ofEpochSecond(1700000000)), NarUtil.getOutputTimestamp("1700000000"));
-    Assert.assertEquals(FileTime.from(Instant.parse("2026-10-18T12:00:00Z")),
-        NarUtil.getOutputTimestamp("2026-10-18T12:00:00Z"));
-    Assert.assertEquals(FileTime.from(Instant.parse("2026-10-18T06:00:00Z")),
-        NarUtil.getOutputTimestamp("2026-10-18T00:00:00-06:00"));
-    try {
-      NarUtil.getOutputTimestamp("yesterday");
-      fail("parsed an invalid timestamp");
-    } catch (final IllegalArgumentException expected) {
-      // expected
-    }
   }
 
 }

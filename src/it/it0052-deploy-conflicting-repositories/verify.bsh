@@ -19,11 +19,6 @@
  */
 import java.io.File;
 
-String log = new String(java.nio.file.Files.readAllBytes(new File(basedir, "build.log").toPath()));
-if (log.indexOf("deploy to different repositories") < 0) {
-  throw new RuntimeException("The build didn't fail for the conflicting repositories");
-}
-if (new File(basedir, "target/repo").exists() || new File(basedir, "target/dist").exists()) {
-  throw new RuntimeException("Deployed although the repositories conflict");
-}
+source(new File(basedir, "../it-parent/deploy-checks.bsh").getPath());
+failedBeforeDeploying(basedir, "deploy to different repositories", new String[] { "repo", "dist" });
 return true;

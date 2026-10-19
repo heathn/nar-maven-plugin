@@ -18,30 +18,7 @@
  * #L%
  */
 import java.io.File;
-import java.util.Enumeration;
-import java.util.zip.ZipEntry;
-import java.util.zip.ZipFile;
 
-// Only the AOL-specific NAR is deployed, not the pom, the main artifact or
-// the noarch NAR.
-File dir = new File(basedir, "target/repo/com/github/maven-nar/its/nar/it0051-deploy-replacement-execution/1.0-SNAPSHOT");
-String[] files = dir.list();
-if (files == null) {
-  throw new RuntimeException("Nothing deployed to " + dir);
-}
-int aol = 0;
-for (int i = 0; i < files.length; i++) {
-  String name = files[i];
-  if (name.indexOf("-shared.nar") >= 0) {
-    if (name.endsWith(".nar")) {
-      aol++;
-    }
-  } else if (!name.startsWith("maven-metadata")) {
-    throw new RuntimeException("Deployed " + name + ", which isn't AOL-specific");
-  }
-}
-if (aol != 1) {
-  throw new RuntimeException("Expected one AOL-specific NAR in " + java.util.Arrays.asList(files));
-}
-
+source(new File(basedir, "../it-parent/deploy-checks.bsh").getPath());
+deployedOnlyAolNar(basedir, "it0051-deploy-replacement-execution");
 return true;

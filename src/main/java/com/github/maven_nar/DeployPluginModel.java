@@ -187,8 +187,8 @@ final class DeployPluginModel {
    *           there's none
    */
   Destination destination() throws MojoExecutionException {
-    final List<Object> configurations = configurations(
-        execution -> runsInDeployPhase(execution) && !skips(skipValue(configValue(execution.getConfiguration(), SKIP))));
+    final List<Object> configurations = configurations(execution -> runsInDeployPhase(execution)
+        && !skips(skipValue(configValue(execution.getConfiguration(), SKIP))));
     final Set<Destination> destinations = new LinkedHashSet<>();
     for (final Object configuration : configurations) {
       destinations.add(destination(configuration));
