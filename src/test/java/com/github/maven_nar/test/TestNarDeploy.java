@@ -66,9 +66,12 @@ public class TestNarDeploy extends TestCase {
   }
 
   public final void testOutputTimestamp() {
-    Assert.assertNull(NarUtil.getOutputTimestamp(null));
-    Assert.assertNull(NarUtil.getOutputTimestamp(" "));
-    Assert.assertNull(NarUtil.getOutputTimestamp("a"));
+    // unset, or a single non-digit character, falls back to SOURCE_DATE_EPOCH
+    final String epoch = System.getenv("SOURCE_DATE_EPOCH");
+    final FileTime fallback = epoch == null ? null : NarUtil.getOutputTimestamp(epoch);
+    Assert.assertEquals(fallback, NarUtil.getOutputTimestamp(null));
+    Assert.assertEquals(fallback, NarUtil.getOutputTimestamp(" "));
+    Assert.assertEquals(fallback, NarUtil.getOutputTimestamp("a"));
     Assert.assertEquals(FileTime.from(Instant.ofEpochSecond(1700000000)), NarUtil.getOutputTimestamp("1700000000"));
     Assert.assertEquals(FileTime.from(Instant.parse("2026-10-18T12:00:00Z")),
         NarUtil.getOutputTimestamp("2026-10-18T12:00:00Z"));
