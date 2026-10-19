@@ -353,10 +353,11 @@ public class NarLayout21 extends AbstractNarLayout {
     }
     final Set<String> builtTypes = new HashSet<>();
     built.values().forEach(builtTypes::addAll);
-    Target.declare(mojo.getTargets(), narInfo, presetKeys, builtTypes, project.getGroupId() + ":"
-        + project.getArtifactId() + ":" + NarConstants.NAR_TYPE, mojo.getOutput(true), mojo.getOutput(false),
-        mojo.getLibsName());
-    Target.checkBuilt(mojo.getTargets(), built, getLog());
+    final Map<String, Set<String>> typesByAol = Target.typesByAol(mojo.getTargets());
+    TargetDeclaration.declare(typesByAol, narInfo, presetKeys, builtTypes, new TargetDeclaration.Defaults(
+        project.getGroupId() + ":" + project.getArtifactId() + ":" + NarConstants.NAR_TYPE, mojo.getOutput(true),
+        mojo.getOutput(false), mojo.getLibsName()));
+    TargetDeclaration.checkBuilt(typesByAol, built, getLog());
   }
 
   @Override
