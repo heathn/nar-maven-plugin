@@ -173,6 +173,16 @@ public abstract class AbstractNarMojo extends AbstractMojo implements NarConstan
   @Parameter
   private List<Target> targets;
 
+  /**
+   * The AOLs the project ships, each with the types this build produces
+   * unless a target for that AOL says otherwise: set once in the root pom,
+   * as a list or as the comma-separated nar.targetAols property, with
+   * targets in a module only for an AOL whose types differ from the
+   * primary AOL's.  See {@link Target}.
+   */
+  @Parameter(property = "nar.targetAols")
+  private List<String> targetAols;
+
   private Set<String> presetKeys;
 
   /**
@@ -421,6 +431,15 @@ public abstract class AbstractNarMojo extends AbstractMojo implements NarConstan
    */
   protected final List<Target> getTargets() {
     return this.targets == null ? List.of() : this.targets;
+  }
+
+  protected final List<String> getTargetAols() {
+    return this.targetAols == null ? List.of() : this.targetAols;
+  }
+
+  // whether the project declares the AOLs it ships, by targets or targetAols
+  protected final boolean declaresTargets() {
+    return !getTargets().isEmpty() || !getTargetAols().isEmpty();
   }
 
   protected final String getLibsName() {

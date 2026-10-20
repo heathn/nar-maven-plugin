@@ -1,0 +1,51 @@
+/*
+ * #%L
+ * Native ARchive plugin for Maven
+ * %%
+ * Copyright (C) 2002 - 2014 NAR Maven Plugin developers.
+ * %%
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * #L%
+ */
+import java.io.File;
+import java.io.FileInputStream;
+import java.util.Properties;
+
+Properties main = new Properties();
+main.load(new FileInputStream(new File(basedir,
+    "target/classes/META-INF/nar/com.github.maven-nar.its.nar/it0060-target-aols/nar.properties")));
+
+String coordinate = "com.github.maven-nar.its.nar:it0060-target-aols:nar:";
+String[][] expected = {
+  // as built here
+  { "x86_64-Example-gcc.nar.shared", coordinate + "x86_64-Example-gcc-shared" },
+  { "x86_64-Example-gcc.nar.static", "" },
+  { "x86_64-Example-gcc.libs.binding", "shared" },
+  { "x86_64-Example-gcc.output", "it0060-target-aols-1.0-SNAPSHOT" },
+  // as its target declares
+  { "arm-Other-gcc.nar.shared", "" },
+  { "arm-Other-gcc.nar.static", coordinate + "arm-Other-gcc-static" },
+  { "arm-Other-gcc.libs.binding", "static" },
+};
+for (int i = 0; i < expected.length; i++) {
+  String value = main.getProperty(expected[i][0]);
+  if (!expected[i][1].equals(value)) {
+    throw new RuntimeException(expected[i][0] + " is " + value + ", expected " + expected[i][1] + ": " + main);
+  }
+}
+
+String log = new String(java.nio.file.Files.readAllBytes(new File(basedir, "build.log").toPath()));
+if (log.indexOf("-shared NAR built here isn't declared in targets") < 0) {
+  throw new RuntimeException("The host's undeclared NAR wasn't reported");
+}
+return true;

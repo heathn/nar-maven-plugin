@@ -216,7 +216,7 @@ public class NarLayout21 extends AbstractNarLayout {
 
         // with targets declared, an <aol>.libs.names the project sets wins,
         // as it does on the other AOLs' builds
-        if (mojo.getLibsName() != null && (mojo.getTargets().isEmpty()
+        if (mojo.getLibsName() != null && (!mojo.declaresTargets()
             || !presetKeys.contains(NarInfo.aolKey(aol.toString(), NarInfo.LIBS_NAMES)))) {
           narInfo.setLibs(aol, mojo.getLibsName());
         }
@@ -279,7 +279,7 @@ public class NarLayout21 extends AbstractNarLayout {
       }
     }
 
-    if (mojo != null && !mojo.getTargets().isEmpty()) {
+    if (mojo != null && mojo.declaresTargets()) {
       declareTargets(project, narInfo, mojo, presetKeys, built);
     }
   }
@@ -289,7 +289,8 @@ public class NarLayout21 extends AbstractNarLayout {
       final Set<String> presetKeys, final Map<String, Set<String>> built) throws MojoExecutionException {
     final Set<String> builtTypes = new HashSet<>();
     built.values().forEach(builtTypes::addAll);
-    final Map<String, Set<String>> typesByAol = Target.typesByAol(mojo.getTargets());
+    final Map<String, Set<String>> typesByAol = Target.typesByAol(mojo.getTargets(), mojo.getTargetAols(),
+        builtTypes);
     TargetDeclaration.declare(typesByAol, narInfo, presetKeys, builtTypes, new TargetDeclaration.Defaults(
         project.getGroupId() + ":" + project.getArtifactId() + ":" + NarConstants.NAR_TYPE, mojo.getOutput(true),
         mojo.getOutput(false), mojo.getLibsName()));

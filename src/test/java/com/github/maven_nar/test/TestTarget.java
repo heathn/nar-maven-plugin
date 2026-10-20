@@ -84,6 +84,37 @@ public class TestTarget extends TestCase {
         target("amd64-Windows-msvc", "shared", "static", "jni"));
   }
 
+  public final void testTargetAolsShipWhatIsBuilt() throws Exception {
+    Assert.assertEquals(
+        Map.of("amd64-Linux-gpp", Set.of("shared", "executable"), "amd64-Windows-msvc", Set.of("shared", "executable")),
+        Target.typesByAol(List.of(), List.of("amd64-Linux-g++", "amd64-Windows-msvc"), Set.of("shared", "executable")));
+  }
+
+  public final void testTargetForAnAolWins() throws Exception {
+    // Windows ships no executable; arm, not in targetAols, is still declared
+    final Map<String, Set<String>> typesByAol = Target.typesByAol(
+        List.of(target("amd64-Windows-msvc", "shared"), target("arm-Other-gcc", "static")),
+        List.of("amd64-Linux-gpp", "amd64-Windows-msvc"), Set.of("shared", "executable"));
+    Assert.assertEquals(List.of("amd64-Linux-gpp", "amd64-Windows-msvc", "arm-Other-gcc"),
+        List.copyOf(typesByAol.keySet()));
+    Assert.assertEquals(Set.of("shared", "executable"), typesByAol.get("amd64-Linux-gpp"));
+    Assert.assertEquals(Set.of("shared"), typesByAol.get("amd64-Windows-msvc"));
+    Assert.assertEquals(Set.of("static"), typesByAol.get("arm-Other-gcc"));
+  }
+
+  public final void testTargetAolsWithNothingBuilt() throws Exception {
+    Assert.assertEquals(Map.of(), Target.typesByAol(List.of(), List.of("amd64-Linux-gpp"), Set.of()));
+  }
+
+  public final void testEmptyTargetAol() {
+    try {
+      Target.typesByAol(List.of(), List.of("amd64-Linux-gpp", " "), Set.of("shared"));
+      fail("accepted an empty targetAols entry");
+    } catch (final MojoExecutionException expected) {
+      assertTrue(expected.getMessage(), expected.getMessage().contains("targetAols"));
+    }
+  }
+
   public final void testPreferredBindingWithoutSharedOrStatic() throws Exception {
     // as the build for the target prefers it, not the first type declared
     final NarInfo narInfo = narInfo();
