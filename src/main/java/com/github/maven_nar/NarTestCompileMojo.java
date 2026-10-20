@@ -231,7 +231,7 @@ public class NarTestCompileMojo extends AbstractCompileMojo {
     if (Files.exists(libDir)) {
       final LibrarySet libSet = new LibrarySet();
       libSet.setProject(antProject);
-      final String libs = getNarInfo().getProperty(getAOL(), "libs.names", getOutput(true));
+      final String libs = getNarInfo().getProperty(getAOL(), NarInfo.LIBS_NAMES, getOutput(true));
 
       getLog().debug("Searching for parent to link with " + libs);
       libSet.setLibs(new CUtil.StringArrayBuilder(libs));

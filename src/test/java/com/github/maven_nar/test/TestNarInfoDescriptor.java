@@ -64,8 +64,14 @@ public class TestNarInfoDescriptor extends TestCase {
     return Files.writeString(this.dir.resolve(NarInfo.getDescriptorFileName(LINUX.toString(), "shared")), content);
   }
 
+  // a descriptor of the current version
+  private Path currentDescriptor(final String properties) throws IOException {
+    return descriptor(NarInfo.DESCRIPTOR_VERSION_KEY + "=" + NarInfo.DESCRIPTOR_VERSION + "\n" + properties);
+  }
+
   public final void testDescriptorFileName() {
-    Assert.assertEquals("amd64-Linux-gpp-shared.properties", NarInfo.getDescriptorFileName("amd64-Linux-gpp", "shared"));
+    Assert.assertEquals("amd64-Linux-gpp-shared.properties",
+        NarInfo.getDescriptorFileName("amd64-Linux-gpp", "shared"));
   }
 
   public final void testMissingDescriptor() throws Exception {
@@ -78,8 +84,7 @@ public class TestNarInfoDescriptor extends TestCase {
 
   public final void testDescriptorWins() throws Exception {
     final NarInfo narInfo = mainInfo();
-    Assert.assertTrue(narInfo.overlayDescriptor(descriptor(
-        "nar.descriptor.version=2\nlibs.names=lib-1.0-p1\n"), LINUX));
+    Assert.assertTrue(narInfo.overlayDescriptor(currentDescriptor("libs.names=lib-1.0-p1\n"), LINUX));
     Assert.assertEquals("lib-1.0-p1", narInfo.getLibs(LINUX));
     // keys the descriptor doesn't have are kept
     Assert.assertEquals("shared", narInfo.getBinding(LINUX, null));
@@ -93,8 +98,8 @@ public class TestNarInfoDescriptor extends TestCase {
     final NarInfo narInfo = mainInfo();
     narInfo.getInfo().setProperty("libs.names", "generic");
     narInfo.getInfo().setProperty("amd64-Linux-gpp.output", "main-output");
-    Assert.assertTrue(narInfo.overlayDescriptor(descriptor(
-        "nar.descriptor.version=2\nlibs.names=lib-1.0-p1\noutput=nar-output\n"), LINUX));
+    Assert.assertTrue(
+        narInfo.overlayDescriptor(currentDescriptor("libs.names=lib-1.0-p1\noutput=nar-output\n"), LINUX));
     Assert.assertEquals("lib-1.0-p1", narInfo.getLibs(LINUX));
     Assert.assertEquals("nar-output", narInfo.getOutput(LINUX, null));
   }
@@ -104,7 +109,7 @@ public class TestNarInfoDescriptor extends TestCase {
     // dependency's nar.properties may map to the AOL its NAR was built for
     final AOL consumer = new AOL("x86_64-Linux-gpp");
     final NarInfo narInfo = mainInfo();
-    Assert.assertTrue(narInfo.overlayDescriptor(descriptor("nar.descriptor.version=2\nlibs.names=lib-1.0-p1\n"),
+    Assert.assertTrue(narInfo.overlayDescriptor(currentDescriptor("libs.names=lib-1.0-p1\n"),
         consumer));
     Assert.assertEquals("lib-1.0-p1", narInfo.getLibs(consumer));
   }
@@ -141,13 +146,13 @@ public class TestNarInfoDescriptor extends TestCase {
     // the copy of nar.properties in the NAR has stale options
     final NarInfo withoutOptions = mainInfo();
     withoutOptions.getInfo().setProperty("amd64-Linux-gpp.linker.options", "-lold");
-    Assert.assertTrue(withoutOptions.overlayDescriptor(descriptor("nar.descriptor.version=2\nlibs.names=x\n"), LINUX));
+    Assert.assertTrue(withoutOptions.overlayDescriptor(currentDescriptor("libs.names=x\n"), LINUX));
     Assert.assertEquals("-Wl,--as-needed", withoutOptions.getLinkerOptions(LINUX, main));
     final NarInfo withOptions = mainInfo();
-    Assert.assertTrue(withOptions.overlayDescriptor(descriptor("nar.descriptor.version=2\nlinker.options=-lnew\n"), LINUX));
+    Assert.assertTrue(withOptions.overlayDescriptor(currentDescriptor("linker.options=-lnew\n"), LINUX));
     Assert.assertEquals("-lnew", withOptions.getLinkerOptions(LINUX, main));
     final NarInfo emptyOptions = mainInfo();
-    Assert.assertTrue(emptyOptions.overlayDescriptor(descriptor("nar.descriptor.version=2\nlinker.options=\n"), LINUX));
+    Assert.assertTrue(emptyOptions.overlayDescriptor(currentDescriptor("linker.options=\n"), LINUX));
     Assert.assertEquals("", emptyOptions.getLinkerOptions(LINUX, main));
   }
 }

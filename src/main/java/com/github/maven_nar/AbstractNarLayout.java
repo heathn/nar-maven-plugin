@@ -26,6 +26,9 @@ import java.lang.reflect.InvocationTargetException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
+import java.util.Map;
+import java.util.TreeMap;
+import java.util.stream.Stream;
 
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
@@ -44,6 +47,34 @@ import org.codehaus.plexus.archiver.util.DefaultFileSet;
  * @version $Id$
  */
 public abstract class AbstractNarLayout implements NarLayout, NarConstants {
+
+  /**
+   * This project's AOL-specific directories in baseDir, named
+   * &lt;artifactId&gt;-&lt;version&gt;-&lt;classifier&gt;, other than noarch.
+   * Files there, such as a stale NAR, are not directories of the project.
+   *
+   * @param baseDir the directory, target/nar
+   * @param project the project
+   * @return the directories, by classifier
+   * @throws MojoExecutionException if baseDir can't be listed
+   */
+  static Map<String, Path> aolDirectories(final Path baseDir, final MavenProject project)
+      throws MojoExecutionException {
+    final String prefix = project.getArtifactId() + "-" + project.getVersion() + "-";
+    final Map<String, Path> directories = new TreeMap<>();
+    try (Stream<Path> entries = Files.list(baseDir)) {
+      entries.filter(Files::isDirectory).forEach(entry -> {
+        final String name = entry.getFileName().toString();
+        if (name.startsWith(prefix) && name.length() > prefix.length()
+            && !name.substring(prefix.length()).equals(NAR_NO_ARCH)) {
+          directories.put(name.substring(prefix.length()), entry);
+        }
+      });
+    } catch (final IOException e) {
+      throw new MojoExecutionException(e);
+    }
+    return directories;
+  }
 
   /**
    * @return
@@ -116,6 +147,12 @@ public abstract class AbstractNarLayout implements NarLayout, NarConstants {
    */
   public final void setOutputTimestamp(final FileTime outputTimestamp) {
     this.outputTimestamp = outputTimestamp;
+  }
+
+  @Override
+  public void writeDescriptors(final Path baseDir, final MavenProject project, final NarInfo narInfo)
+      throws MojoExecutionException, MojoFailureException {
+    // none
   }
 
   protected Log getLog() {

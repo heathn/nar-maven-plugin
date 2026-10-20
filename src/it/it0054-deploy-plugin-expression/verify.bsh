@@ -19,11 +19,6 @@
  */
 import java.io.File;
 
-String log = new String(java.nio.file.Files.readAllBytes(new File(basedir, "build.log").toPath()));
-if (log.indexOf("doesn't depend on the plugin") < 0) {
-  throw new RuntimeException("The build didn't fail as expected");
-}
-if (new File(basedir, "target/repo").exists()) {
-  throw new RuntimeException("Deployed although the build should have stopped first");
-}
+source(new File(basedir, "../it-parent/deploy-checks.bsh").getPath());
+failedBeforeDeploying(basedir, "doesn't depend on the plugin");
 return true;

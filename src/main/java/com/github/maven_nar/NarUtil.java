@@ -20,6 +20,7 @@
 package com.github.maven_nar;
 
 import java.io.BufferedReader;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
@@ -28,12 +29,14 @@ import java.io.PrintWriter;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import org.apache.bcel.classfile.ClassParser;
@@ -815,5 +818,27 @@ public final class NarUtil {
 
   private NarUtil() {
     // never instantiate
+  }
+
+  /**
+   * Writes properties with sorted keys and no timestamp, so that the same
+   * properties always give the same bytes.
+   *
+   * @param file the file to write
+   * @param properties the properties
+   * @throws IOException if the file can't be written
+   */
+  public static void storeProperties(final Path file, final Properties properties) throws IOException {
+    // store to a stream, which escapes characters outside ISO 8859-1
+    final ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+    properties.store(bytes, null);
+    // drop the timestamp comment that Properties.store writes first
+    final String body = new String(bytes.toByteArray(), StandardCharsets.ISO_8859_1).lines()
+        .filter(line -> !line.startsWith("#"))
+        .sorted()
+        .collect(Collectors.joining("\n", "", "\n"));
+    // a bare file name has no parent
+    Files.createDirectories(file.toAbsolutePath().getParent());
+    Files.writeString(file, body, StandardCharsets.ISO_8859_1);
   }
 }

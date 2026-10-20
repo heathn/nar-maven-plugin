@@ -44,7 +44,7 @@ import org.codehaus.plexus.archiver.manager.ArchiverManager;
 
 /**
  * A reproducible NAR's entries are in the same order however the files were
- * created.
+ * created, and have the time project.build.outputTimestamp gives.
  */
 public class TestReproducibleNar extends TestCase {
   private Path dir;
@@ -98,5 +98,25 @@ public class TestReproducibleNar extends TestCase {
     Collections.sort(sorted);
     assertEquals(40, entries.size());
     assertEquals(sorted, entries);
+  }
+
+  public final void testOutputTimestamp() {
+    // unset, or a single non-digit character, falls back to SOURCE_DATE_EPOCH
+    final String epoch = System.getenv("SOURCE_DATE_EPOCH");
+    final FileTime fallback = epoch == null ? null : NarUtil.getOutputTimestamp(epoch);
+    assertEquals(fallback, NarUtil.getOutputTimestamp(null));
+    assertEquals(fallback, NarUtil.getOutputTimestamp(" "));
+    assertEquals(fallback, NarUtil.getOutputTimestamp("a"));
+    assertEquals(FileTime.from(Instant.ofEpochSecond(1700000000)), NarUtil.getOutputTimestamp("1700000000"));
+    assertEquals(FileTime.from(Instant.parse("2026-10-18T12:00:00Z")),
+        NarUtil.getOutputTimestamp("2026-10-18T12:00:00Z"));
+    assertEquals(FileTime.from(Instant.parse("2026-10-18T06:00:00Z")),
+        NarUtil.getOutputTimestamp("2026-10-18T00:00:00-06:00"));
+    try {
+      NarUtil.getOutputTimestamp("yesterday");
+      fail("parsed an invalid timestamp");
+    } catch (final IllegalArgumentException expected) {
+      // expected
+    }
   }
 }

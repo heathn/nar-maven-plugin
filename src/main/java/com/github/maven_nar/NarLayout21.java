@@ -23,24 +23,23 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Properties;
 import java.util.Set;
-import java.util.stream.Collectors;
+import java.util.TreeMap;
+import java.util.TreeSet;
 
-import org.apache.commons.lang3.function.Failable;
+import org.apache.maven.model.Resource;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
 import org.apache.maven.plugin.logging.Log;
-import org.apache.maven.model.Resource;
 import org.apache.maven.project.MavenProject;
 import org.apache.maven.project.MavenProjectHelper;
 import org.codehaus.plexus.archiver.manager.ArchiverManager;
-import org.codehaus.plexus.util.SelectorUtils;
 import org.codehaus.plexus.util.FileUtils;
 
 /**
@@ -79,21 +78,8 @@ public class NarLayout21 extends AbstractNarLayout {
           getNoArchDirectory(baseDir, project.getArtifactId(), project.getVersion()), "*/**");
     }
 
-    // list all directories in basedir, scan them for classifiers
-    try {
-      final String artifactIdVersion = project.getArtifactId() + "-" + project.getVersion();
-      Files.list(baseDir)
-        // Include only entries belonging to this project
-        .filter(dir -> dir.getFileName().toString().startsWith(artifactIdVersion))
-        // Skip noarch
-        .filter(dir -> !dir.getFileName().toString().endsWith(NarConstants.NAR_NO_ARCH))
-        .forEach(Failable.asConsumer(dir -> {
-          String classifier = dir.getFileName().toString().substring(artifactIdVersion.length() + 1);
-          Path path = baseDir.resolve(dir);
-          attachNar(archiverManager, projectHelper, project, classifier, path, "*/**");
-        }));
-    } catch (IOException | RuntimeException e) {
-      throw new MojoExecutionException(e);
+    for (final Map.Entry<String, Path> directory : aolDirectories(baseDir, project).entrySet()) {
+      attachNar(archiverManager, projectHelper, project, directory.getKey(), directory.getValue(), "*/**");
     }
   }
 
@@ -184,115 +170,65 @@ public class NarLayout21 extends AbstractNarLayout {
   @Override
   public final void prepareNarInfo(final Path baseDir, final MavenProject project, final NarInfo narInfo,
       final AbstractCompileMojo mojo) throws MojoExecutionException, MojoFailureException {
-    // With targets declared, the keys the project's own nar.properties sets,
-    // which they don't replace: read from the source file the last resource
-    // supplying it copies, since target/classes may hold what a previous
-    // build generated
-    final Set<String> presetKeys = new HashSet<>();
-    if (mojo != null && !mojo.getTargets().isEmpty()) {
-      Path source = null;
-      for (final Resource resource : project.getBuild().getResources()) {
-        final String path = resourceSource(resource, narInfo.getNarInfoFileName());
-        final Path file = path == null ? null
-            : project.getBasedir().toPath().resolve(resource.getDirectory()).resolve(path);
-        if (file != null && Files.isRegularFile(file)) {
-          source = file;
-        }
-      }
-      if (source != null) {
-        presetKeys.addAll(new NarInfo(project.getGroupId(), project.getArtifactId(), project.getVersion(), getLog(),
-            source).getInfo().stringPropertyNames());
-      }
-    }
+    final Set<String> presetKeys = mojo == null || mojo.getTargets().isEmpty() ? Set.of()
+        : readPresetKeys(project, narInfo);
     if (Files.exists(getNoArchDirectory(baseDir, project.getArtifactId(), project.getVersion()))) {
       narInfo.setNar(null, NarConstants.NAR_NO_ARCH, project.getGroupId() + ":" + project.getArtifactId() + ":"
           + NarConstants.NAR_TYPE + ":" + NarConstants.NAR_NO_ARCH);
     }
 
-    final String artifactIdVersion = project.getArtifactId() + "-" + project.getVersion();
-    final List<String> classifiers;
-    try {
-      // list all directories in basedir, scan them for classifiers
-      classifiers = Files.list(baseDir)
-        // skip entries not belonging to this project
-        .filter(dir -> dir.getFileName().toString().startsWith(artifactIdVersion))
-        .map(dir -> dir.getFileName().toString().substring(artifactIdVersion.length() + 1))
-        // skip noarch here
-        .filter(classifier -> !classifier.equals(NarConstants.NAR_NO_ARCH))
-        .collect(Collectors.toList());
-    } catch (IOException e) {
-      throw new MojoExecutionException(e);
+    final List<Classifier> classifiers = new ArrayList<>();
+    for (final String classifier : aolDirectories(baseDir, project).keySet()) {
+      final Classifier parsed = Classifier.parse(classifier);
+      if (parsed != null) {
+        classifiers.add(parsed);
+      }
     }
+    // the types built, by AOL
+    final Map<String, Set<String>> built = new TreeMap<>();
+    classifiers.forEach(parsed -> built.computeIfAbsent(parsed.aol(), aol -> new TreeSet<>()).add(parsed.type()));
 
     if (!classifiers.isEmpty()) {
 
+      // each AOL's output and binding, unless nar.properties sets them (a
+      // generic libs.binding it sets applies to every AOL); then the
+      // generic binding, the type preferred among all AOLs'
       final String presetDfltBinding = narInfo.getBinding(null, null);
-      final Map<AOL, String> presetAOLBinding = new HashMap<>();
-      for (final String classifier : classifiers) {
-        final int lastDash = classifier.lastIndexOf('-');
-        final String type = classifier.substring(lastDash + 1);
-        final AOL aol = new AOL(classifier.substring(0, lastDash));
-
-        if (!presetAOLBinding.containsKey(aol)) {
-           presetAOLBinding.put(aol, narInfo.getBinding(aol, null));
-        }
-
+      for (final Map.Entry<String, Set<String>> entry : built.entrySet()) {
+        final AOL aol = new AOL(entry.getKey());
+        final Set<String> types = entry.getValue();
+        final boolean libraries = types.stream().anyMatch(type -> !Library.EXECUTABLE.equals(type));
         if (narInfo.getOutput(aol, null) == null) {
-          narInfo.setOutput(aol, mojo.getOutput(!Library.EXECUTABLE.equals(type)));
+          narInfo.setOutput(aol, mojo.getOutput(libraries));
         }
+        if (narInfo.getBinding(aol, null) == null) {
+          narInfo.setBinding(aol, Library.preferredBinding(types));
+        }
+      }
+      if (presetDfltBinding == null) {
+        final Set<String> allTypes = new TreeSet<>();
+        built.values().forEach(allTypes::addAll);
+        narInfo.setBinding(null, Library.preferredBinding(allTypes));
+      }
+
+      for (final Classifier parsed : classifiers) {
+        final String type = parsed.type();
+        final AOL aol = new AOL(parsed.aol());
 
         // with targets declared, an <aol>.libs.names the project sets wins,
         // as it does on the other AOLs' builds
-        if (mojo.getLibsName() != null
-            && (mojo.getTargets().isEmpty() || !presetKeys.contains(aol + ".libs.names"))) {
+        if (mojo.getLibsName() != null && (mojo.getTargets().isEmpty()
+            || !presetKeys.contains(NarInfo.aolKey(aol.toString(), NarInfo.LIBS_NAMES)))) {
           narInfo.setLibs(aol, mojo.getLibsName());
         }
-        
+
         narInfo.setIncludesType(null, mojo.getIncludesType());
-
-        // We prefer shared to jni/executable/static/none,
-        if (type.equals(Library.SHARED)) // overwrite whatever we had
-        {
-          // Don't override the default/aol binding if it was preset in
-          // nar.properties
-          if (presetAOLBinding.get(aol) == null) {
-            narInfo.setBinding(aol, type);
-          }
-          if (presetDfltBinding == null) {
-            narInfo.setBinding(null, type);
-          }
-        } else {
-          // if the binding is already set, then don't write it for
-          // jni/executable/none.
-		  String current = narInfo.getBinding(aol, null);
-          if ( current == null) {
-            narInfo.setBinding(aol, type);
-          } else if (!Library.SHARED.equals(current)
-			  && type.equals(Library.STATIC)) {
-            //static lib is preferred over other remaining types; see #231
-
-            // Don't override the default/aol binding if it was preset in
-            // nar.properties
-            if (presetAOLBinding.get(aol) == null) {
-              narInfo.setBinding(aol, type);
-            }
-            if (presetDfltBinding == null) {
-              narInfo.setBinding(null, type);
-            }
-          }
-
-          if (narInfo.getBinding(null, null) == null) {
-            narInfo.setBinding(null, type);
-          }
-        }
 
         // If the more-specific platform key has been set, skip setting the
         // generic key.
-        if (narInfo.getProperty(aol, NarConstants.NAR_TYPE + "." + type,
-            (String)null) == null) {
-          narInfo.setNar(null, type, project.getGroupId() + ":" +
-              project.getArtifactId() + ":" + NarConstants.NAR_TYPE + ":" +
-              "${aol}" + "-" + type);
+        if (narInfo.getProperty(aol, NarInfo.narKey(type), (String) null) == null) {
+          narInfo.setNar(null, type, NarInfo.genericNar(project.getGroupId() + ":"
+              + project.getArtifactId() + ":" + NarConstants.NAR_TYPE, type));
         }
         
         // set the system includes
@@ -344,64 +280,71 @@ public class NarLayout21 extends AbstractNarLayout {
       }
     }
 
-    // describe every declared target, not just those built here
-    final List<Target> targets = mojo == null ? List.of() : mojo.getTargets();
-    if (!targets.isEmpty()) {
-      final Map<String, Set<String>> built = new HashMap<>();
-      for (final String classifier : classifiers) {
-        final int lastDash = classifier.lastIndexOf('-');
-        built.computeIfAbsent(classifier.substring(0, lastDash), aol -> new LinkedHashSet<>())
-            .add(classifier.substring(lastDash + 1));
-      }
-      final Set<String> builtTypes = new HashSet<>();
-      built.values().forEach(builtTypes::addAll);
-      Target.declare(targets, narInfo, presetKeys, builtTypes, project.getGroupId() + ":" + project.getArtifactId()
-          + ":" + NarConstants.NAR_TYPE, mojo.getOutput(true), mojo.getOutput(false), mojo.getLibsName());
-      Target.checkBuilt(targets, built, getLog());
+    if (mojo != null && !mojo.getTargets().isEmpty()) {
+      declareTargets(project, narInfo, mojo, presetKeys, built);
     }
   }
 
   /**
-   * The path, in a resource directory, of the file the resource copies to a
-   * destination in target/classes, taking its targetPath, includes and
-   * excludes into account, or null if it doesn't copy one there.
-   *
-   * @param resource the resource
-   * @param destination the destination, relative to target/classes
-   * @return the source path relative to the resource's directory, or null
+   * The keys the project's own nar.properties sets, which declared targets
+   * don't replace: read from the source file the last resource supplying it
+   * copies, since target/classes may hold what a previous build generated.
    */
-  public static String resourceSource(final Resource resource, final String destination) {
-    // relative to target/classes, without . segments
-    String targetPath = resource.getTargetPath() == null ? "" : resource.getTargetPath().replace('\\', '/');
-    while (targetPath.startsWith("/")) {
-      targetPath = targetPath.substring(1);
+  private Set<String> readPresetKeys(final MavenProject project, final NarInfo narInfo)
+      throws MojoExecutionException {
+    Path source = null;
+    for (final Resource resource : project.getBuild().getResources()) {
+      final String path = ResourceSource.of(resource, narInfo.getNarInfoFileName());
+      final Path file = path == null ? null
+          : project.getBasedir().toPath().resolve(resource.getDirectory()).resolve(path);
+      if (file != null && Files.isRegularFile(file)) {
+        source = file;
+      }
     }
-    targetPath = targetPath.isEmpty() ? "" : Path.of(targetPath).normalize().toString().replace('\\', '/');
-    while (targetPath.endsWith("/")) {
-      targetPath = targetPath.substring(0, targetPath.length() - 1);
-    }
-    final String source;
-    if (targetPath.isEmpty()) {
-      source = destination;
-    } else if (destination.startsWith(targetPath + "/")) {
-      source = destination.substring(targetPath.length() + 1);
-    } else {
-      return null;
-    }
-    final boolean included = resource.getIncludes().isEmpty()
-        || resource.getIncludes().stream().anyMatch(pattern -> matches(pattern, source));
-    final boolean excluded = resource.getExcludes().stream().anyMatch(pattern -> matches(pattern, source));
-    return included && !excluded ? source : null;
+    return source == null ? Set.of()
+        : new NarInfo(project.getGroupId(), project.getArtifactId(), project.getVersion(), getLog(), source)
+            .getInfo().stringPropertyNames();
   }
 
-  // An Ant-style resource pattern, as Maven matches them, where a trailing
-  // / means everything below
-  private static boolean matches(final String pattern, final String path) {
-    String normalized = pattern.replace('\\', '/');
-    if (normalized.endsWith("/")) {
-      normalized += "**";
+  // Describes every declared target, not just those built here
+  private void declareTargets(final MavenProject project, final NarInfo narInfo, final AbstractCompileMojo mojo,
+      final Set<String> presetKeys, final Map<String, Set<String>> built) throws MojoExecutionException {
+    final Set<String> builtTypes = new HashSet<>();
+    built.values().forEach(builtTypes::addAll);
+    final Map<String, Set<String>> typesByAol = Target.typesByAol(mojo.getTargets());
+    TargetDeclaration.declare(typesByAol, narInfo, presetKeys, builtTypes, new TargetDeclaration.Defaults(
+        project.getGroupId() + ":" + project.getArtifactId() + ":" + NarConstants.NAR_TYPE, mojo.getOutput(true),
+        mojo.getOutput(false), mojo.getLibsName()));
+    TargetDeclaration.checkBuilt(typesByAol, built, getLog());
+  }
+
+  @Override
+  public void writeDescriptors(final Path baseDir, final MavenProject project, final NarInfo narInfo)
+      throws MojoExecutionException, MojoFailureException {
+    final NarProperties narProperties = NarProperties.getInstance(project);
+    for (final String classifier : new ArrayList<>(aolDirectories(baseDir, project).keySet())) {
+      final Classifier parsed = Classifier.parse(classifier);
+      if (parsed == null) {
+        continue;
+      }
+      final AOL aol = new AOL(parsed.aol());
+      final String type = parsed.type();
+      // only shared and static libraries are described by their files
+      final Path libDir = Library.SHARED.equals(type) || Library.STATIC.equals(type)
+          ? getLibDirectory(baseDir, project.getArtifactId(), project.getVersion(), parsed.aol(), type) : null;
+      final String key = NarUtil.getAOLKey(parsed.aol());
+      final Path file = getAolDirectory(baseDir, project.getArtifactId(), project.getVersion(), parsed.aol(), type)
+          .resolve(narInfo.getNarInfoFileName()).resolveSibling(NarInfo.getDescriptorFileName(parsed.aol(), type));
+      try {
+        final Properties descriptor = NarDescriptor.describe(narInfo, aol, type, libDir,
+            NarDescriptor.linkPatterns(parsed.aol(), type, narProperties.getProperty(key + ".lib.prefix"),
+                narProperties.getProperty(key + "." + type + ".extension")), getLog());
+        getLog().debug("Writing " + file + ": " + descriptor);
+        NarUtil.storeProperties(file, descriptor);
+      } catch (final IOException e) {
+        throw new MojoExecutionException("Cannot write the descriptor " + file, e);
+      }
     }
-    return SelectorUtils.matchPath(normalized, path, "/", true);
   }
 
   @Override

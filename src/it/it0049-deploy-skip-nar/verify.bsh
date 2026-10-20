@@ -19,7 +19,6 @@
  */
 import java.io.File;
 
-if (new File(basedir, "target/repo").exists()) {
-  throw new RuntimeException("Deployed although nar-deploy was skipped");
-}
+source(new File(basedir, "../it-parent/deploy-checks.bsh").getPath());
+deployedNothing(basedir, "nar-deploy was skipped");
 return true;

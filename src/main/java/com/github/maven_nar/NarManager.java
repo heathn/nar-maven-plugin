@@ -212,13 +212,10 @@ public class NarManager {
     AOL aol = null;
     String type = null;
     if (classifier != null) {
-      final int dash = classifier.lastIndexOf('-');
-      if (dash < 0) {
-        aol = new AOL(classifier);
-      } else {
-        aol = new AOL(classifier.substring(0, dash));
-        type = classifier.substring(dash + 1);
-      }
+      // just an AOL, or an AOL and a type
+      final Classifier parsed = Classifier.parse(classifier);
+      aol = new AOL(parsed == null ? classifier : parsed.aol());
+      type = parsed == null ? null : parsed.type();
     }
     return getAttachedNarDependencies(narArtifacts, aol, type);
   }

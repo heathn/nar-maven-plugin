@@ -24,7 +24,6 @@ import java.io.PrintWriter;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.Properties;
 
 import org.apache.maven.artifact.Artifact;
 import org.apache.maven.plugin.MojoExecutionException;
@@ -51,20 +50,10 @@ public class NarPreparePackageMojo extends AbstractCompileMojo {
     getLayout().prepareNarInfo(getTargetDirectory(), getMavenProject(), getNarInfo(), this);
     getNarInfo().writeToDirectory(getClassesDirectory());
 
-    final String artifactIdVersion = getMavenProject().getArtifactId() + "-" + getMavenProject().getVersion();
-
-    // Scan target directory to identify project classifier directories, skipping noarch
-    try {
-      Path[] files = Files.list(getTargetDirectory())
-        .filter(f -> f.getFileName().toString().startsWith(artifactIdVersion) && !f.getFileName().toString().endsWith(NarConstants.NAR_NO_ARCH))
-        .toArray(Path[]::new);
-
-      // Write nar info to project classifier directories
-      getNarInfo().writeToDirectory(files);
-      writeDescriptors(files, artifactIdVersion);
-    } catch (IOException e) {
-      throw new MojoExecutionException(e);
-    }
+    // write nar info to the project's AOL-specific directories
+    getNarInfo().writeToDirectory(AbstractNarLayout.aolDirectories(getTargetDirectory(), getMavenProject()).values()
+        .toArray(Path[]::new));
+    getLayout().writeDescriptors(getTargetDirectory(), getMavenProject(), getNarInfo());
     
     // process the replay files here
     if (replay != null && replay.getScripts() != null && !replay.getScripts().isEmpty()) {
@@ -153,44 +142,5 @@ public class NarPreparePackageMojo extends AbstractCompileMojo {
   @Override
   protected ScopeFilter getArtifactScopeFilter() {
     return new ScopeFilter(Artifact.SCOPE_COMPILE, null);
-  }
-
-  /**
-   * Writes the descriptor of each AOL-specific NAR: what was packaged in it,
-   * so that consumers needn't rely on the main nar.properties, which may be
-   * deployed by a build for another AOL.  See {@link NarDescriptor#describe}.
-   */
-  private void writeDescriptors(final Path[] classifierDirectories, final String artifactIdVersion)
-      throws MojoExecutionException, MojoFailureException, IOException {
-    if (!(getLayout() instanceof NarLayout21)) {
-      return;
-    }
-    final NarInfo narInfo = getNarInfo();
-    final NarProperties narProperties = NarProperties.getInstance(getMavenProject());
-    for (final Path directory : classifierDirectories) {
-      final String name = directory.getFileName().toString();
-      if (!Files.isDirectory(directory) || name.length() <= artifactIdVersion.length() + 1) {
-        continue;
-      }
-      final String classifier = name.substring(artifactIdVersion.length() + 1);
-      final int dash = classifier.lastIndexOf('-');
-      if (dash <= 0) {
-        continue;
-      }
-      final String aolName = classifier.substring(0, dash);
-      final String type = classifier.substring(dash + 1);
-      final AOL aol = new AOL(aolName);
-
-      final String key = NarUtil.getAOLKey(aolName);
-      final Properties descriptor = NarDescriptor.describe(narInfo, aol, type,
-          directory.resolve("lib").resolve(aolName).resolve(type),
-          NarDescriptor.linkPatterns(aolName, type, narProperties.getProperty(key + ".lib.prefix"),
-              narProperties.getProperty(key + "." + type + ".extension")), getLog());
-
-      final Path file = directory.resolve(narInfo.getNarInfoFileName())
-          .resolveSibling(NarInfo.getDescriptorFileName(aolName, type));
-      getLog().debug("Writing " + file + ": " + descriptor);
-      NarDescriptor.write(file, descriptor);
-    }
   }
 }

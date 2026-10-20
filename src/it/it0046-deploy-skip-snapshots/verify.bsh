@@ -19,7 +19,6 @@
  */
 import java.io.File;
 
-if (new File(basedir, "target/repo").exists()) {
-  throw new RuntimeException("Deployed although maven.deploy.skip=snapshots");
-}
+source(new File(basedir, "../it-parent/deploy-checks.bsh").getPath());
+deployedNothing(basedir, "maven.deploy.skip=snapshots");
 return true;

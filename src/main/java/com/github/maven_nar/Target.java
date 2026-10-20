@@ -28,7 +28,6 @@ import java.util.Map;
 import java.util.Set;
 
 import org.apache.maven.plugin.MojoExecutionException;
-import org.apache.maven.plugin.logging.Log;
 
 /**
  * An AOL the project ships, and the library types it ships for it, as
@@ -49,8 +48,9 @@ import org.apache.maven.plugin.logging.Log;
  * The AOLs are usually built on different machines, each deploying the
  * main nar.properties, which consumers read to find the AOL-specific NARs.
  * With the targets declared, every build describes all of them there (with
- * layout 21).  Values that depend on the machine, such as syslibs.names,
- * are only in each AOL-specific NAR's descriptor.
+ * layout 21, see {@link TargetDeclaration}).  Values that depend on the
+ * machine, such as syslibs.names, are only in each AOL-specific NAR's
+ * descriptor.
  */
 public class Target {
 
@@ -81,39 +81,16 @@ public class Target {
   }
 
   /**
-   * Writes the main nar.properties keys for every declared target, so that
-   * every machine writes the same ones whatever it built:
-   * &lt;aol&gt;.nar.&lt;type&gt; for each type it ships (the generic
-   * nar.&lt;type&gt; if the project sets one) and empty for every
-   * other type (so the generic nar.&lt;type&gt; doesn't claim it for this
-   * AOL), &lt;aol&gt;.libs.binding (the project's generic libs.binding if the
-   * target ships that type, otherwise shared, static or its first type), &lt;aol&gt;.output and,
-   * when configured,
-   * &lt;aol&gt;.libs.names.  Each replaces what was generated for the AOL
-   * built here, but not a key set in the project's own nar.properties.  An
-   * AOL that nar.properties maps to a target gets the target's resulting
-   * keys too, except those the project sets for it.
-   * The generic nar.&lt;type&gt; templates are written for the declared
-   * types, for consumers on undeclared AOLs.
+   * The declared targets' types by AOL, the AOLs as AOL writes them (so
+   * amd64-Linux-g++ is amd64-Linux-gpp).
    *
    * @param targets the declared targets
-   * @param narInfo the project's NarInfo
-   * @param presetKeys the keys set in the project's own nar.properties
-   * @param builtTypes the types built here, which targets may not ship
-   * @param coordinate the project's groupId:artifactId:nar
-   * @param libraryOutput the output name of a library
-   * @param executableOutput the output name of an executable
-   * @param libsName the configured libs.names, or null
+   * @return the types, in declaration order
    * @throws MojoExecutionException if a target lacks its AOL or types, has
    *           an unknown type, or is declared twice
    */
-  public static void declare(final Collection<Target> targets, final NarInfo narInfo, final Set<String> presetKeys,
-      final Set<String> builtTypes, final String coordinate, final String libraryOutput,
-      final String executableOutput, final String libsName) throws MojoExecutionException {
-    final Set<String> allTypes = new LinkedHashSet<>(TYPES);
-    allTypes.addAll(builtTypes);
-    final Set<String> declaredTypes = new LinkedHashSet<>();
-    final Map<String, Target> byAol = new LinkedHashMap<>();
+  public static Map<String, Set<String>> typesByAol(final Collection<Target> targets) throws MojoExecutionException {
+    final Map<String, Set<String>> typesByAol = new LinkedHashMap<>();
     for (final Target target : targets) {
       if (target.getAol() == null || target.getAol().trim().isEmpty() || target.getTypes() == null
           || target.getTypes().isEmpty()) {
@@ -125,117 +102,11 @@ public class Target {
         }
       }
       final String aol = new AOL(target.getAol().trim()).toString();
-      if (byAol.containsKey(aol)) {
+      if (typesByAol.containsKey(aol)) {
         throw new MojoExecutionException("Target " + aol + " is declared more than once");
       }
-      allTypes.addAll(target.getTypes());
-      declaredTypes.addAll(target.getTypes());
-      byAol.put(aol, target);
+      typesByAol.put(aol, new LinkedHashSet<>(target.getTypes()));
     }
-
-    // AOLs that the project's nar.properties maps to a declared target
-    final Map<String, Target> mapped = new LinkedHashMap<>();
-    for (final String key : narInfo.getInfo().stringPropertyNames()) {
-      final String value = narInfo.getInfo().getProperty(key).trim();
-      // AOL splits arch-os-linker on its first two dashes, so linkers like
-      // gpp-12.2 count; a key is a mapping when its value names a target,
-      // which an AOL-prefixed property's value doesn't
-      if (key.split("-", 3).length == 3 && value.split("-", 3).length == 3 && !byAol.containsKey(key)) {
-        // as NarInfo.getAOL reads it, so amd64-Linux-g++ is amd64-Linux-gpp
-        final Target target = byAol.get(new AOL(value).toString());
-        if (target != null) {
-          mapped.put(key, target);
-        }
-      }
-    }
-    // a generic libs.binding in the project's nar.properties, for the
-    // targets that ship that type
-    final String presetBinding = presetKeys.contains("libs.binding") ? narInfo.getBinding(null, null) : null;
-
-    final List<String> suffixes = new ArrayList<>();
-    allTypes.forEach(type -> suffixes.add(NarConstants.NAR + "." + type));
-    suffixes.addAll(List.of("libs.binding", "output", "libs.names"));
-    byAol.forEach((aol, target) -> {
-      for (final String type : allTypes) {
-        // a generic nar.<type> the project sets applies to the types it ships
-        final String generic = NarConstants.NAR + "." + type;
-        final String value;
-        if (!target.getTypes().contains(type)) {
-          value = "";
-        } else if (presetKeys.contains(generic)) {
-          // as the project's nar.properties has it; if that file was
-          // replaced by another resource's, as if it weren't set
-          final String preset = narInfo.getInfo().getProperty(generic);
-          value = preset != null ? preset : coordinate + ":" + aol + "-" + type;
-        } else {
-          value = coordinate + ":" + aol + "-" + type;
-        }
-        set(narInfo, presetKeys, aol + "." + generic, value);
-      }
-      set(narInfo, presetKeys, aol + ".libs.binding", presetBinding != null && target.getTypes().contains(presetBinding)
-          ? presetBinding : preferredBinding(target.getTypes()));
-      final boolean libraries = target.getTypes().stream().anyMatch(type -> !Library.EXECUTABLE.equals(type));
-      set(narInfo, presetKeys, aol + ".output", libraries ? libraryOutput : executableOutput);
-      if (libsName != null) {
-        set(narInfo, presetKeys, aol + ".libs.names", libsName);
-      }
-    });
-    // an AOL mapped to a target gets the target's entries as they end up
-    mapped.forEach((alias, target) -> {
-      final String aol = new AOL(target.getAol().trim()).toString();
-      for (final String suffix : suffixes) {
-        final String value = narInfo.getInfo().getProperty(aol + "." + suffix);
-        if (value != null) {
-          set(narInfo, presetKeys, alias + "." + suffix, value);
-        }
-      }
-    });
-
-    for (final String type : declaredTypes) {
-      final String key = NarConstants.NAR + "." + type;
-      if (narInfo.getInfo().getProperty(key) == null) {
-        narInfo.getInfo().setProperty(key, coordinate + ":${aol}-" + type);
-      }
-    }
-  }
-
-  private static void set(final NarInfo narInfo, final Set<String> presetKeys, final String key,
-      final String value) {
-    if (!presetKeys.contains(key)) {
-      narInfo.getInfo().setProperty(key, value);
-    }
-  }
-
-  /**
-   * Warns about the AOL-specific NARs built here that the targets don't
-   * declare.
-   *
-   * @param targets the declared targets
-   * @param built the types built here for each AOL
-   * @param log for the warnings
-   */
-  public static void checkBuilt(final Collection<Target> targets, final Map<String, Set<String>> built,
-      final Log log) {
-    built.forEach((aol, types) -> {
-      final Target target = targets.stream()
-          .filter(t -> t.getAol() != null && new AOL(t.getAol().trim()).toString().equals(new AOL(aol).toString()))
-          .findFirst().orElse(null);
-      for (final String type : types) {
-        if (target == null || !target.getTypes().contains(type)) {
-          log.warn("The " + aol + "-" + type + " NAR built here isn't declared in targets");
-        }
-      }
-    });
-  }
-
-  // As prepareNarInfo prefers them: shared, then static, then whatever else.
-  private static String preferredBinding(final List<String> types) {
-    if (types.contains(Library.SHARED)) {
-      return Library.SHARED;
-    }
-    if (types.contains(Library.STATIC)) {
-      return Library.STATIC;
-    }
-    return types.isEmpty() ? Library.NONE : types.get(0);
+    return typesByAol;
   }
 }

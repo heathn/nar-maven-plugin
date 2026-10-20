@@ -35,7 +35,9 @@ import org.apache.maven.plugin.logging.SystemStreamLog;
 import com.github.maven_nar.AOL;
 import com.github.maven_nar.Library;
 import com.github.maven_nar.NarDescriptor;
+import com.github.maven_nar.NarDescriptor.LinkPattern;
 import com.github.maven_nar.NarInfo;
+import com.github.maven_nar.NarUtil;
 
 /**
  * Tests deriving and writing the descriptor of an AOL-specific NAR.
@@ -63,30 +65,30 @@ public class TestNarDescriptor extends TestCase {
 
   public final void testLinuxShared() throws Exception {
     touch("libfoo-1.0.so", "libfoo-1.0.so.1", "libbar.so.2.3.4", "notalib.txt", "libbaz.a");
-    Assert.assertEquals("bar foo-1.0", NarDescriptor.linkNames(this.dir, List.<String[]>of(new String[] { "lib", "so*" })));
+    Assert.assertEquals("bar foo-1.0", NarDescriptor.linkNames(this.dir, List.of(LinkPattern.of("lib", "so*"))));
   }
 
   public final void testLinuxStatic() throws Exception {
     touch("libfoo.a", "libfoo.so");
-    Assert.assertEquals("foo", NarDescriptor.linkNames(this.dir, List.<String[]>of(new String[] { "lib", "a" })));
+    Assert.assertEquals("foo", NarDescriptor.linkNames(this.dir, List.of(LinkPattern.of("lib", "a"))));
   }
 
   public final void testWindowsImportLibraryWithDottedName() throws Exception {
     // leptonica's own build names its library after the upstream version
     touch("leptonica-1.87.0.lib", "leptonica-1.87.0.dll", "leptonica-1.87.0.pdb");
-    Assert.assertEquals("leptonica-1.87.0", NarDescriptor.linkNames(this.dir, List.<String[]>of(new String[] { "", "lib" })));
+    Assert.assertEquals("leptonica-1.87.0", NarDescriptor.linkNames(this.dir, List.of(LinkPattern.of("", "lib"))));
   }
 
   public final void testNameContainingExtension() throws Exception {
     touch("libsomething.so", "libso.so.1");
-    Assert.assertEquals("so something", NarDescriptor.linkNames(this.dir, List.<String[]>of(new String[] { "lib", "so*" })));
+    Assert.assertEquals("so something", NarDescriptor.linkNames(this.dir, List.of(LinkPattern.of("lib", "so*"))));
   }
 
   public final void testMissingDirectoryOrExtension() throws Exception {
-    Assert.assertEquals("", NarDescriptor.linkNames(this.dir.resolve("none"), List.<String[]>of(new String[] { "lib", "so" })));
+    Assert.assertEquals("", NarDescriptor.linkNames(this.dir.resolve("none"), List.of(LinkPattern.of("lib", "so"))));
     touch("libfoo.so");
-    Assert.assertEquals("", NarDescriptor.linkNames(this.dir, List.<String[]>of(new String[] { "lib", null })));
-    Assert.assertEquals("libfoo", NarDescriptor.linkNames(this.dir, List.<String[]>of(new String[] { null, "so" })));
+    Assert.assertEquals("", NarDescriptor.linkNames(this.dir, List.of(LinkPattern.of("lib", null))));
+    Assert.assertEquals("libfoo", NarDescriptor.linkNames(this.dir, List.of(LinkPattern.of(null, "so"))));
   }
 
   public final void testWriteIsReproducible() throws Exception {
@@ -100,8 +102,8 @@ public class TestNarDescriptor extends TestCase {
     b.setProperty("output", "foo");
     final Path fa = this.dir.resolve("a/d.properties");
     final Path fb = this.dir.resolve("b/d.properties");
-    NarDescriptor.write(fa, a);
-    NarDescriptor.write(fb, b);
+    NarUtil.storeProperties(fa, a);
+    NarUtil.storeProperties(fb, b);
     Assert.assertArrayEquals(Files.readAllBytes(fa), Files.readAllBytes(fb));
     Assert.assertEquals("libs.names=foo bar\nnar.descriptor.version=2\noutput=foo\n", Files.readString(fa));
     final Properties read = new Properties();
@@ -197,7 +199,7 @@ public class TestNarDescriptor extends TestCase {
     p.setProperty("linker.options", "-L/opt/\u5e93");
     p.setProperty("output", "caf\u00e9");
     final Path file = this.dir.resolve("u/d.properties");
-    NarDescriptor.write(file, p);
+    NarUtil.storeProperties(file, p);
     final Properties read = new Properties();
     try (var in = Files.newInputStream(file)) {
       read.load(in);
@@ -212,7 +214,7 @@ public class TestNarDescriptor extends TestCase {
     final NarInfo consumer = narInfo(LINUX, "lib-1.0");
     consumer.getInfo().setProperty("libs.names", "other");
     final Path file = this.dir.resolve("m/amd64-Linux-gpp-shared.properties");
-    NarDescriptor.write(file, d);
+    NarUtil.storeProperties(file, d);
     Assert.assertTrue(consumer.overlayDescriptor(file, LINUX));
     Assert.assertEquals("lib-1.0", consumer.getLibs(LINUX));
   }
@@ -253,7 +255,7 @@ public class TestNarDescriptor extends TestCase {
     try {
       final Properties p = new Properties();
       p.setProperty("output", "foo");
-      NarDescriptor.write(file, p);
+      NarUtil.storeProperties(file, p);
       Assert.assertTrue(Files.exists(file));
     } finally {
       Files.deleteIfExists(file);
@@ -316,5 +318,13 @@ public class TestNarDescriptor extends TestCase {
     // some AOLs give the shared extension as so, not so*
     touch("librenamed.so.1", "libbundled.so");
     Assert.assertNull(describe(narInfo(LINUX, "foo"), LINUX, Library.SHARED, "lib", "so").getProperty("libs.names"));
+  }
+
+  public final void testLinkPatternOf() {
+    // as aol.properties gives extensions: so* also takes version suffixes
+    Assert.assertEquals(new LinkPattern("lib", "so", true, false), LinkPattern.of("lib", "so*"));
+    Assert.assertEquals(new LinkPattern("lib", "so", false, false), LinkPattern.of("lib", "so"));
+    Assert.assertEquals(new LinkPattern("", "a", false, false), LinkPattern.of(null, "a"));
+    Assert.assertEquals(new LinkPattern("lib", null, false, false), LinkPattern.of("lib", null));
   }
 }

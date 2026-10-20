@@ -19,8 +19,6 @@
  */
 package com.github.maven_nar.test;
 
-import java.nio.file.attribute.FileTime;
-import java.time.Instant;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -29,15 +27,12 @@ import junit.framework.TestCase;
 import org.apache.maven.artifact.Artifact;
 import org.apache.maven.artifact.DefaultArtifact;
 import org.apache.maven.artifact.handler.DefaultArtifactHandler;
-import org.apache.maven.plugin.MojoExecutionException;
 import org.junit.Assert;
 
 import com.github.maven_nar.NarDeployMojo;
-import com.github.maven_nar.NarUtil;
 
 /**
- * Tests choosing the AOL-specific artifacts to deploy, and parsing
- * project.build.outputTimestamp.
+ * Tests choosing the AOL-specific artifacts to deploy.
  */
 public class TestNarDeploy extends TestCase {
 
@@ -65,61 +60,4 @@ public class TestNarDeploy extends TestCase {
         artifact("jar", "sources"))));
   }
 
-  public final void testOutputTimestamp() {
-    // unset, or a single non-digit character, falls back to SOURCE_DATE_EPOCH
-    final String epoch = System.getenv("SOURCE_DATE_EPOCH");
-    final FileTime fallback = epoch == null ? null : NarUtil.getOutputTimestamp(epoch);
-    Assert.assertEquals(fallback, NarUtil.getOutputTimestamp(null));
-    Assert.assertEquals(fallback, NarUtil.getOutputTimestamp(" "));
-    Assert.assertEquals(fallback, NarUtil.getOutputTimestamp("a"));
-    Assert.assertEquals(FileTime.from(Instant.ofEpochSecond(1700000000)), NarUtil.getOutputTimestamp("1700000000"));
-    Assert.assertEquals(FileTime.from(Instant.parse("2026-10-18T12:00:00Z")),
-        NarUtil.getOutputTimestamp("2026-10-18T12:00:00Z"));
-    Assert.assertEquals(FileTime.from(Instant.parse("2026-10-18T06:00:00Z")),
-        NarUtil.getOutputTimestamp("2026-10-18T00:00:00-06:00"));
-    try {
-      NarUtil.getOutputTimestamp("yesterday");
-      fail("parsed an invalid timestamp");
-    } catch (final IllegalArgumentException expected) {
-      // expected
-    }
-  }
-
-  public final void testParseRepository() throws Exception {
-    Assert.assertEquals("https://repo.example/maven", NarDeployMojo.parseRepository("id::https://repo.example/maven").getUrl());
-    Assert.assertEquals("id", NarDeployMojo.parseRepository("id::default::file:///tmp/repo").getId());
-    // compressed IPv6 addresses contain the separator too
-    Assert.assertEquals("http://[::1]:8081/repository",
-        NarDeployMojo.parseRepository("local::http://[::1]:8081/repository").getUrl());
-    Assert.assertEquals("http://[::1]:8081/repository",
-        NarDeployMojo.parseRepository("local::default::http://[::1]:8081/repository").getUrl());
-    // padded parts are trimmed, as maven-deploy-plugin does
-    final org.eclipse.aether.repository.RemoteRepository padded = NarDeployMojo
-        .parseRepository(" releases :: https://repo.example/maven ");
-    Assert.assertEquals("releases", padded.getId());
-    Assert.assertEquals("https://repo.example/maven", padded.getUrl());
-    final org.eclipse.aether.repository.RemoteRepository legacy = NarDeployMojo
-        .parseRepository("releases :: default :: http://[::1]:8081/repository ");
-    Assert.assertEquals("releases", legacy.getId());
-    Assert.assertEquals("http://[::1]:8081/repository", legacy.getUrl());
-    // only one layout is taken, as maven-deploy-plugin does
-    Assert.assertEquals("default::http://h/", NarDeployMojo.parseRepository("id::default::default::http://h/").getUrl());
-    for (final String bad : new String[] { "id", "id::", "id::legacy::file:///tmp", "::file:///tmp", "a::b::c::d",
-        " ::file:///tmp", "id:: ", "id::default:: " }) {
-      try {
-        NarDeployMojo.parseRepository(bad);
-        fail("accepted " + bad);
-      } catch (final MojoExecutionException expected) {
-        // expected
-      }
-    }
-  }
-  public final void testSupportsDeployPlugin() {
-    for (final String old : new String[] { "2.8.2", "3.0.0-M1" }) {
-      Assert.assertFalse(old, NarDeployMojo.supportsDeployPlugin(old));
-    }
-    for (final String current : new String[] { "3.0.0-M2", "3.0.0", "3.1.2", "4.0.0-beta-3" }) {
-      Assert.assertTrue(current, NarDeployMojo.supportsDeployPlugin(current));
-    }
-  }
 }

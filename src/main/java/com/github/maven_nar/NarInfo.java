@@ -26,8 +26,8 @@ import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Properties;
-import java.util.Set;
 import java.util.HashSet;
+import java.util.Set;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 import java.util.stream.Collectors;
@@ -53,6 +53,42 @@ public class NarInfo {
    * The descriptor format this plugin reads.
    */
   public static final int DESCRIPTOR_VERSION = 2;
+
+  // Keys of nar.properties and of the AOL descriptors.  In nar.properties
+  // each can also be prefixed with an AOL, see aolKey.
+  public static final String LIBS_BINDING = "libs.binding";
+  public static final String LIBS_NAMES = "libs.names";
+  public static final String SYSLIBS_NAMES = "syslibs.names";
+  public static final String LINKER_OPTIONS = "linker.options";
+  public static final String OUTPUT = "output";
+  public static final String INCLUDES_TYPE = "includes.type";
+
+  /**
+   * @param type a library type, such as shared
+   * @return the key naming that type's NAR: nar.&lt;type&gt;
+   */
+  public static String narKey(final String type) {
+    return NarConstants.NAR + "." + type;
+  }
+
+  /**
+   * @param aol an AOL
+   * @param key a key
+   * @return the key for that AOL only: &lt;aol&gt;.&lt;key&gt;
+   */
+  public static String aolKey(final String aol, final String key) {
+    return aol + "." + key;
+  }
+
+  /**
+   * @param coordinate the project's groupId:artifactId:nar
+   * @param type a library type
+   * @return the generic nar.&lt;type&gt; value, for every AOL:
+   *         &lt;coordinate&gt;:${aol}-&lt;type&gt;
+   */
+  public static String genericNar(final String coordinate, final String type) {
+    return coordinate + ":${aol}-" + type;
+  }
 
   private final String groupId, artifactId, version;
 
@@ -93,9 +129,9 @@ public class NarInfo {
   }
 
   public final void addNar(final AOL aol, final String type, final String nar) {
-    String nars = getProperty(aol, NarConstants.NAR + "." + type);
+    String nars = getProperty(aol, narKey(type));
     nars = nars == null ? nar : nars + ", " + nar;
-    setProperty(aol, NarConstants.NAR + "." + type, nars);
+    setProperty(aol, narKey(type), nars);
   }
 
   public final boolean exists(final JarFile jar) {
@@ -108,7 +144,7 @@ public class NarInfo {
 
   // FIXME replace with list of AttachedNarArtifacts
   public final List<String> getAttachedNars(final AOL aol, final String type) {
-    final String attachedNars = getProperty(aol, NarConstants.NAR + "." + type);
+    final String attachedNars = getProperty(aol, narKey(type));
     return Stream.ofNullable(attachedNars)
         .map(s -> s.split(","))
         .flatMap(Arrays::stream)
@@ -122,25 +158,25 @@ public class NarInfo {
    * @return
    */
   public final String getBinding(final AOL aol, final String defaultBinding) {
-    return getProperty(aol, "libs.binding", defaultBinding);
+    return getProperty(aol, LIBS_BINDING, defaultBinding);
   }
 
   public final String getExactProperty(final AOL aol, final String key, final String defaultValue) {
     if (key == null) {
       throw new NullPointerException();
     }
-    final String value = this.info.getProperty((aol == null ? "" : aol.toString() + ".") + key, defaultValue);
+    final String value = this.info.getProperty(aol == null ? key : aolKey(aol.toString(), key), defaultValue);
     this.log.debug("getExactProperty(" + aol + ", " + key + ", " + defaultValue + ") = " + value);
     return value;
   }
 
   public final String getLibs(final AOL aol) {
     // resolve output Vs libs.names
-    return getProperty(aol, "libs.names", getOutput(aol, this.artifactId + "-" + this.version));
+    return getProperty(aol, LIBS_NAMES, getOutput(aol, this.artifactId + "-" + this.version));
   }
   
   public final String getIncludesType(final AOL aol) {
-    return getProperty(aol, "includes.type", "local");
+    return getProperty(aol, INCLUDES_TYPE, "local");
   }
 
   public String getNarInfoFileName() {
@@ -152,11 +188,11 @@ public class NarInfo {
   }
 
   public final String getOptions(final AOL aol) {
-    return getProperty(aol, "linker.options");
+    return getProperty(aol, LINKER_OPTIONS);
   }
 
   public final String getOutput(final AOL aol, final String defaultOutput) {
-    return getExactProperty(aol, "output", defaultOutput);
+    return getExactProperty(aol, OUTPUT, defaultOutput);
   }
 
   public final String getProperty(final AOL aol, final String key) {
@@ -180,13 +216,13 @@ public class NarInfo {
       return defaultValue;
     }
     String value = this.info.getProperty(key, defaultValue);
-    value = aol == null ? value : this.info.getProperty(aol.toString() + "." + key, value);
+    value = aol == null ? value : this.info.getProperty(aolKey(aol.toString(), key), value);
     this.log.debug("getProperty(" + aol + ", " + key + ", " + defaultValue + ") = " + value);
     return value;
   }
 
   public final String getSysLibs(final AOL aol) {
-    return getProperty(aol, "syslibs.names");
+    return getProperty(aol, SYSLIBS_NAMES);
   }
 
   /**
@@ -230,34 +266,34 @@ public class NarInfo {
   }
 
   public final void setBinding(final AOL aol, final String value) {
-    setProperty(aol, "libs.binding", value);
+    setProperty(aol, LIBS_BINDING, value);
   }
 
   public final void setNar(final AOL aol, final String type, final String nar) {
-    setProperty(aol, NarConstants.NAR + "." + type, nar);
+    setProperty(aol, narKey(type), nar);
   }
 
   public final void setOutput(final AOL aol, final String value) {
-    setProperty(aol, "output", value);
+    setProperty(aol, OUTPUT, value);
   }
 
   public final void setLibs(final AOL aol, final String value) {
-    setProperty(aol, "libs.names", value);
+    setProperty(aol, LIBS_NAMES, value);
   }
   
   public final void setIncludesType(final AOL aol, final String value) {
-    setProperty(aol, "includes.type", value);
+    setProperty(aol, INCLUDES_TYPE, value);
   }
 
   public final void setSysLibs(final AOL aol, final String value) {
-    setProperty(aol, "syslibs.names", value);
+    setProperty(aol, SYSLIBS_NAMES, value);
   }
 
   private void setProperty(final AOL aol, final String key, final String value) {
     if (aol == null) {
       this.info.setProperty(key, value);
     } else {
-      this.info.setProperty(aol.toString() + "." + key, value);
+      this.info.setProperty(aolKey(aol.toString(), key), value);
     }
   }
 
@@ -347,7 +383,7 @@ public class NarInfo {
    * @return the options, or null
    */
   public final String getLinkerOptions(final AOL aol, final NarInfo main) {
-    return (hasDescriptorKey("linker.options") ? this : main).getOptions(aol);
+    return (hasDescriptorKey(LINKER_OPTIONS) ? this : main).getOptions(aol);
   }
 
 
@@ -386,12 +422,8 @@ public class NarInfo {
   }
 
   public final void writeToFile(final Path file) throws IOException {
-    final Path parent = file.getParent();
-    if (parent != null) {
-      Files.createDirectories(parent);
-    }
     log.debug("Write NAR Properties: " + file.toString());
     // sorted and without a timestamp, so the same properties give the same file
-    NarDescriptor.write(file, this.info);
+    NarUtil.storeProperties(file, this.info);
   }
 }
