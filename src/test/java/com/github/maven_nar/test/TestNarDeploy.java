@@ -27,12 +27,13 @@ import junit.framework.TestCase;
 import org.apache.maven.artifact.Artifact;
 import org.apache.maven.artifact.DefaultArtifact;
 import org.apache.maven.artifact.handler.DefaultArtifactHandler;
+import org.apache.maven.plugin.MojoExecutionException;
 import org.junit.Assert;
 
 import com.github.maven_nar.NarDeployMojo;
 
 /**
- * Tests choosing the AOL-specific artifacts to deploy.
+ * Tests choosing the deploy scope and the AOL-specific artifacts to deploy.
  */
 public class TestNarDeploy extends TestCase {
 
@@ -60,4 +61,35 @@ public class TestNarDeploy extends TestCase {
         artifact("jar", "sources"))));
   }
 
+  public final void testDeployScopeFollowsPrimaryAol() throws Exception {
+    Assert.assertEquals("all", NarDeployMojo.deployScope(null, "amd64-Linux-gpp", "amd64-Linux-gpp"));
+    // spelled either way
+    Assert.assertEquals("all", NarDeployMojo.deployScope(null, "amd64-Linux-g++", "amd64-Linux-gpp"));
+    Assert.assertEquals("aol", NarDeployMojo.deployScope(null, "amd64-Linux-gpp", "amd64-Windows-msvc"));
+  }
+
+  public final void testConfiguredDeployScopeWins() throws Exception {
+    Assert.assertEquals("aol", NarDeployMojo.deployScope("aol", "amd64-Linux-gpp", "amd64-Linux-gpp"));
+    Assert.assertEquals("all", NarDeployMojo.deployScope("all", "amd64-Linux-gpp", "amd64-Windows-msvc"));
+  }
+
+  public final void testDeployScopeDefaultsToAll() throws Exception {
+    Assert.assertEquals("all", NarDeployMojo.deployScope(null, null, "amd64-Linux-gpp"));
+    Assert.assertEquals("all", NarDeployMojo.deployScope(null, " ", null));
+  }
+
+  public final void testBadDeployScopes() {
+    try {
+      NarDeployMojo.deployScope("some", null, "amd64-Linux-gpp");
+      fail("accepted deployScope some");
+    } catch (final MojoExecutionException expected) {
+      assertTrue(expected.getMessage(), expected.getMessage().contains("all or aol"));
+    }
+    try {
+      NarDeployMojo.deployScope(null, "amd64-Linux-gpp", null);
+      fail("accepted primaryAol without the AOL being built");
+    } catch (final MojoExecutionException expected) {
+      assertTrue(expected.getMessage(), expected.getMessage().contains("nar.aol"));
+    }
+  }
 }

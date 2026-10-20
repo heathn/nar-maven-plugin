@@ -49,8 +49,8 @@ import org.eclipse.aether.repository.RemoteRepository;
  * main artifact, the noarch NAR and the other attachments again under the
  * same version.
  * <ul>
- * <li>deployScope "all", the default: nothing; maven-deploy-plugin deploys
- * everything as usual.</li>
+ * <li>deployScope "all": nothing; maven-deploy-plugin deploys everything as
+ * usual.</li>
  * <li>"aol": deploys only the AOL-specific artifacts this build attached
  * (classified &lt;aol&gt;-&lt;type&gt;, or with an AOL built here or
  * prefixed with one) and stops maven-deploy-plugin, so one build deploys
@@ -58,6 +58,11 @@ import org.eclipse.aether.repository.RemoteRepository;
  * altSnapshotDeploymentRepository or altReleaseDeploymentRepository,
  * altDeploymentRepository, or distributionManagement.</li>
  * </ul>
+ * Rather than set deployScope per machine, set primaryAol once, the AOL
+ * whose build deploys the shared artifacts: deployScope is then "all" when
+ * building that AOL and "aol" when building any other.  Without either,
+ * it's "all".
+ * <p>
  * With "aol" the build fails before deploying anything when nar-deploy
  * can't be sure maven-deploy-plugin won't deploy: a skip set to false on the
  * command line or on that plugin, a deploy execution bound to an earlier
@@ -70,12 +75,24 @@ import org.eclipse.aether.repository.RemoteRepository;
 @Mojo(name = "nar-deploy", defaultPhase = LifecyclePhase.DEPLOY, requiresProject = true, threadSafe = true)
 public class NarDeployMojo extends AbstractMojo {
 
+  private static final String ALL = "all";
+
+  private static final String AOL_SCOPE = "aol";
+
   /**
    * "all" to deploy everything, or "aol" to deploy only this build's
-   * AOL-specific artifacts.
+   * AOL-specific artifacts.  Unset, it follows primaryAol.
    */
-  @Parameter(property = "nar.deployScope", defaultValue = "all")
+  @Parameter(property = "nar.deployScope")
   private String deployScope;
+
+  /**
+   * The AOL whose build deploys the shared artifacts, such as
+   * amd64-Linux-gpp; builds for other AOLs deploy only their own.  Set it
+   * once, in the root pom, as the nar.primaryAol property.
+   */
+  @Parameter(property = "nar.primaryAol")
+  private String primaryAol;
 
   /**
    * Skips this goal: true, false, releases or snapshots, as
@@ -102,11 +119,15 @@ public class NarDeployMojo extends AbstractMojo {
 
   @Override
   public void execute() throws MojoExecutionException {
-    if ("all".equals(this.deployScope)) {
-      return;
+    final String building = this.project.getProperties().getProperty("nar.aol");
+    final String scope = deployScope(this.deployScope, this.primaryAol, building);
+    if (this.deployScope == null && this.primaryAol != null) {
+      getLog().info(ALL.equals(scope) ? "Building the primary AOL " + this.primaryAol + ": deploying everything"
+          : "Building " + building + ", not the primary AOL " + this.primaryAol
+              + ": deploying only its AOL-specific artifacts");
     }
-    if (!"aol".equals(this.deployScope)) {
-      throw new MojoExecutionException("nar.deployScope must be all or aol, not " + this.deployScope);
+    if (ALL.equals(scope)) {
+      return;
     }
     final DeployPluginModel deployPlugin = new DeployPluginModel(this.project, this.session.getUserProperties(),
         this.session.getSystemProperties(), new PluginParameterExpressionEvaluator(this.session, this.mojoExecution));
@@ -130,6 +151,34 @@ public class NarDeployMojo extends AbstractMojo {
     }
     getLog().info("Leaving the pom, main artifact and other attachments to another build");
     skipDeployPlugin();
+  }
+
+  /**
+   * The deploy scope: the one configured, or as primaryAol implies for the
+   * AOL being built, or "all".
+   *
+   * @param configured nar.deployScope, or null
+   * @param primaryAol nar.primaryAol, or null
+   * @param building the AOL being built, as nar.aol gives it, or null
+   * @return "all" or "aol"
+   * @throws MojoExecutionException if the configured scope is neither, or
+   *           primaryAol is set but the AOL being built isn't known
+   */
+  public static String deployScope(final String configured, final String primaryAol, final String building)
+      throws MojoExecutionException {
+    if (configured != null) {
+      if (!ALL.equals(configured) && !AOL_SCOPE.equals(configured)) {
+        throw new MojoExecutionException("nar.deployScope must be all or aol, not " + configured);
+      }
+      return configured;
+    }
+    if (primaryAol == null || primaryAol.trim().isEmpty()) {
+      return ALL;
+    }
+    if (building == null) {
+      throw new MojoExecutionException("nar.primaryAol is set, but the AOL being built isn't known (nar.aol)");
+    }
+    return new AOL(primaryAol.trim()).toString().equals(new AOL(building).toString()) ? ALL : AOL_SCOPE;
   }
 
   private void deploy(final List<Artifact> artifacts, final RemoteRepository destination)
