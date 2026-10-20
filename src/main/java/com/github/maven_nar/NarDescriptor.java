@@ -22,6 +22,7 @@ package com.github.maven_nar;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -165,8 +166,9 @@ public final class NarDescriptor {
    * The descriptor of one AOL-specific NAR.
    * <ul>
    * <li>output: as the main nar.properties has it for the AOL.</li>
-   * <li>libs.names, for shared and static libraries: when configured, as
-   * configured; otherwise the output when its library is among the library
+   * <li>libs.names, for shared and static libraries: when configured, each
+   * name as the linker finds it among the files packaged (see
+   * {@link #resolveLibsNames}); otherwise the output when its library is among the library
    * files packaged, so consumers link what they link now whatever the main
    * nar.properties says; otherwise (a library renamed by a third-party
    * build, for example) the name of the one library file there, unversioned;
@@ -196,7 +198,8 @@ public final class NarDescriptor {
     }
     if (Library.SHARED.equals(type) || Library.STATIC.equals(type)) {
       final String configured = narInfo.getProperty(aol, NarInfo.LIBS_NAMES);
-      final String names = configured != null ? configured : inferLibsNames(output, libDir, patterns, aol, type, log);
+      final String names = configured != null ? resolveLibsNames(configured, libDir, patterns, aol, type, log)
+          : inferLibsNames(output, libDir, patterns, aol, type, log);
       if (names != null) {
         descriptor.setProperty(NarInfo.LIBS_NAMES, names);
       }
@@ -206,6 +209,51 @@ public final class NarDescriptor {
       descriptor.setProperty(key, value == null ? "" : value);
     }
     return descriptor;
+  }
+
+  /**
+   * The libs.names configured, by libsName or nar.properties, each as the
+   * linker finds it among a NAR's library files, so that one libsName serves
+   * every AOL: webp is libwebp on MSVC, whose import library is libwebp.lib,
+   * and libwebp is webp for a GNU linker.  A name matching no file is kept,
+   * with a warning, since consumers linking it would fail; without library
+   * files there is nothing to check.
+   *
+   * @param configured the names, space-separated
+   * @param libDir the directory of the NAR's libraries
+   * @param patterns the patterns the linker finds library files by
+   * @param aol the NAR's AOL
+   * @param type the NAR's library type
+   * @param log for warnings
+   * @return the names, in the configured order
+   * @throws IOException if the directory can't be listed
+   */
+  public static String resolveLibsNames(final String configured, final Path libDir, final List<LinkPattern> patterns,
+      final AOL aol, final String type, final Log log) throws IOException {
+    final TreeSet<String> available = new TreeSet<>();
+    linkAliases(libDir, patterns).values().forEach(available::addAll);
+    if (configured.trim().isEmpty() || available.isEmpty()) {
+      return configured;
+    }
+    final boolean ignoreCase = patterns.stream().anyMatch(LinkPattern::ignoreCase);
+    final List<String> resolved = new ArrayList<>();
+    final List<String> missing = new ArrayList<>();
+    for (final String name : configured.trim().split("\\s+")) {
+      final String unprefixed = name.startsWith("lib") ? name.substring("lib".length()) : name;
+      final String match = Stream.of(name, "lib" + name, unprefixed)
+          .flatMap(candidate -> available.stream()
+              .filter(file -> ignoreCase ? file.equalsIgnoreCase(candidate) : file.equals(candidate)))
+          .findFirst().orElse(null);
+      resolved.add(match == null ? name : match);
+      if (match == null) {
+        missing.add(name);
+      }
+    }
+    if (!missing.isEmpty()) {
+      log.warn("The " + aol + " " + type + " libs.names " + String.join(" ", missing)
+          + " matches none of the libraries packaged, " + available + "; consumers linking it will fail");
+    }
+    return String.join(" ", resolved);
   }
 
   /**
