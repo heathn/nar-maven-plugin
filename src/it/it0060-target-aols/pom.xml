@@ -38,6 +38,14 @@
   <properties>
     <nar.targetAols>x86_64-Example-gcc,arm-Other-gcc</nar.targetAols>
   </properties>
+  <profiles>
+    <profile>
+      <id>third-aol</id>
+      <properties>
+        <nar.targetAols>x86_64-Example-gcc,arm-Other-gcc,mips-Gone-gcc</nar.targetAols>
+      </properties>
+    </profile>
+  </profiles>
   <build>
     <plugins>
       <plugin>

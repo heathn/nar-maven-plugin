@@ -78,6 +78,21 @@ public class TestNarDeploy extends TestCase {
     Assert.assertEquals("all", NarDeployMojo.deployScope(null, " ", null));
   }
 
+  public final void testPrimaryAolWithAVersionedLinker() throws Exception {
+    Assert.assertEquals("all", NarDeployMojo.deployScope(null, "x86_64-Linux-gpp-12", "x86_64-Linux-gpp-12"));
+  }
+
+  public final void testMalformedPrimaryAol() {
+    for (final String aol : new String[] { "amd64-Linux", "amd64", "amd64--gpp" }) {
+      try {
+        NarDeployMojo.deployScope(null, aol, "amd64-Linux-gpp");
+        fail("accepted primaryAol " + aol);
+      } catch (final MojoExecutionException expected) {
+        assertTrue(expected.getMessage(), expected.getMessage().contains("arch-os-linker"));
+      }
+    }
+  }
+
   public final void testBadDeployScopes() {
     try {
       NarDeployMojo.deployScope("some", null, "amd64-Linux-gpp");

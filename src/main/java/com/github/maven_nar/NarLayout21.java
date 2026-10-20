@@ -170,6 +170,12 @@ public class NarLayout21 extends AbstractNarLayout {
   public final void prepareNarInfo(final Path baseDir, final MavenProject project, final NarInfo narInfo,
       final AbstractCompileMojo mojo) throws MojoExecutionException, MojoFailureException {
     final Set<String> presetKeys = mojo == null ? Set.of() : mojo.getPresetKeys();
+    if (mojo != null) {
+      // drop the keys the project's nar.properties doesn't set: in
+      // target/classes they are what a previous build generated, and keeping
+      // them would keep a removed target's NARs or libsName's names
+      narInfo.getInfo().keySet().retainAll(presetKeys);
+    }
     if (Files.exists(getNoArchDirectory(baseDir, project.getArtifactId(), project.getVersion()))) {
       narInfo.setNar(null, NarConstants.NAR_NO_ARCH, project.getGroupId() + ":" + project.getArtifactId() + ":"
           + NarConstants.NAR_TYPE + ":" + NarConstants.NAR_NO_ARCH);

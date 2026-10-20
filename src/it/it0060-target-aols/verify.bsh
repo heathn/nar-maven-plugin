@@ -48,4 +48,13 @@ String log = new String(java.nio.file.Files.readAllBytes(new File(basedir, "buil
 if (log.indexOf("-shared NAR built here isn't declared in targets") < 0) {
   throw new RuntimeException("The host's undeclared NAR wasn't reported");
 }
+// listed only by the first build
+// an array, since BeanShell can't call the JDK's internal iterators
+Object[] keys = main.stringPropertyNames().toArray();
+for (int i = 0; i < keys.length; i++) {
+  String key = (String) keys[i];
+  if (key.startsWith("mips-Gone-gcc.")) {
+    throw new RuntimeException("The second build kept the first's " + key + ": " + main);
+  }
+}
 return true;

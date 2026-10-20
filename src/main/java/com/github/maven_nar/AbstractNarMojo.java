@@ -386,6 +386,11 @@ public abstract class AbstractNarMojo extends AbstractMojo implements NarConstan
    * resource supplying it copies, since target/classes may hold what a
    * previous build generated.
    *
+   * <p>
+   * Keys whose names are filtered, or a nar.properties written into
+   * target/classes other than as a resource, aren't recognized: the plugin
+   * replaces them as it would generated ones.
+   *
    * @return the keys, empty if the project has no nar.properties
    * @throws MojoExecutionException if it can't be read
    */
@@ -403,6 +408,12 @@ public abstract class AbstractNarMojo extends AbstractMojo implements NarConstan
       if (file != null && Files.isRegularFile(file)) {
         source = file;
       }
+    }
+    // as getNarInfo, when no resource supplies it
+    final Path defaultSource = project.getBasedir().toPath().resolve(Path.of("src", "main", "resources", "META-INF",
+        "nar", project.getGroupId(), project.getArtifactId(), NarInfo.NAR_PROPERTIES));
+    if (source == null && Files.isRegularFile(defaultSource)) {
+      source = defaultSource;
     }
     this.presetKeys = source == null ? Set.of()
         : new NarInfo(project.getGroupId(), project.getArtifactId(), project.getVersion(), getLog(), source)

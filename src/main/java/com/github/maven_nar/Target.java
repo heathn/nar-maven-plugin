@@ -132,7 +132,7 @@ public class Target {
    * @param builtTypes the types built here
    * @return the types, targetAols' first, in their order
    * @throws MojoExecutionException as for {@link #typesByAol(Collection)}, or
-   *           if a targetAols entry is empty
+   *           if a targetAols entry is empty or repeated
    */
   public static Map<String, Set<String>> typesByAol(final Collection<Target> targets,
       final Collection<String> targetAols, final Set<String> builtTypes) throws MojoExecutionException {
@@ -143,6 +143,9 @@ public class Target {
         throw new MojoExecutionException("targetAols has an empty entry");
       }
       final String aol = new AOL(targetAol.trim()).toString();
+      if (typesByAol.containsKey(aol)) {
+        throw new MojoExecutionException("Target AOL " + aol + " is listed more than once");
+      }
       typesByAol.put(aol, declared.getOrDefault(aol, new TreeSet<>(builtTypes)));
     }
     declared.forEach(typesByAol::putIfAbsent);

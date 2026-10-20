@@ -106,6 +106,15 @@ public class TestTarget extends TestCase {
     Assert.assertEquals(Map.of(), Target.typesByAol(List.of(), List.of("amd64-Linux-gpp"), Set.of()));
   }
 
+  public final void testRepeatedTargetAol() {
+    try {
+      Target.typesByAol(List.of(), List.of("amd64-Linux-g++", "amd64-Linux-gpp"), Set.of("shared"));
+      fail("accepted amd64-Linux-gpp twice");
+    } catch (final MojoExecutionException expected) {
+      assertTrue(expected.getMessage(), expected.getMessage().contains("more than once"));
+    }
+  }
+
   public final void testEmptyTargetAol() {
     try {
       Target.typesByAol(List.of(), List.of("amd64-Linux-gpp", " "), Set.of("shared"));

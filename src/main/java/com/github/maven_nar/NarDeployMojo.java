@@ -19,6 +19,7 @@
  */
 package com.github.maven_nar;
 
+import java.util.Arrays;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -89,7 +90,10 @@ public class NarDeployMojo extends AbstractMojo {
   /**
    * The AOL whose build deploys the shared artifacts, such as
    * amd64-Linux-gpp; builds for other AOLs deploy only their own.  Set it
-   * once, in the root pom, as the nar.primaryAol property.
+   * once, in the root pom, as the nar.primaryAol property.  Modules other
+   * than NARs, such as the root pom itself, are deployed by every build.
+   * When the NAR goals don't run (nar.skip), give the AOL being built with
+   * -Dnar.aol, which only this goal reads.
    */
   @Parameter(property = "nar.primaryAol")
   private String primaryAol;
@@ -119,12 +123,17 @@ public class NarDeployMojo extends AbstractMojo {
 
   @Override
   public void execute() throws MojoExecutionException {
-    final String building = this.project.getProperties().getProperty("nar.aol");
+    final boolean byPrimaryAol = this.deployScope == null && this.primaryAol != null
+        && !this.primaryAol.trim().isEmpty();
+    if (byPrimaryAol) {
+      requireAol(this.primaryAol);
+    }
+    final String building = byPrimaryAol ? buildingAol() : null;
     final String scope = deployScope(this.deployScope, this.primaryAol, building);
-    if (this.deployScope == null && this.primaryAol != null) {
+    if (byPrimaryAol) {
       getLog().info(ALL.equals(scope) ? "Building the primary AOL " + this.primaryAol + ": deploying everything"
           : "Building " + building + ", not the primary AOL " + this.primaryAol
-              + ": deploying only its AOL-specific artifacts");
+              + ": deploying only its AOL-specific artifacts, as with nar.deployScope=aol");
     }
     if (ALL.equals(scope)) {
       return;
@@ -153,6 +162,28 @@ public class NarDeployMojo extends AbstractMojo {
     skipDeployPlugin();
   }
 
+  // The AOL being built, as the NAR goals set nar.aol; when they didn't run
+  // (nar.skip, or this goal run alone), as given with -Dnar.aol.  Guessing
+  // from the host would ignore a configured linker or cross build.
+  private String buildingAol() throws MojoExecutionException {
+    final String aol = this.project.getProperties().getProperty("nar.aol",
+        this.session.getUserProperties().getProperty("nar.aol"));
+    if (aol == null) {
+      throw new MojoExecutionException("nar.primaryAol is set, but the NAR goals that tell the AOL being built"
+          + " didn't run (nar.skip, or nar-deploy run alone): give it with -Dnar.aol, or set nar.deployScope");
+    }
+    return aol;
+  }
+
+  // primaryAol must name an AOL: arch-os-linker
+  private static void requireAol(final String primaryAol) throws MojoExecutionException {
+    final String[] parts = primaryAol.trim().split("-", 3);
+    if (parts.length != 3 || Arrays.stream(parts).anyMatch(String::isEmpty)) {
+      throw new MojoExecutionException("nar.primaryAol must be arch-os-linker, such as amd64-Linux-gpp, not "
+          + primaryAol);
+    }
+  }
+
   /**
    * The deploy scope: the one configured, or as primaryAol implies for the
    * AOL being built, or "all".
@@ -162,7 +193,8 @@ public class NarDeployMojo extends AbstractMojo {
    * @param building the AOL being built, as nar.aol gives it, or null
    * @return "all" or "aol"
    * @throws MojoExecutionException if the configured scope is neither, or
-   *           primaryAol is set but the AOL being built isn't known
+   *           primaryAol isn't arch-os-linker, or is set but the AOL being
+   *           built isn't known
    */
   public static String deployScope(final String configured, final String primaryAol, final String building)
       throws MojoExecutionException {
@@ -175,6 +207,7 @@ public class NarDeployMojo extends AbstractMojo {
     if (primaryAol == null || primaryAol.trim().isEmpty()) {
       return ALL;
     }
+    requireAol(primaryAol);
     if (building == null) {
       throw new MojoExecutionException("nar.primaryAol is set, but the AOL being built isn't known (nar.aol)");
     }

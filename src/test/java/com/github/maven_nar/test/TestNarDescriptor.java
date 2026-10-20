@@ -179,6 +179,15 @@ public class TestNarDescriptor extends TestCase {
         .getProperty("libs.names"));
   }
 
+  public final void testPrefixedLibsNameOnMsvc() throws Exception {
+    // MSVC has no lib prefix: libfoo given for a GNU linker is foo.lib here;
+    // a name given both ways is linked once
+    touch("foo.lib", "bar.lib");
+    final NarInfo narInfo = narInfo(WINDOWS, "foo-1.0");
+    narInfo.setLibs(WINDOWS, "libfoo foo bar");
+    Assert.assertEquals("foo bar", describe(narInfo, WINDOWS, Library.SHARED, "", "dll").getProperty("libs.names"));
+  }
+
   public final void testStaleLibsNamesWarned() throws Exception {
     // zlib's preset zlib, where the build makes libprivz
     touch("libprivz.so");
@@ -195,7 +204,7 @@ public class TestNarDescriptor extends TestCase {
     Assert.assertEquals("zlib", descriptor.getProperty("libs.names"));
     Assert.assertEquals(1, warnings.size());
     Assert.assertTrue(warnings.get(0),
-        warnings.get(0).contains("zlib matches none") && warnings.get(0).contains("privz"));
+        warnings.get(0).contains("zlib isn't among") && warnings.get(0).contains("privz"));
   }
 
   public final void testMissingPrefixDefaultsToLib() throws Exception {

@@ -144,7 +144,7 @@ public final class TargetDeclaration {
       final Set<String> declared = typesByAol.getOrDefault(new AOL(aol).toString(), Set.of());
       for (final String type : types) {
         if (!declared.contains(type)) {
-          log.warn("The " + aol + "-" + type + " NAR built here isn't declared in targets");
+          log.warn("The " + aol + "-" + type + " NAR built here isn't declared in targets or targetAols");
         }
       }
     });

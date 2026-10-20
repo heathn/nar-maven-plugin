@@ -24,10 +24,12 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Properties;
+import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.regex.Matcher;
@@ -216,8 +218,9 @@ public final class NarDescriptor {
    * linker finds it among a NAR's library files, so that one libsName serves
    * every AOL: webp is libwebp on MSVC, whose import library is libwebp.lib,
    * and libwebp is webp for a GNU linker.  A name matching no file is kept,
-   * with a warning, since consumers linking it would fail; without library
-   * files there is nothing to check.
+   * with a warning (consumers linking it fail unless it's found elsewhere,
+   * as a system library is); without library files there is nothing to
+   * check.
    *
    * @param configured the names, space-separated
    * @param libDir the directory of the NAR's libraries
@@ -236,7 +239,8 @@ public final class NarDescriptor {
       return configured;
     }
     final boolean ignoreCase = patterns.stream().anyMatch(LinkPattern::ignoreCase);
-    final List<String> resolved = new ArrayList<>();
+    // a name given twice, or as both webp and libwebp, is linked once
+    final Set<String> resolved = new LinkedHashSet<>();
     final List<String> missing = new ArrayList<>();
     for (final String name : configured.trim().split("\\s+")) {
       final String unprefixed = name.startsWith("lib") ? name.substring("lib".length()) : name;
@@ -251,7 +255,8 @@ public final class NarDescriptor {
     }
     if (!missing.isEmpty()) {
       log.warn("The " + aol + " " + type + " libs.names " + String.join(" ", missing)
-          + " matches none of the libraries packaged, " + available + "; consumers linking it will fail");
+          + " isn't among the libraries packaged, " + available + ", so consumers linking it may fail; a system"
+          + " library belongs in syslibs");
     }
     return String.join(" ", resolved);
   }

@@ -33,9 +33,10 @@ for (int i = 0; i < dirs.length; i++) {
   Properties descriptor = new Properties();
   descriptor.load(new FileInputStream(new File(dirs[i],
       "META-INF/nar/com.github.maven-nar.its.nar/it0061-libs-name/" + aol + "-shared.properties")));
-  // as a GNU linker finds the library, without the prefix; on MSVC, with it
-  String expected = aol.endsWith("-msvc") ? "libit0061-libs-name-1.0-SNAPSHOT stale"
-      : "it0061-libs-name-1.0-SNAPSHOT stale";
+  // as the linker finds the library: without the prefix, except for a GNU
+  // linker on Windows, which also finds the library by its full name
+  boolean windowsGnu = aol.indexOf("-Windows-") >= 0 && !aol.endsWith("-msvc");
+  String expected = (windowsGnu ? "lib" : "") + "it0061-libs-name-1.0-SNAPSHOT stale";
   if (!expected.equals(descriptor.getProperty("libs.names"))) {
     throw new RuntimeException("libs.names is " + descriptor.getProperty("libs.names") + ", expected " + expected);
   }
@@ -46,7 +47,7 @@ if (described != 1) {
 }
 
 String log = new String(java.nio.file.Files.readAllBytes(new File(basedir, "build.log").toPath()));
-if (log.indexOf("libs.names stale matches none of the libraries packaged") < 0) {
+if (log.indexOf("libs.names stale isn't among the libraries packaged") < 0) {
   throw new RuntimeException("The stale name wasn't warned about");
 }
 return true;
