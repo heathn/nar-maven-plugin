@@ -84,6 +84,13 @@ public class TestTarget extends TestCase {
         target("amd64-Windows-msvc", "shared", "static", "jni"));
   }
 
+  public final void testPreferredBindingWithoutSharedOrStatic() throws Exception {
+    // as the build for the target prefers it, not the first type declared
+    final NarInfo narInfo = narInfo();
+    declare(List.of(target("amd64-Linux-gpp", "executable", "jni")), narInfo);
+    Assert.assertEquals("jni", narInfo.getInfo().getProperty("amd64-Linux-gpp.libs.binding"));
+  }
+
   public final void testEveryTargetIsDescribed() throws Exception {
     final NarInfo narInfo = narInfo();
     declare(targets(), narInfo);

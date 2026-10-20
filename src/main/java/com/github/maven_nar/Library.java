@@ -20,6 +20,8 @@
 package com.github.maven_nar;
 
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Comparator;
 import java.util.List;
 
 import org.apache.maven.plugins.annotations.Parameter;
@@ -42,6 +44,23 @@ public class Library implements Executable {
   public static final String PLUGIN = "plugin";
 
   public static final String NONE = "none"; // no library produced
+
+  // the types consumers prefer to link, most preferred first
+  private static final List<String> BINDING_PREFERENCE = List.of(SHARED, STATIC, JNI, PLUGIN, EXECUTABLE);
+
+  /**
+   * The type consumers bind to when an AOL ships several: shared, then
+   * static, jni, plugin, executable, then any other in name order.
+   *
+   * @param types the AOL's types, at least one
+   * @return the preferred one
+   */
+  public static String preferredBinding(final Collection<String> types) {
+    return types.stream().min(Comparator.comparingInt((final String type) -> {
+      final int rank = BINDING_PREFERENCE.indexOf(type);
+      return rank < 0 ? BINDING_PREFERENCE.size() : rank;
+    }).thenComparing(Comparator.naturalOrder())).orElseThrow();
+  }
 
   /**
    * Type of the library to generate. Possible choices are: "plugin", "shared",

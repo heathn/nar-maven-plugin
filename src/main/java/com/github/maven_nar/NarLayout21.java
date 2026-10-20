@@ -23,7 +23,6 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedHashSet;
@@ -31,6 +30,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
+import java.util.TreeMap;
+import java.util.TreeSet;
 
 import org.apache.maven.model.Resource;
 import org.apache.maven.plugin.MojoExecutionException;
@@ -176,27 +177,43 @@ public class NarLayout21 extends AbstractNarLayout {
           + NarConstants.NAR_TYPE + ":" + NarConstants.NAR_NO_ARCH);
     }
 
-    final List<String> classifiers = new ArrayList<>(aolDirectories(baseDir, project).keySet());
+    final List<Classifier> classifiers = new ArrayList<>();
+    for (final String classifier : aolDirectories(baseDir, project).keySet()) {
+      final Classifier parsed = Classifier.parse(classifier);
+      if (parsed != null) {
+        classifiers.add(parsed);
+      }
+    }
+    // the types built, by AOL
+    final Map<String, Set<String>> built = new TreeMap<>();
+    classifiers.forEach(parsed -> built.computeIfAbsent(parsed.aol(), aol -> new TreeSet<>()).add(parsed.type()));
 
     if (!classifiers.isEmpty()) {
 
+      // each AOL's output and binding, unless nar.properties sets them (a
+      // generic libs.binding it sets applies to every AOL); then the
+      // generic binding, the type preferred among all AOLs'
       final String presetDfltBinding = narInfo.getBinding(null, null);
-      final Map<AOL, String> presetAOLBinding = new HashMap<>();
-      for (final String classifier : classifiers) {
-        final Classifier parsed = Classifier.parse(classifier);
-        if (parsed == null) {
-          continue;
+      for (final Map.Entry<String, Set<String>> entry : built.entrySet()) {
+        final AOL aol = new AOL(entry.getKey());
+        final Set<String> types = entry.getValue();
+        final boolean libraries = types.stream().anyMatch(type -> !Library.EXECUTABLE.equals(type));
+        if (narInfo.getOutput(aol, null) == null) {
+          narInfo.setOutput(aol, mojo.getOutput(libraries));
         }
+        if (narInfo.getBinding(aol, null) == null) {
+          narInfo.setBinding(aol, Library.preferredBinding(types));
+        }
+      }
+      if (presetDfltBinding == null) {
+        final Set<String> allTypes = new TreeSet<>();
+        built.values().forEach(allTypes::addAll);
+        narInfo.setBinding(null, Library.preferredBinding(allTypes));
+      }
+
+      for (final Classifier parsed : classifiers) {
         final String type = parsed.type();
         final AOL aol = new AOL(parsed.aol());
-
-        if (!presetAOLBinding.containsKey(aol)) {
-           presetAOLBinding.put(aol, narInfo.getBinding(aol, null));
-        }
-
-        if (narInfo.getOutput(aol, null) == null) {
-          narInfo.setOutput(aol, mojo.getOutput(!Library.EXECUTABLE.equals(type)));
-        }
 
         // with targets declared, an <aol>.libs.names the project sets wins,
         // as it does on the other AOLs' builds
@@ -204,44 +221,8 @@ public class NarLayout21 extends AbstractNarLayout {
             || !presetKeys.contains(NarInfo.aolKey(aol.toString(), NarInfo.LIBS_NAMES)))) {
           narInfo.setLibs(aol, mojo.getLibsName());
         }
-        
+
         narInfo.setIncludesType(null, mojo.getIncludesType());
-
-        // We prefer shared to jni/executable/static/none,
-        if (type.equals(Library.SHARED)) // overwrite whatever we had
-        {
-          // Don't override the default/aol binding if it was preset in
-          // nar.properties
-          if (presetAOLBinding.get(aol) == null) {
-            narInfo.setBinding(aol, type);
-          }
-          if (presetDfltBinding == null) {
-            narInfo.setBinding(null, type);
-          }
-        } else {
-          // if the binding is already set, then don't write it for
-          // jni/executable/none.
-		  String current = narInfo.getBinding(aol, null);
-          if ( current == null) {
-            narInfo.setBinding(aol, type);
-          } else if (!Library.SHARED.equals(current)
-			  && type.equals(Library.STATIC)) {
-            //static lib is preferred over other remaining types; see #231
-
-            // Don't override the default/aol binding if it was preset in
-            // nar.properties
-            if (presetAOLBinding.get(aol) == null) {
-              narInfo.setBinding(aol, type);
-            }
-            if (presetDfltBinding == null) {
-              narInfo.setBinding(null, type);
-            }
-          }
-
-          if (narInfo.getBinding(null, null) == null) {
-            narInfo.setBinding(null, type);
-          }
-        }
 
         // If the more-specific platform key has been set, skip setting the
         // generic key.
@@ -300,7 +281,7 @@ public class NarLayout21 extends AbstractNarLayout {
     }
 
     if (mojo != null && !mojo.getTargets().isEmpty()) {
-      declareTargets(project, narInfo, mojo, presetKeys, classifiers);
+      declareTargets(project, narInfo, mojo, presetKeys, built);
     }
   }
 
@@ -327,14 +308,7 @@ public class NarLayout21 extends AbstractNarLayout {
 
   // Describes every declared target, not just those built here
   private void declareTargets(final MavenProject project, final NarInfo narInfo, final AbstractCompileMojo mojo,
-      final Set<String> presetKeys, final List<String> classifiers) throws MojoExecutionException {
-    final Map<String, Set<String>> built = new HashMap<>();
-    for (final String classifier : classifiers) {
-      final Classifier parsed = Classifier.parse(classifier);
-      if (parsed != null) {
-        built.computeIfAbsent(parsed.aol(), aol -> new LinkedHashSet<>()).add(parsed.type());
-      }
-    }
+      final Set<String> presetKeys, final Map<String, Set<String>> built) throws MojoExecutionException {
     final Set<String> builtTypes = new HashSet<>();
     built.values().forEach(builtTypes::addAll);
     final Map<String, Set<String>> typesByAol = Target.typesByAol(mojo.getTargets());

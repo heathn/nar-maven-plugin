@@ -56,7 +56,8 @@ public final class TargetDeclaration {
    * any other, so the generic nar.&lt;type&gt; doesn't claim it for this
    * AOL;</li>
    * <li>&lt;aol&gt;.libs.binding: the project's generic libs.binding if the
-   * target ships that type, otherwise shared, static or its first type;</li>
+   * target ships that type, otherwise its preferred type, see
+   * {@link Library#preferredBinding};</li>
    * <li>&lt;aol&gt;.output, and &lt;aol&gt;.libs.names when configured.</li>
    * </ul>
    * Each replaces what was generated for the AOL built here, but not a key
@@ -100,7 +101,7 @@ public final class TargetDeclaration {
         set(narInfo, presetKeys, NarInfo.aolKey(aol, generic), nar);
       }
       set(narInfo, presetKeys, NarInfo.aolKey(aol, NarInfo.LIBS_BINDING),
-          presetBinding != null && types.contains(presetBinding) ? presetBinding : preferredBinding(types));
+          presetBinding != null && types.contains(presetBinding) ? presetBinding : Library.preferredBinding(types));
       final boolean libraries = types.stream().anyMatch(type -> !Library.EXECUTABLE.equals(type));
       set(narInfo, presetKeys, NarInfo.aolKey(aol, NarInfo.OUTPUT),
           libraries ? defaults.libraryOutput() : defaults.executableOutput());
@@ -178,17 +179,5 @@ public final class TargetDeclaration {
     if (!presetKeys.contains(key)) {
       narInfo.getInfo().setProperty(key, value);
     }
-  }
-
-  // As prepareNarInfo prefers them: shared, then static, then whatever else
-  // (a target has at least one type)
-  private static String preferredBinding(final Set<String> types) {
-    if (types.contains(Library.SHARED)) {
-      return Library.SHARED;
-    }
-    if (types.contains(Library.STATIC)) {
-      return Library.STATIC;
-    }
-    return types.iterator().next();
   }
 }
