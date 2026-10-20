@@ -266,8 +266,12 @@ public abstract class AbstractCompileMojo extends AbstractDependencyMojo {
     return this.message;
   }
 
+  // The project's nar.properties may name an AOL's output; what a previous
+  // build generated there (the library's name, for every type) doesn't count
   protected final String getOutput(final AOL aol, final String type) throws MojoExecutionException {
-    return getNarInfo().getOutput(aol, getOutput(!Library.EXECUTABLE.equals(type)));
+    final String output = getOutput(!Library.EXECUTABLE.equals(type));
+    return getPresetKeys().contains(NarInfo.aolKey(aol.toString(), NarInfo.OUTPUT))
+        ? getNarInfo().getOutput(aol, output) : output;
   }
 
   protected final Resource getResource() {

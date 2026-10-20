@@ -33,7 +33,6 @@ import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
 
-import org.apache.maven.model.Resource;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
 import org.apache.maven.plugin.logging.Log;
@@ -170,8 +169,7 @@ public class NarLayout21 extends AbstractNarLayout {
   @Override
   public final void prepareNarInfo(final Path baseDir, final MavenProject project, final NarInfo narInfo,
       final AbstractCompileMojo mojo) throws MojoExecutionException, MojoFailureException {
-    final Set<String> presetKeys = mojo == null || mojo.getTargets().isEmpty() ? Set.of()
-        : readPresetKeys(project, narInfo);
+    final Set<String> presetKeys = mojo == null ? Set.of() : mojo.getPresetKeys();
     if (Files.exists(getNoArchDirectory(baseDir, project.getArtifactId(), project.getVersion()))) {
       narInfo.setNar(null, NarConstants.NAR_NO_ARCH, project.getGroupId() + ":" + project.getArtifactId() + ":"
           + NarConstants.NAR_TYPE + ":" + NarConstants.NAR_NO_ARCH);
@@ -190,22 +188,23 @@ public class NarLayout21 extends AbstractNarLayout {
 
     if (!classifiers.isEmpty()) {
 
-      // each AOL's output and binding, unless nar.properties sets them (a
-      // generic libs.binding it sets applies to every AOL); then the
-      // generic binding, the type preferred among all AOLs'
-      final String presetDfltBinding = narInfo.getBinding(null, null);
+      // each AOL's output and binding, unless the project's nar.properties
+      // sets them (a generic libs.binding it sets applies to every AOL); then
+      // the generic binding, the type preferred among all AOLs'.  What a
+      // previous build generated, still in target/classes, doesn't count.
+      final boolean presetDfltBinding = presetKeys.contains(NarInfo.LIBS_BINDING);
       for (final Map.Entry<String, Set<String>> entry : built.entrySet()) {
         final AOL aol = new AOL(entry.getKey());
         final Set<String> types = entry.getValue();
         final boolean libraries = types.stream().anyMatch(type -> !Library.EXECUTABLE.equals(type));
-        if (narInfo.getOutput(aol, null) == null) {
+        if (!presetKeys.contains(NarInfo.aolKey(entry.getKey(), NarInfo.OUTPUT))) {
           narInfo.setOutput(aol, mojo.getOutput(libraries));
         }
-        if (narInfo.getBinding(aol, null) == null) {
+        if (!presetDfltBinding && !presetKeys.contains(NarInfo.aolKey(entry.getKey(), NarInfo.LIBS_BINDING))) {
           narInfo.setBinding(aol, Library.preferredBinding(types));
         }
       }
-      if (presetDfltBinding == null) {
+      if (!presetDfltBinding) {
         final Set<String> allTypes = new TreeSet<>();
         built.values().forEach(allTypes::addAll);
         narInfo.setBinding(null, Library.preferredBinding(allTypes));
@@ -275,7 +274,7 @@ public class NarLayout21 extends AbstractNarLayout {
 
       // setting this first stops the per type config because getOutput check
       // for aol defaults to this generic one...
-      if (mojo != null && narInfo.getOutput(null, null) == null) {
+      if (mojo != null && !presetKeys.contains(NarInfo.OUTPUT)) {
         narInfo.setOutput(null, mojo.getOutput(true));
       }
     }
@@ -283,27 +282,6 @@ public class NarLayout21 extends AbstractNarLayout {
     if (mojo != null && !mojo.getTargets().isEmpty()) {
       declareTargets(project, narInfo, mojo, presetKeys, built);
     }
-  }
-
-  /**
-   * The keys the project's own nar.properties sets, which declared targets
-   * don't replace: read from the source file the last resource supplying it
-   * copies, since target/classes may hold what a previous build generated.
-   */
-  private Set<String> readPresetKeys(final MavenProject project, final NarInfo narInfo)
-      throws MojoExecutionException {
-    Path source = null;
-    for (final Resource resource : project.getBuild().getResources()) {
-      final String path = ResourceSource.of(resource, narInfo.getNarInfoFileName());
-      final Path file = path == null ? null
-          : project.getBasedir().toPath().resolve(resource.getDirectory()).resolve(path);
-      if (file != null && Files.isRegularFile(file)) {
-        source = file;
-      }
-    }
-    return source == null ? Set.of()
-        : new NarInfo(project.getGroupId(), project.getArtifactId(), project.getVersion(), getLog(), source)
-            .getInfo().stringPropertyNames();
   }
 
   // Describes every declared target, not just those built here

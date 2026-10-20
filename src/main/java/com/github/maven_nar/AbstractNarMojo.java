@@ -30,6 +30,7 @@ import java.util.Properties;
 import java.util.Set;
 
 import org.apache.maven.model.Model;
+import org.apache.maven.model.Resource;
 import org.apache.maven.plugin.AbstractMojo;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
@@ -171,6 +172,8 @@ public abstract class AbstractNarMojo extends AbstractMojo implements NarConstan
    */
   @Parameter
   private List<Target> targets;
+
+  private Set<String> presetKeys;
 
   /**
    * Skip running ranlib if this artifact is a library
@@ -365,6 +368,36 @@ public abstract class AbstractNarMojo extends AbstractMojo implements NarConstan
       this.narInfo = new NarInfo(groupId, artifactId, getMavenProject().getVersion(), getLog(), propertiesFile);
     }
     return this.narInfo;
+  }
+
+  /**
+   * The keys the project's own nar.properties sets, which the plugin doesn't
+   * replace with what it generates: read from the source file the last
+   * resource supplying it copies, since target/classes may hold what a
+   * previous build generated.
+   *
+   * @return the keys, empty if the project has no nar.properties
+   * @throws MojoExecutionException if it can't be read
+   */
+  protected final Set<String> getPresetKeys() throws MojoExecutionException {
+    if (this.presetKeys != null) {
+      return this.presetKeys;
+    }
+    final MavenProject project = getMavenProject();
+    final NarInfo narInfo = getNarInfo();
+    Path source = null;
+    for (final Resource resource : project.getBuild().getResources()) {
+      final String path = ResourceSource.of(resource, narInfo.getNarInfoFileName());
+      final Path file = path == null ? null
+          : project.getBasedir().toPath().resolve(resource.getDirectory()).resolve(path);
+      if (file != null && Files.isRegularFile(file)) {
+        source = file;
+      }
+    }
+    this.presetKeys = source == null ? Set.of()
+        : new NarInfo(project.getGroupId(), project.getArtifactId(), project.getVersion(), getLog(), source)
+            .getInfo().stringPropertyNames();
+    return this.presetKeys;
   }
 
   protected final String getOS() {
