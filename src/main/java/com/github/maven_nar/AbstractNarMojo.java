@@ -409,10 +409,16 @@ public abstract class AbstractNarMojo extends AbstractMojo implements NarConstan
         source = file;
       }
     }
-    // as getNarInfo, when no resource supplies it
-    final Path defaultSource = project.getBasedir().toPath().resolve(Path.of("src", "main", "resources", "META-INF",
-        "nar", project.getGroupId(), project.getArtifactId(), NarInfo.NAR_PROPERTIES));
-    if (source == null && Files.isRegularFile(defaultSource)) {
+    // src/main/resources's file, as getNarInfo reads it, only when that isn't
+    // a resource directory; when it is, its includes and excludes decide (a
+    // profile may exclude the file)
+    final Path defaultResources = project.getBasedir().toPath().resolve(Path.of("src", "main", "resources"));
+    final boolean defaultIsResource = project.getBuild().getResources().stream()
+        .anyMatch(resource -> project.getBasedir().toPath().resolve(resource.getDirectory()).normalize()
+            .equals(defaultResources.normalize()));
+    final Path defaultSource = defaultResources.resolve(Path.of("META-INF", "nar", project.getGroupId(),
+        project.getArtifactId(), NarInfo.NAR_PROPERTIES));
+    if (source == null && !defaultIsResource && Files.isRegularFile(defaultSource)) {
       source = defaultSource;
     }
     this.presetKeys = source == null ? Set.of()

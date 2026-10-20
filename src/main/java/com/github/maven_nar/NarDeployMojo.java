@@ -129,6 +129,19 @@ public class NarDeployMojo extends AbstractMojo {
       requireAol(this.primaryAol);
     }
     final String building = byPrimaryAol ? buildingAol() : null;
+    if (byPrimaryAol && building == null) {
+      // the NAR goals didn't run (nar.skip, or this goal run alone), which
+      // only matters if something is deployed
+      final DeployPluginModel deployPlugin = deployPluginModel();
+      deployPlugin.requireSupportedVersion();
+      if (deployPlugin.skipsDeploying(this.deploySkip)) {
+        getLog().info("Skipping the deployment of the AOL-specific artifacts");
+        skipDeployPlugin();
+        return;
+      }
+      throw new MojoExecutionException("nar.primaryAol is set, but the NAR goals that tell the AOL being built"
+          + " didn't run (nar.skip, or nar-deploy run alone): give it with -Dnar.aol, or set nar.deployScope");
+    }
     final String scope = deployScope(this.deployScope, this.primaryAol, building);
     if (byPrimaryAol) {
       getLog().info(ALL.equals(scope) ? "Building the primary AOL " + this.primaryAol + ": deploying everything"
@@ -138,8 +151,7 @@ public class NarDeployMojo extends AbstractMojo {
     if (ALL.equals(scope)) {
       return;
     }
-    final DeployPluginModel deployPlugin = new DeployPluginModel(this.project, this.session.getUserProperties(),
-        this.session.getSystemProperties(), new PluginParameterExpressionEvaluator(this.session, this.mojoExecution));
+    final DeployPluginModel deployPlugin = deployPluginModel();
     deployPlugin.requireSupportedVersion();
     if (deployPlugin.skipsDeploying(this.deploySkip)) {
       getLog().info("Skipping the deployment of the AOL-specific artifacts");
@@ -163,16 +175,16 @@ public class NarDeployMojo extends AbstractMojo {
   }
 
   // The AOL being built, as the NAR goals set nar.aol; when they didn't run
-  // (nar.skip, or this goal run alone), as given with -Dnar.aol.  Guessing
-  // from the host would ignore a configured linker or cross build.
-  private String buildingAol() throws MojoExecutionException {
-    final String aol = this.project.getProperties().getProperty("nar.aol",
+  // (nar.skip, or this goal run alone), as given with -Dnar.aol, else null.
+  // Guessing from the host would ignore a configured linker or cross build.
+  private String buildingAol() {
+    return this.project.getProperties().getProperty("nar.aol",
         this.session.getUserProperties().getProperty("nar.aol"));
-    if (aol == null) {
-      throw new MojoExecutionException("nar.primaryAol is set, but the NAR goals that tell the AOL being built"
-          + " didn't run (nar.skip, or nar-deploy run alone): give it with -Dnar.aol, or set nar.deployScope");
-    }
-    return aol;
+  }
+
+  private DeployPluginModel deployPluginModel() {
+    return new DeployPluginModel(this.project, this.session.getUserProperties(), this.session.getSystemProperties(),
+        new PluginParameterExpressionEvaluator(this.session, this.mojoExecution));
   }
 
   // primaryAol must name an AOL: arch-os-linker

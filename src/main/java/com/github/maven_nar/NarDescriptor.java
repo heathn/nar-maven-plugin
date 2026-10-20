@@ -227,7 +227,7 @@ public final class NarDescriptor {
    * @param patterns the patterns the linker finds library files by
    * @param aol the NAR's AOL
    * @param type the NAR's library type
-   * @param log for warnings
+   * @param log for warnings, or null for none
    * @return the names, space-separated, in the configured order
    * @throws IOException if the directory can't be listed
    */
@@ -256,7 +256,7 @@ public final class NarDescriptor {
         missing.add(name);
       }
     }
-    if (!missing.isEmpty()) {
+    if (!missing.isEmpty() && log != null) {
       log.warn("The " + aol + " " + type + " libs.names " + String.join(" ", missing)
           + " isn't among the libraries packaged, " + available + ", so consumers linking it may fail; a system"
           + " library belongs in syslibs");
