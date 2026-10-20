@@ -35,7 +35,7 @@ for (int i = 0; i < dirs.length; i++) {
       "META-INF/nar/com.github.maven-nar.its.nar/it0061-libs-name/" + aol + "-shared.properties")));
   // as the linker finds the library: without the prefix, except for a GNU
   // linker on Windows, which also finds the library by its full name
-  boolean windowsGnu = aol.indexOf("-Windows-") >= 0 && !aol.endsWith("-msvc");
+  boolean windowsGnu = aol.indexOf("-Windows-") >= 0 && !aol.endsWith("-msvc") && !aol.endsWith("-icl");
   String expected = (windowsGnu ? "lib" : "") + "it0061-libs-name-1.0-SNAPSHOT stale";
   if (!expected.equals(descriptor.getProperty("libs.names"))) {
     throw new RuntimeException("libs.names is " + descriptor.getProperty("libs.names") + ", expected " + expected);

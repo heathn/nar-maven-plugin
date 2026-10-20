@@ -24,12 +24,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Properties;
-import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.regex.Matcher;
@@ -38,6 +36,8 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import org.apache.maven.plugin.logging.Log;
+
+import com.github.maven_nar.cpptasks.CUtil;
 
 /**
  * The descriptor of an AOL-specific NAR: what the build that produced it
@@ -222,27 +222,30 @@ public final class NarDescriptor {
    * as a system library is); without library files there is nothing to
    * check.
    *
-   * @param configured the names, space-separated
+   * @param configured the names, separated by commas or whitespace
    * @param libDir the directory of the NAR's libraries
    * @param patterns the patterns the linker finds library files by
    * @param aol the NAR's AOL
    * @param type the NAR's library type
    * @param log for warnings
-   * @return the names, in the configured order
+   * @return the names, space-separated, in the configured order
    * @throws IOException if the directory can't be listed
    */
   public static String resolveLibsNames(final String configured, final Path libDir, final List<LinkPattern> patterns,
       final AOL aol, final String type, final Log log) throws IOException {
     final TreeSet<String> available = new TreeSet<>();
     linkAliases(libDir, patterns).values().forEach(available::addAll);
-    if (configured.trim().isEmpty() || available.isEmpty()) {
-      return configured;
+    final List<String> names = new CUtil.StringArrayBuilder(configured).getValue();
+    if (available.isEmpty()) {
+      return String.join(" ", names);
     }
     final boolean ignoreCase = patterns.stream().anyMatch(LinkPattern::ignoreCase);
-    // a name given twice, or as both webp and libwebp, is linked once
-    final Set<String> resolved = new LinkedHashSet<>();
+    // in order, repeats included: a static library may have to be linked
+    // again after one that refers to it
+    final List<String> resolved = new ArrayList<>();
     final List<String> missing = new ArrayList<>();
-    for (final String name : configured.trim().split("\\s+")) {
+    // separated by commas or whitespace, as consumers read them
+    for (final String name : names) {
       final String unprefixed = name.startsWith("lib") ? name.substring("lib".length()) : name;
       final String match = Stream.of(name, "lib" + name, unprefixed)
           .flatMap(candidate -> available.stream()

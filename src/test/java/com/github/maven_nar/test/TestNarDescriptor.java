@@ -180,12 +180,25 @@ public class TestNarDescriptor extends TestCase {
   }
 
   public final void testPrefixedLibsNameOnMsvc() throws Exception {
-    // MSVC has no lib prefix: libfoo given for a GNU linker is foo.lib here;
-    // a name given both ways is linked once
+    // MSVC has no lib prefix: libfoo given for a GNU linker is foo.lib here
     touch("foo.lib", "bar.lib");
     final NarInfo narInfo = narInfo(WINDOWS, "foo-1.0");
-    narInfo.setLibs(WINDOWS, "libfoo foo bar");
+    narInfo.setLibs(WINDOWS, "libfoo bar");
     Assert.assertEquals("foo bar", describe(narInfo, WINDOWS, Library.SHARED, "", "dll").getProperty("libs.names"));
+  }
+
+  public final void testLibsNameAsDocumented() throws Exception {
+    // comma-separated, as the documentation gives it; a static library
+    // repeated for link order stays repeated
+    touch("libfoo.a", "libbar.a");
+    final NarInfo narInfo = narInfo(LINUX, "foo-1.0");
+    narInfo.setLibs(LINUX, "libfoo,bar, foo");
+    Assert.assertEquals("foo bar foo",
+        describe(narInfo, LINUX, Library.STATIC, "lib", "a").getProperty("libs.names"));
+    // without library files to check, still space-separated
+    final NarInfo none = narInfo(LINUX, "foo-1.0");
+    none.setLibs(LINUX, "foo,bar");
+    Assert.assertEquals("foo bar", describe(none, LINUX, Library.SHARED, "lib", "so*").getProperty("libs.names"));
   }
 
   public final void testStaleLibsNamesWarned() throws Exception {
