@@ -22,6 +22,7 @@ package com.github.maven_nar;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -35,6 +36,8 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import org.apache.maven.plugin.logging.Log;
+
+import com.github.maven_nar.cpptasks.CUtil;
 
 /**
  * The descriptor of an AOL-specific NAR: what the build that produced it
@@ -165,8 +168,9 @@ public final class NarDescriptor {
    * The descriptor of one AOL-specific NAR.
    * <ul>
    * <li>output: as the main nar.properties has it for the AOL.</li>
-   * <li>libs.names, for shared and static libraries: when configured, as
-   * configured; otherwise the output when its library is among the library
+   * <li>libs.names, for shared and static libraries: when configured, each
+   * name as the linker finds it among the files packaged (see
+   * {@link #resolveLibsNames}); otherwise the output when its library is among the library
    * files packaged, so consumers link what they link now whatever the main
    * nar.properties says; otherwise (a library renamed by a third-party
    * build, for example) the name of the one library file there, unversioned;
@@ -196,7 +200,8 @@ public final class NarDescriptor {
     }
     if (Library.SHARED.equals(type) || Library.STATIC.equals(type)) {
       final String configured = narInfo.getProperty(aol, NarInfo.LIBS_NAMES);
-      final String names = configured != null ? configured : inferLibsNames(output, libDir, patterns, aol, type, log);
+      final String names = configured != null ? resolveLibsNames(configured, libDir, patterns, aol, type, log)
+          : inferLibsNames(output, libDir, patterns, aol, type, log);
       if (names != null) {
         descriptor.setProperty(NarInfo.LIBS_NAMES, names);
       }
@@ -206,6 +211,57 @@ public final class NarDescriptor {
       descriptor.setProperty(key, value == null ? "" : value);
     }
     return descriptor;
+  }
+
+  /**
+   * The libs.names configured, by libsName or nar.properties, each as the
+   * linker finds it among a NAR's library files, so that one libsName serves
+   * every AOL: webp is libwebp on MSVC, whose import library is libwebp.lib,
+   * and libwebp is webp for a GNU linker.  A name matching no file is kept,
+   * with a warning (consumers linking it fail unless it's found elsewhere,
+   * as a system library is); without library files there is nothing to
+   * check.
+   *
+   * @param configured the names, separated by commas or whitespace
+   * @param libDir the directory of the NAR's libraries
+   * @param patterns the patterns the linker finds library files by
+   * @param aol the NAR's AOL
+   * @param type the NAR's library type
+   * @param log for warnings, or null for none
+   * @return the names, space-separated, in the configured order
+   * @throws IOException if the directory can't be listed
+   */
+  public static String resolveLibsNames(final String configured, final Path libDir, final List<LinkPattern> patterns,
+      final AOL aol, final String type, final Log log) throws IOException {
+    final TreeSet<String> available = new TreeSet<>();
+    linkAliases(libDir, patterns).values().forEach(available::addAll);
+    final List<String> names = new CUtil.StringArrayBuilder(configured).getValue();
+    if (available.isEmpty()) {
+      return String.join(" ", names);
+    }
+    final boolean ignoreCase = patterns.stream().anyMatch(LinkPattern::ignoreCase);
+    // in order, repeats included: a static library may have to be linked
+    // again after one that refers to it
+    final List<String> resolved = new ArrayList<>();
+    final List<String> missing = new ArrayList<>();
+    // separated by commas or whitespace, as consumers read them
+    for (final String name : names) {
+      final String unprefixed = name.startsWith("lib") ? name.substring("lib".length()) : name;
+      final String match = Stream.of(name, "lib" + name, unprefixed)
+          .flatMap(candidate -> available.stream()
+              .filter(file -> ignoreCase ? file.equalsIgnoreCase(candidate) : file.equals(candidate)))
+          .findFirst().orElse(null);
+      resolved.add(match == null ? name : match);
+      if (match == null) {
+        missing.add(name);
+      }
+    }
+    if (!missing.isEmpty() && log != null) {
+      log.warn("The " + aol + " " + type + " libs.names " + String.join(" ", missing)
+          + " isn't among the libraries packaged, " + available + ", so consumers linking it may fail; a system"
+          + " library belongs in syslibs");
+    }
+    return String.join(" ", resolved);
   }
 
   /**

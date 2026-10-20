@@ -26,6 +26,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeSet;
 
 import org.apache.maven.plugin.MojoExecutionException;
 
@@ -51,6 +52,17 @@ import org.apache.maven.plugin.MojoExecutionException;
  * layout 21, see {@link TargetDeclaration}).  Values that depend on the
  * machine, such as syslibs.names, are only in each AOL-specific NAR's
  * descriptor.
+ * <p>
+ * Most projects ship the same types everywhere, so the AOLs can instead be
+ * listed once in the root pom, each shipping the types the build produces:
+ *
+ * <pre>
+ * &lt;nar.targetAols&gt;amd64-Linux-gpp,amd64-Windows-msvc&lt;/nar.targetAols&gt;
+ * </pre>
+ *
+ * A module then declares a target only for an AOL whose types differ from
+ * those built by the primary AOL's build, the one that deploys the main
+ * nar.properties (see nar.primaryAol).
  */
 public class Target {
 
@@ -107,6 +119,38 @@ public class Target {
       }
       typesByAol.put(aol, new LinkedHashSet<>(target.getTypes()));
     }
+    return typesByAol;
+  }
+
+  /**
+   * The types by AOL of the declared targets and of targetAols: each of
+   * targetAols ships the types built here unless a target for it says
+   * otherwise.
+   *
+   * @param targets the declared targets
+   * @param targetAols the AOLs the project ships, possibly empty
+   * @param builtTypes the types built here
+   * @return the types, targetAols' first, in their order
+   * @throws MojoExecutionException as for {@link #typesByAol(Collection)}, or
+   *           if a targetAols entry is empty or repeated
+   */
+  public static Map<String, Set<String>> typesByAol(final Collection<Target> targets,
+      final Collection<String> targetAols, final Set<String> builtTypes) throws MojoExecutionException {
+    final Map<String, Set<String>> declared = typesByAol(targets);
+    final Map<String, Set<String>> typesByAol = new LinkedHashMap<>();
+    for (final String targetAol : targetAols) {
+      if (targetAol == null || targetAol.trim().isEmpty()) {
+        throw new MojoExecutionException("targetAols has an empty entry");
+      }
+      final String aol = new AOL(targetAol.trim()).toString();
+      if (typesByAol.containsKey(aol)) {
+        throw new MojoExecutionException("Target AOL " + aol + " is listed more than once");
+      }
+      typesByAol.put(aol, declared.getOrDefault(aol, new TreeSet<>(builtTypes)));
+    }
+    declared.forEach(typesByAol::putIfAbsent);
+    // an AOL inferred from a build that built nothing ships nothing
+    typesByAol.values().removeIf(Set::isEmpty);
     return typesByAol;
   }
 }

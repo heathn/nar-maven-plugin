@@ -30,6 +30,7 @@ import java.util.Properties;
 import java.util.Set;
 
 import org.apache.maven.model.Model;
+import org.apache.maven.model.Resource;
 import org.apache.maven.plugin.AbstractMojo;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
@@ -171,6 +172,18 @@ public abstract class AbstractNarMojo extends AbstractMojo implements NarConstan
    */
   @Parameter
   private List<Target> targets;
+
+  /**
+   * The AOLs the project ships, each with the types this build produces
+   * unless a target for that AOL says otherwise: set once in the root pom,
+   * as a list or as the comma-separated nar.targetAols property, with
+   * targets in a module only for an AOL whose types differ from the
+   * primary AOL's.  See {@link Target}.
+   */
+  @Parameter(property = "nar.targetAols")
+  private List<String> targetAols;
+
+  private Set<String> presetKeys;
 
   /**
    * Skip running ranlib if this artifact is a library
@@ -367,6 +380,53 @@ public abstract class AbstractNarMojo extends AbstractMojo implements NarConstan
     return this.narInfo;
   }
 
+  /**
+   * The keys the project's own nar.properties sets, which the plugin doesn't
+   * replace with what it generates: read from the source file the last
+   * resource supplying it copies, since target/classes may hold what a
+   * previous build generated.
+   *
+   * <p>
+   * Keys whose names are filtered, or a nar.properties written into
+   * target/classes other than as a resource, aren't recognized: the plugin
+   * replaces them as it would generated ones.
+   *
+   * @return the keys, empty if the project has no nar.properties
+   * @throws MojoExecutionException if it can't be read
+   */
+  protected final Set<String> getPresetKeys() throws MojoExecutionException {
+    if (this.presetKeys != null) {
+      return this.presetKeys;
+    }
+    final MavenProject project = getMavenProject();
+    final NarInfo narInfo = getNarInfo();
+    Path source = null;
+    for (final Resource resource : project.getBuild().getResources()) {
+      final String path = ResourceSource.of(resource, narInfo.getNarInfoFileName());
+      final Path file = path == null ? null
+          : project.getBasedir().toPath().resolve(resource.getDirectory()).resolve(path);
+      if (file != null && Files.isRegularFile(file)) {
+        source = file;
+      }
+    }
+    // src/main/resources's file, as getNarInfo reads it, only when that isn't
+    // a resource directory; when it is, its includes and excludes decide (a
+    // profile may exclude the file)
+    final Path defaultResources = project.getBasedir().toPath().resolve(Path.of("src", "main", "resources"));
+    final boolean defaultIsResource = project.getBuild().getResources().stream()
+        .anyMatch(resource -> project.getBasedir().toPath().resolve(resource.getDirectory()).normalize()
+            .equals(defaultResources.normalize()));
+    final Path defaultSource = defaultResources.resolve(Path.of("META-INF", "nar", project.getGroupId(),
+        project.getArtifactId(), NarInfo.NAR_PROPERTIES));
+    if (source == null && !defaultIsResource && Files.isRegularFile(defaultSource)) {
+      source = defaultSource;
+    }
+    this.presetKeys = source == null ? Set.of()
+        : new NarInfo(project.getGroupId(), project.getArtifactId(), project.getVersion(), getLog(), source)
+            .getInfo().stringPropertyNames();
+    return this.presetKeys;
+  }
+
   protected final String getOS() {
     return this.os;
   }
@@ -388,6 +448,15 @@ public abstract class AbstractNarMojo extends AbstractMojo implements NarConstan
    */
   protected final List<Target> getTargets() {
     return this.targets == null ? List.of() : this.targets;
+  }
+
+  protected final List<String> getTargetAols() {
+    return this.targetAols == null ? List.of() : this.targetAols;
+  }
+
+  // whether the project declares the AOLs it ships, by targets or targetAols
+  protected final boolean declaresTargets() {
+    return !getTargets().isEmpty() || !getTargetAols().isEmpty();
   }
 
   protected final String getLibsName() {

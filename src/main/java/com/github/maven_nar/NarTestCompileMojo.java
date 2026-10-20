@@ -68,6 +68,32 @@ public class NarTestCompileMojo extends AbstractCompileMojo {
   @Parameter(property = "skipNar")
   protected boolean skipNar;
 
+  // As NarLayout21.prepareNarInfo sets libs.names, which it does only after
+  // this goal: libsName, unless targets are declared and the project's
+  // nar.properties sets this AOL's; else the key nar.properties sets, read
+  // exactly, since target/classes may hold another a previous build
+  // generated; else null.  (An AOL that nar.properties maps to a declared
+  // target gets that target's libs.names there; not followed here.)
+  private String configuredLibsNames() throws MojoExecutionException {
+    final Set<String> presetKeys = getPresetKeys();
+    final String aolKey = NarInfo.aolKey(getAOL().toString(), NarInfo.LIBS_NAMES);
+    if (getLibsName() != null && (!declaresTargets() || !presetKeys.contains(aolKey))) {
+      return getLibsName();
+    }
+    if (presetKeys.contains(aolKey)) {
+      return getNarInfo().getExactProperty(getAOL(), NarInfo.LIBS_NAMES, null);
+    }
+    return presetKeys.contains(NarInfo.LIBS_NAMES) ? getNarInfo().getExactProperty(null, NarInfo.LIBS_NAMES, null)
+        : null;
+  }
+
+  private List<NarDescriptor.LinkPattern> linkPatterns(final String type) throws MojoFailureException {
+    final NarProperties narProperties = NarProperties.getInstance(getMavenProject());
+    final String key = NarUtil.getAOLKey(getAOL().toString());
+    return NarDescriptor.linkPatterns(getAOL().toString(), type, narProperties.getProperty(key + ".lib.prefix"),
+        narProperties.getProperty(key + "." + type + ".extension"));
+  }
+
   private void createTest(final Project antProject, final Test test)
       throws MojoExecutionException, MojoFailureException {
     final String type = "test";
@@ -231,7 +257,16 @@ public class NarTestCompileMojo extends AbstractCompileMojo {
     if (Files.exists(libDir)) {
       final LibrarySet libSet = new LibrarySet();
       libSet.setProject(antProject);
-      final String libs = getNarInfo().getProperty(getAOL(), NarInfo.LIBS_NAMES, getOutput(true));
+      // the names prepare-package will give the libraries, as the linker
+      // finds them, as in the descriptor
+      final String configured = configuredLibsNames();
+      final String libs;
+      try {
+        libs = configured == null ? getOutput(true)
+            : NarDescriptor.resolveLibsNames(configured, libDir, linkPatterns(linkType), getAOL(), linkType, null);
+      } catch (final IOException e) {
+        throw new MojoExecutionException("Cannot list " + libDir, e);
+      }
 
       getLog().debug("Searching for parent to link with " + libs);
       libSet.setLibs(new CUtil.StringArrayBuilder(libs));

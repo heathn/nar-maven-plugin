@@ -21,6 +21,7 @@ package com.github.maven_nar.test;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Properties;
@@ -157,6 +158,66 @@ public class TestNarDescriptor extends TestCase {
     final NarInfo generic = narInfo(LINUX, "lib-1.0");
     generic.getInfo().setProperty("libs.names", "c");
     Assert.assertEquals("c", describe(generic, LINUX, Library.STATIC, "lib", "a").getProperty("libs.names"));
+  }
+
+  public final void testLibsNameResolvedPerAol() throws Exception {
+    // one libsName for every AOL: libwebp's NAR also has libraries
+    // consumers shouldn't link
+    touch("libwebp.lib", "libsharpyuv.lib", "libwebpdecoder.lib");
+    final NarInfo windows = narInfo(WINDOWS, "libwebp-1.6.0");
+    windows.setLibs(WINDOWS, "webp sharpyuv");
+    Assert.assertEquals("libwebp libsharpyuv",
+        describe(windows, WINDOWS, Library.SHARED, "", "dll").getProperty("libs.names"));
+    final Path linuxDir = Files.createDirectories(this.dir.resolve("linux"));
+    for (final String name : new String[] { "libwebp.so", "libsharpyuv.so", "libwebpdecoder.so" }) {
+      Files.createFile(linuxDir.resolve(name));
+    }
+    final NarInfo linux = narInfo(LINUX, "libwebp-1.6.0");
+    linux.setLibs(LINUX, "libwebp sharpyuv");
+    Assert.assertEquals("webp sharpyuv", NarDescriptor.describe(linux, LINUX, Library.SHARED, linuxDir,
+        NarDescriptor.linkPatterns(LINUX.toString(), Library.SHARED, "lib", "so*"), new SystemStreamLog())
+        .getProperty("libs.names"));
+  }
+
+  public final void testPrefixedLibsNameOnMsvc() throws Exception {
+    // MSVC has no lib prefix: libfoo given for a GNU linker is foo.lib here
+    touch("foo.lib", "bar.lib");
+    final NarInfo narInfo = narInfo(WINDOWS, "foo-1.0");
+    narInfo.setLibs(WINDOWS, "libfoo bar");
+    Assert.assertEquals("foo bar", describe(narInfo, WINDOWS, Library.SHARED, "", "dll").getProperty("libs.names"));
+  }
+
+  public final void testLibsNameAsDocumented() throws Exception {
+    // comma-separated, as the documentation gives it; a static library
+    // repeated for link order stays repeated
+    touch("libfoo.a", "libbar.a");
+    final NarInfo narInfo = narInfo(LINUX, "foo-1.0");
+    narInfo.setLibs(LINUX, "libfoo,bar, foo");
+    Assert.assertEquals("foo bar foo",
+        describe(narInfo, LINUX, Library.STATIC, "lib", "a").getProperty("libs.names"));
+    // without library files to check, still space-separated
+    final NarInfo none = narInfo(LINUX, "foo-1.0");
+    none.setLibs(LINUX, "foo,bar");
+    Assert.assertEquals("foo bar", describe(none, LINUX, Library.SHARED, "lib", "so*").getProperty("libs.names"));
+  }
+
+  public final void testStaleLibsNamesWarned() throws Exception {
+    // zlib's preset zlib, where the build makes libprivz
+    touch("libprivz.so");
+    final NarInfo narInfo = narInfo(LINUX, "zlib-1.3.2");
+    narInfo.setLibs(LINUX, "zlib");
+    final List<String> warnings = new ArrayList<>();
+    final Properties descriptor = NarDescriptor.describe(narInfo, LINUX, Library.SHARED, this.dir,
+        NarDescriptor.linkPatterns(LINUX.toString(), Library.SHARED, "lib", "so*"), new SystemStreamLog() {
+          @Override
+          public void warn(final CharSequence content) {
+            warnings.add(content.toString());
+          }
+        });
+    Assert.assertEquals("zlib", descriptor.getProperty("libs.names"));
+    Assert.assertEquals(1, warnings.size());
+    Assert.assertTrue(warnings.get(0),
+        warnings.get(0).contains("zlib isn't among") && warnings.get(0).contains("privz"));
   }
 
   public final void testMissingPrefixDefaultsToLib() throws Exception {

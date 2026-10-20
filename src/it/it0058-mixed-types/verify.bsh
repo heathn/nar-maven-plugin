@@ -51,4 +51,32 @@ for (int i = 0; i < expected.length; i++) {
     throw new RuntimeException(expected[i][0] + " is " + value + ", expected " + expected[i][1] + ": " + main);
   }
 }
+
+// the second build, without clean, linked the executable under its own
+// name, not the library's, and runs it
+File bin = new File(basedir, "target/nar/" + prefix + aol + "-executable/bin/" + aol);
+// the executables, not cpptasks' history.xml or a linker's .pdb or .ilk
+String[] names = bin.list(new java.io.FilenameFilter() {
+  public boolean accept(File dir, String name) {
+    return name.startsWith("it0058-mixed-types") && !name.endsWith(".pdb") && !name.endsWith(".ilk")
+        && !name.endsWith(".manifest") && !name.endsWith(".exp") && !name.endsWith(".lib");
+  }
+});
+if (names == null) {
+  throw new RuntimeException("No executable directory " + bin);
+}
+java.util.Arrays.sort(names);
+if (names.length != 1 || !names[0].startsWith("it0058-mixed-types.") && !names[0].equals("it0058-mixed-types")) {
+  throw new RuntimeException("The executables built are " + java.util.Arrays.toString(names)
+      + ", expected only it0058-mixed-types");
+}
+File output = new File(basedir, "target/executable-output.txt");
+Object process = new ProcessBuilder(new String[] { new File(bin, names[0]).getPath() })
+    .redirectErrorStream(true).redirectOutput(output).start();
+// through Process, since BeanShell can't call the JDK's internal subclass
+int exit = Process.class.getMethod("waitFor", new Class[0]).invoke(process, new Object[0]).intValue();
+String out = new String(java.nio.file.Files.readAllBytes(output.toPath())).trim();
+if (exit != 0 || !out.equals("Hello NAR World!")) {
+  throw new RuntimeException("The executable printed " + out);
+}
 return true;
