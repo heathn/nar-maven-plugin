@@ -217,6 +217,9 @@ public class NarDeployMojo extends AbstractMojo {
   // repository already has everything it would deploy
   private void skipIfDeployed() throws MojoExecutionException {
     final DeployPluginModel deployPlugin = deployPluginModel("nar.skipDeployed");
+    // an older plugin reads skip=releases as false, and would deploy after
+    // skipsDeploying said it skips
+    deployPlugin.requireSupportedVersion();
     // A deploy plugin that can't be stopped matters only for a version
     // that's deployed already, so its error waits for the check
     MojoExecutionException cantStop = null;
