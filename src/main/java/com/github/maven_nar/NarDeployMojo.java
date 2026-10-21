@@ -39,9 +39,9 @@ import org.apache.maven.plugins.annotations.LifecyclePhase;
 import org.apache.maven.plugins.annotations.Mojo;
 import org.apache.maven.plugins.annotations.Parameter;
 import org.apache.maven.project.MavenProject;
-import org.eclipse.aether.RepositorySystem;
 import org.eclipse.aether.ConfigurationProperties;
 import org.eclipse.aether.DefaultRepositorySystemSession;
+import org.eclipse.aether.RepositorySystem;
 import org.eclipse.aether.RepositorySystemSession;
 import org.eclipse.aether.artifact.DefaultArtifact;
 import org.eclipse.aether.deployment.DeployRequest;
@@ -217,9 +217,16 @@ public class NarDeployMojo extends AbstractMojo {
   // repository already has everything it would deploy
   private void skipIfDeployed() throws MojoExecutionException {
     final DeployPluginModel deployPlugin = deployPluginModel("nar.skipDeployed");
-    if (deployPlugin.skips(this.deploySkip)) {
-      // maven-deploy-plugin skips too
-      return;
+    // A deploy plugin that can't be stopped matters only for a version
+    // that's deployed already, so its error waits for the check
+    MojoExecutionException cantStop = null;
+    try {
+      if (deployPlugin.skipsDeploying(this.deploySkip)) {
+        // maven-deploy-plugin skips too
+        return;
+      }
+    } catch (final MojoExecutionException e) {
+      cantStop = e;
     }
     final List<Artifact> artifacts = new ArrayList<>();
     final Artifact pom = new org.apache.maven.artifact.DefaultArtifact(this.project.getGroupId(),
@@ -229,7 +236,10 @@ public class NarDeployMojo extends AbstractMojo {
     // without a file, maven-deploy-plugin fails on it
     artifacts.add(this.project.getArtifact());
     artifacts.addAll(this.project.getAttachedArtifacts());
-    if (alreadyDeployed(artifacts, deployPlugin.destination()) && !deployPlugin.skipsDeploying(this.deploySkip)) {
+    if (alreadyDeployed(artifacts, deployPlugin.destination())) {
+      if (cantStop != null) {
+        throw cantStop;
+      }
       getLog().info("The deployment repository already has " + this.project.getId()
           + ": skipping its deployment (nar.skipDeployed)");
       skipDeployPlugin();
@@ -241,7 +251,9 @@ public class NarDeployMojo extends AbstractMojo {
    * for each (a HEAD request over HTTP) without downloading, and without the
    * local repository.  Credentials are sent with the first request, as a
    * repository that hides what a caller may not read answers 404 without
-   * asking for them.
+   * asking for them; Maven's default HTTP transport does this, Wagon
+   * (maven.resolver.transport=wagon) doesn't.  Offline it fails, file
+   * repositories included.
    *
    * @throws MojoExecutionException if it has only some, or can't be asked
    */

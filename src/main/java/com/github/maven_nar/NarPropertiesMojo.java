@@ -108,12 +108,20 @@ public class NarPropertiesMojo extends AbstractDependencyMojo {
    * The dependency's NarInfo with the descriptor of its AOL-specific NAR of
    * this binding laid over it, read from the downloaded NAR, which this goal
    * runs before nar-unpack unpacks.  Without a descriptor (a NAR built before
-   * fh12) it's the dependency's own NarInfo.
+   * fh12), or if the NAR can't be resolved, as when the consumer links
+   * another binding of it, it's the dependency's own NarInfo.
    */
   private NarInfo describedNarInfo(final NarArtifact dependency, final String binding)
       throws MojoExecutionException, MojoFailureException {
-    final List<Artifact> nars = getAttachedNarArtifacts(dependency, getAOL(), binding);
-    if (nars.isEmpty() || nars.get(0).getFile() == null) {
+    final List<Artifact> nars;
+    try {
+      nars = getAttachedNarArtifacts(dependency, getAOL(), binding);
+    } catch (final MojoExecutionException e) {
+      getLog().debug("Can't resolve the " + binding + " NAR of " + dependency + " for its descriptor", e);
+      return dependency.getNarInfo();
+    }
+    final Classifier classifier = nars.isEmpty() ? null : Classifier.parse(nars.get(0).getClassifier());
+    if (classifier == null || nars.get(0).getFile() == null) {
       return dependency.getNarInfo();
     }
     final Artifact nar = nars.get(0);
@@ -121,7 +129,7 @@ public class NarPropertiesMojo extends AbstractDependencyMojo {
         dependency.getBaseVersion(), getLog());
     narInfo.mergeProperties(dependency.getNarInfo().getInfo());
     final String entryName = narInfo.getNarInfoFileName().replaceFirst("[^/]*$",
-        NarInfo.getDescriptorFileName(Classifier.parse(nar.getClassifier()).aol(), binding));
+        NarInfo.getDescriptorFileName(classifier.aol(), binding));
     try (JarFile jar = new JarFile(nar.getFile())) {
       final JarEntry entry = jar.getJarEntry(entryName);
       if (entry == null) {

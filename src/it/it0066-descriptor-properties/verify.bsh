@@ -22,7 +22,7 @@ import java.nio.file.Files;
 
 String path = new String(Files.readAllBytes(new File(basedir, "target/shared.txt").toPath())).trim();
 String name = new File(path).getName();
-// librenamed.so, librenamed.dylib, renamed.lib: the packaged file, not
+// librenamed.so or librenamed.dylib: the packaged file, not
 // one named after it0043-descriptor-lib-1.0-SNAPSHOT
 if (name.indexOf("renamed") < 0 || name.indexOf("it0043") >= 0) {
   throw new RuntimeException("The properties goal named " + path + ", not the descriptor's library");
