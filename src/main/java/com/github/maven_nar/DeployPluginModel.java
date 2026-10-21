@@ -186,6 +186,22 @@ final class DeployPluginModel {
   }
 
   /**
+   * @return whether mvn deploy runs none of maven-deploy-plugin's deploy
+   *         executions: the pom declares some, and binds each to none or a
+   *         phase after deploy
+   */
+  boolean runsNoDeploy() {
+    final Plugin plugin = deployPlugin();
+    if (plugin == null || plugin.getExecutions().stream().noneMatch(DeployPluginModel::deploys)) {
+      // the lifecycle's default deploy runs
+      return false;
+    }
+    return plugin.getExecutions().stream()
+        .filter(DeployPluginModel::deploys)
+        .noneMatch(DeployPluginModel::runsBeforeOrInDeployPhase);
+  }
+
+  /**
    * @return whether maven-deploy-plugin defers deploying until every module
    *         has built (deployAtEnd)
    * @throws MojoExecutionException if its deploy executions disagree

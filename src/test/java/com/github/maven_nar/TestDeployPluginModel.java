@@ -139,6 +139,16 @@ public class TestDeployPluginModel extends TestCase {
     final DeployPluginModel model = model(project("1.0", deployPlugin("3.1.1", null,
         execution("default-deploy", "none", configuration("skip", "false")))));
     Assert.assertTrue(model.explicitSkips(null).isEmpty());
+    Assert.assertTrue(model.runsNoDeploy());
+  }
+
+  public final void testDeployRuns() throws Exception {
+    // the lifecycle's default deploy, or an execution in the deploy phase
+    Assert.assertFalse(model(project("1.0", null)).runsNoDeploy());
+    Assert.assertFalse(model(project("1.0", deployPlugin("3.1.1", null))).runsNoDeploy());
+    Assert.assertFalse(model(project("1.0", deployPlugin("3.1.1", null,
+        execution("default-deploy", "none", configuration()),
+        execution("other", "deploy", configuration())))).runsNoDeploy());
   }
 
   public final void testEarlierExecution() {
