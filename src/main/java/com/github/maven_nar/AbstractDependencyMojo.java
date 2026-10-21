@@ -595,7 +595,7 @@ public abstract class AbstractDependencyMojo extends AbstractNarMojo {
     return attachedNarArtifacts;
   }
 
-  private List<Artifact> getAttachedNarArtifacts(
+  protected final List<Artifact> getAttachedNarArtifacts(
       final NarArtifact dependency,
       final AOL aol,
       final String type) throws MojoExecutionException, MojoFailureException {
