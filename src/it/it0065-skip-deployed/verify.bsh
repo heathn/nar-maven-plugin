@@ -39,6 +39,14 @@ String[] expected = {
   // the fourth
   "but not [com.github.maven-nar.its.nar:it0065-skip-deployed:nar:"
 };
+// maven-deploy-plugin skipped in the second and third builds only
+int skipped = 0;
+for (int at = log.indexOf("Skipping artifact deployment"); at >= 0; at = log.indexOf("Skipping artifact deployment", at + 1)) {
+  skipped++;
+}
+if (skipped != 2) {
+  throw new RuntimeException("maven-deploy-plugin skipped " + skipped + " times, not 2");
+}
 for (int i = 0; i < expected.length; i++) {
   if (log.indexOf(expected[i]) < 0) {
     throw new RuntimeException("build.log doesn't say: " + expected[i]);

@@ -40,13 +40,14 @@ import org.apache.maven.plugins.annotations.Mojo;
 import org.apache.maven.plugins.annotations.Parameter;
 import org.apache.maven.project.MavenProject;
 import org.eclipse.aether.RepositorySystem;
+import org.eclipse.aether.ConfigurationProperties;
+import org.eclipse.aether.DefaultRepositorySystemSession;
 import org.eclipse.aether.RepositorySystemSession;
 import org.eclipse.aether.artifact.DefaultArtifact;
 import org.eclipse.aether.deployment.DeployRequest;
 import org.eclipse.aether.deployment.DeploymentException;
 import org.eclipse.aether.impl.RepositoryConnectorProvider;
 import org.eclipse.aether.repository.RemoteRepository;
-import org.eclipse.aether.repository.RepositoryPolicy;
 import org.eclipse.aether.spi.connector.ArtifactDownload;
 import org.eclipse.aether.spi.connector.RepositoryConnector;
 import org.eclipse.aether.transfer.ArtifactNotFoundException;
@@ -81,10 +82,14 @@ import org.eclipse.aether.transfer.NoRepositoryConnectorException;
  * still deployed by every build; skip them with maven.deploy.skip in a
  * profile of their pom.
  * <p>
- * With skipDeployed, a release version is deployed once: a build whose
+ * With skipDeployed, a release version is deployed once: a NAR build whose
  * artifacts the deployment repository already has deploys nothing, so a CI
  * build of a multi-module project releases only the modules whose version
- * changed.  A repository that has only some of them fails the build.
+ * changed.  A repository that has only some of them fails the build.  This
+ * goal runs only in NAR modules: a pom module with a release version of its
+ * own, such as a parent, is deployed by every build unless it skips
+ * deploying.  The check asks the repository maven-deploy-plugin deploys to;
+ * a virtual repository that proxies a remote one may answer for it.
  */
 @Mojo(name = "nar-deploy", defaultPhase = LifecyclePhase.DEPLOY, requiresProject = true, threadSafe = true)
 public class NarDeployMojo extends AbstractMojo {
@@ -211,8 +216,8 @@ public class NarDeployMojo extends AbstractMojo {
   // With deployScope "all": stops maven-deploy-plugin if the deployment
   // repository already has everything it would deploy
   private void skipIfDeployed() throws MojoExecutionException {
-    final DeployPluginModel deployPlugin = deployPluginModel();
-    if (deployPlugin.skipsDeploying(this.deploySkip)) {
+    final DeployPluginModel deployPlugin = deployPluginModel("nar.skipDeployed");
+    if (deployPlugin.skips(this.deploySkip)) {
       // maven-deploy-plugin skips too
       return;
     }
@@ -220,13 +225,11 @@ public class NarDeployMojo extends AbstractMojo {
     final Artifact pom = new org.apache.maven.artifact.DefaultArtifact(this.project.getGroupId(),
         this.project.getArtifactId(), this.project.getVersion(), null, "pom", null,
         new org.apache.maven.artifact.handler.DefaultArtifactHandler("pom"));
-    pom.setFile(this.project.getFile());
     artifacts.add(pom);
-    if (this.project.getArtifact().getFile() != null) {
-      artifacts.add(this.project.getArtifact());
-    }
+    // without a file, maven-deploy-plugin fails on it
+    artifacts.add(this.project.getArtifact());
     artifacts.addAll(this.project.getAttachedArtifacts());
-    if (alreadyDeployed(artifacts, deployPlugin.destination())) {
+    if (alreadyDeployed(artifacts, deployPlugin.destination()) && !deployPlugin.skipsDeploying(this.deploySkip)) {
       getLog().info("The deployment repository already has " + this.project.getId()
           + ": skipping its deployment (nar.skipDeployed)");
       skipDeployPlugin();
@@ -235,27 +238,32 @@ public class NarDeployMojo extends AbstractMojo {
 
   /**
    * Whether the repository already has every one of the artifacts, asking it
-   * for each without downloading.
+   * for each (a HEAD request over HTTP) without downloading, and without the
+   * local repository.  Credentials are sent with the first request, as a
+   * repository that hides what a caller may not read answers 404 without
+   * asking for them.
    *
    * @throws MojoExecutionException if it has only some, or can't be asked
    */
   private boolean alreadyDeployed(final List<Artifact> artifacts, final DeployPluginModel.Destination destination)
       throws MojoExecutionException {
-    final RemoteRepository repository = new RemoteRepository.Builder(
-        this.repoSystem.newDeploymentRepository(this.repoSession, destination.toRemoteRepository()))
-        .setPolicy(new RepositoryPolicy(true, RepositoryPolicy.UPDATE_POLICY_ALWAYS,
-            RepositoryPolicy.CHECKSUM_POLICY_IGNORE))
-        .build();
+    if (this.repoSession.isOffline()) {
+      throw new MojoExecutionException("nar.skipDeployed can't ask the deployment repository what it has offline");
+    }
+    final RemoteRepository repository = this.repoSystem.newDeploymentRepository(this.repoSession,
+        destination.toRemoteRepository());
+    final DefaultRepositorySystemSession session = new DefaultRepositorySystemSession(this.repoSession);
+    session.setConfigProperty(ConfigurationProperties.HTTP_PREEMPTIVE_AUTH + "." + repository.getId(), true);
     final List<ArtifactDownload> checks = new ArrayList<>();
     for (final Artifact artifact : artifacts) {
+      // an existence check writes no file
       final ArtifactDownload check = new ArtifactDownload(toAether(artifact), "",
-          new File(this.project.getBuild().getDirectory(), "nar-deploy-check"), RepositoryPolicy.CHECKSUM_POLICY_IGNORE);
+          new File(this.project.getBuild().getDirectory(), "nar-deploy-check"), null);
       check.setExistenceCheck(true);
       check.setRepositories(List.of(repository));
       checks.add(check);
     }
-    try (RepositoryConnector connector = this.connectorProvider.newRepositoryConnector(this.repoSession,
-        repository)) {
+    try (RepositoryConnector connector = this.connectorProvider.newRepositoryConnector(session, repository)) {
       connector.get(checks, null);
     } catch (final NoRepositoryConnectorException e) {
       throw new MojoExecutionException("Can't check what " + repository.getUrl() + " has", e);
@@ -309,8 +317,13 @@ public class NarDeployMojo extends AbstractMojo {
   }
 
   private DeployPluginModel deployPluginModel() {
+    return deployPluginModel("nar.deployScope=aol");
+  }
+
+  // purpose: the setting that needs maven-deploy-plugin stopped
+  private DeployPluginModel deployPluginModel(final String purpose) {
     return new DeployPluginModel(this.project, this.session.getUserProperties(), this.session.getSystemProperties(),
-        new PluginParameterExpressionEvaluator(this.session, this.mojoExecution));
+        new PluginParameterExpressionEvaluator(this.session, this.mojoExecution), purpose);
   }
 
   // primaryAol must name an AOL: arch-os-linker

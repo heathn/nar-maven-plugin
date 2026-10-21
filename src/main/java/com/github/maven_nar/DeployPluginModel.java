@@ -114,6 +114,9 @@ final class DeployPluginModel {
 
   private final boolean snapshot;
 
+  // the setting that needs maven-deploy-plugin stopped, for the messages
+  private final String purpose;
+
   /**
    * @param project the project
    * @param userProperties the session's user properties (-D)
@@ -122,6 +125,20 @@ final class DeployPluginModel {
    */
   DeployPluginModel(final MavenProject project, final Properties userProperties, final Properties systemProperties,
       final ExpressionEvaluator evaluator) {
+    this(project, userProperties, systemProperties, evaluator, "nar.deployScope=aol");
+  }
+
+  /**
+   * @param project the project
+   * @param userProperties the session's user properties (-D)
+   * @param systemProperties the session's system properties
+   * @param evaluator evaluates expressions as for maven-deploy-plugin
+   * @param purpose the setting that needs maven-deploy-plugin stopped, such
+   *          as nar.deployScope=aol, for the messages
+   */
+  DeployPluginModel(final MavenProject project, final Properties userProperties, final Properties systemProperties,
+      final ExpressionEvaluator evaluator, final String purpose) {
+    this.purpose = purpose;
     this.project = project;
     this.userProperties = userProperties;
     this.systemProperties = systemProperties;
@@ -139,7 +156,7 @@ final class DeployPluginModel {
     final Plugin plugin = deployPlugin();
     final String version = plugin == null ? null : plugin.getVersion();
     if (version != null && !supportsDeployPlugin(version)) {
-      throw new MojoExecutionException("nar.deployScope=aol needs maven-deploy-plugin " + CONDITIONAL_SKIP_VERSION
+      throw new MojoExecutionException(this.purpose + " needs maven-deploy-plugin " + CONDITIONAL_SKIP_VERSION
           + " or later, not " + version);
     }
   }
@@ -159,7 +176,7 @@ final class DeployPluginModel {
     final List<String> explicit = explicitSkips(userSkip);
     for (final String skip : explicit) {
       if (skip != null && !skips(skip)) {
-        throw new MojoExecutionException("nar.deployScope=aol can't stop maven-deploy-plugin from deploying the "
+        throw new MojoExecutionException(this.purpose + " can't stop maven-deploy-plugin from deploying the "
             + "shared artifacts while maven.deploy.skip is set to " + skip
             + " on the command line or in its configuration");
       }
@@ -196,7 +213,7 @@ final class DeployPluginModel {
     if (destinations.size() > 1) {
       throw new MojoExecutionException("maven-deploy-plugin's deploy executions deploy to different repositories, "
           + destinations.stream().map(d -> d == null ? "none" : d.toString()).collect(Collectors.toList())
-          + "; nar.deployScope=aol deploys to one");
+          + "; " + this.purpose + " deploys to one");
     }
     final Destination destination = destinations.iterator().next();
     if (destination == null) {
@@ -276,7 +293,7 @@ final class DeployPluginModel {
     final String effective = skip != null ? skip : evaluate(this.project.getProperties().getProperty(SKIP_PROPERTY));
     if (phase != null && !DEPLOY.equals(phase) && !skips(effective)) {
       throw new MojoExecutionException("maven-deploy-plugin's " + execution.getId() + " execution in the "
-          + phase + " phase, before this goal, has deployed everything, which nar.deployScope=aol can't prevent");
+          + phase + " phase, before this goal, has deployed everything, which " + this.purpose + " can't prevent");
     }
   }
 
@@ -297,7 +314,7 @@ final class DeployPluginModel {
     values.remove(null);
     if (values.size() > 1) {
       throw new MojoExecutionException("maven-deploy-plugin's deploy executions set " + name
-          + " differently, " + values + "; nar.deployScope=aol deploys to one repository");
+          + " differently, " + values + "; " + this.purpose + " deploys to one repository");
     }
     return values.isEmpty() ? null : values.iterator().next();
   }
@@ -365,7 +382,7 @@ final class DeployPluginModel {
   // A skip value as maven-deploy-plugin reads it: a boolean, or releases or
   // snapshots; the property isn't trimmed, configured values are (see
   // configValue)
-  private boolean skips(final String value) {
+  boolean skips(final String value) {
     return Boolean.parseBoolean(value) || ("releases".equals(value) && !this.snapshot)
         || ("snapshots".equals(value) && this.snapshot);
   }
@@ -391,7 +408,7 @@ final class DeployPluginModel {
       return value;
     }
     if (PLUGIN_SCOPED.matcher(value).find()) {
-      throw new MojoExecutionException("Can't evaluate maven-deploy-plugin's " + value + " for nar.deployScope=aol; "
+      throw new MojoExecutionException("Can't evaluate maven-deploy-plugin's " + value + " for " + this.purpose + "; "
           + "use an expression that doesn't depend on the plugin");
     }
     try {
