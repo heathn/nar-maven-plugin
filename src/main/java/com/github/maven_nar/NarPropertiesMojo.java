@@ -19,8 +19,12 @@
  */
 package com.github.maven_nar;
 
+import java.io.IOException;
+import java.io.InputStream;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.jar.JarEntry;
+import java.util.jar.JarFile;
 
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
@@ -28,6 +32,7 @@ import org.apache.maven.plugins.annotations.LifecyclePhase;
 import org.apache.maven.plugins.annotations.Mojo;
 import org.apache.maven.plugins.annotations.ResolutionScope;
 import org.apache.maven.shared.artifact.filter.collection.ScopeFilter;
+import org.eclipse.aether.artifact.Artifact;
 
 /**
  * Sets the following properties for each NAR dependency:
@@ -37,7 +42,8 @@ import org.apache.maven.shared.artifact.filter.collection.ScopeFilter;
  *       dependency.  Currently binding can be either "static", "shared", or
  *       "executable".  If the platform-dependent dependency includes multiple
  *       files, only the first defined in the nar.properties file is
- *       returned.</li>
+ *       returned.  The names are those the dependency's AOL-specific NAR
+ *       records in its descriptor, else those of its nar.properties.</li>
  *   <li>${groupId:artifactId:binding:dir} - path to the folder of the
  *       platform-dependent dependency.</li>
  * </ul>
@@ -67,11 +73,12 @@ public class NarPropertiesMojo extends AbstractDependencyMojo {
       // Set the lib property
       String binding = dependency.getNarInfo().getBinding(getAOL(),
           Library.SHARED);
+      NarInfo narInfo = describedNarInfo(dependency, binding);
       property = dependency.getGroupId() + ":" + dependency.getArtifactId()
           + ":" + binding;
       // TODO: How to handle multiple libraries?
       String filename = null;
-      String libName = dependency.getNarInfo().getLibs(getAOL()).split(" ")[0];
+      String libName = narInfo.getLibs(getAOL()).split(" ")[0];
       String prefix = NarProperties.getInstance(getMavenProject()).getProperty(getAOL().getKey() + ".lib.prefix");
       String ext = NarProperties.getInstance(getMavenProject()).getProperty(getAOL().getKey() + "." + binding + ".extension");
 
@@ -95,6 +102,50 @@ public class NarPropertiesMojo extends AbstractDependencyMojo {
           libPath.getParent().toString());
     }
 
+  }
+
+  /**
+   * The dependency's NarInfo with the descriptor of its AOL-specific NAR of
+   * this binding laid over it, read from the downloaded NAR, which this goal
+   * runs before nar-unpack unpacks.  Without a descriptor (a NAR built before
+   * fh12), or if the NAR can't be resolved, as when the consumer links
+   * another binding of it, it's the dependency's own NarInfo.
+   */
+  private NarInfo describedNarInfo(final NarArtifact dependency, final String binding)
+      throws MojoExecutionException, MojoFailureException {
+    final List<Artifact> nars;
+    try {
+      nars = getAttachedNarArtifacts(dependency, getAOL(), binding);
+    } catch (final MojoExecutionException e) {
+      getLog().debug("Can't resolve the " + binding + " NAR of " + dependency + " for its descriptor", e);
+      return dependency.getNarInfo();
+    }
+    final Classifier classifier = nars.isEmpty() ? null : Classifier.parse(nars.get(0).getClassifier());
+    if (classifier == null || nars.get(0).getFile() == null) {
+      return dependency.getNarInfo();
+    }
+    final Artifact nar = nars.get(0);
+    final NarInfo narInfo = new NarInfo(dependency.getGroupId(), dependency.getArtifactId(),
+        dependency.getBaseVersion(), getLog());
+    narInfo.mergeProperties(dependency.getNarInfo().getInfo());
+    final String entryName = narInfo.getNarInfoFileName().replaceFirst("[^/]*$",
+        NarInfo.getDescriptorFileName(classifier.aol(), binding));
+    try (JarFile jar = new JarFile(nar.getFile())) {
+      final JarEntry entry = jar.getJarEntry(entryName);
+      if (entry == null) {
+        return dependency.getNarInfo();
+      }
+      try (InputStream in = jar.getInputStream(entry)) {
+        final String descriptor = nar.getFile() + "!/" + entryName;
+        if (!narInfo.overlayDescriptor(in, descriptor, getAOL())) {
+          return dependency.getNarInfo();
+        }
+        getLog().debug("Using the descriptor " + descriptor);
+      }
+    } catch (final IOException e) {
+      throw new MojoExecutionException("Problem reading " + nar.getFile(), e);
+    }
+    return narInfo;
   }
 
   /**

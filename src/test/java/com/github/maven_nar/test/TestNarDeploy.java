@@ -107,4 +107,20 @@ public class TestNarDeploy extends TestCase {
       assertTrue(expected.getMessage(), expected.getMessage().contains("nar.aol"));
     }
   }
+
+  public final void testAlreadyDeployed() throws Exception {
+    assertTrue(NarDeployMojo.alreadyDeployed(List.of("a:pom", "a:nar"), List.of(), "file:repo"));
+    assertFalse(NarDeployMojo.alreadyDeployed(List.of(), List.of("a:pom", "a:nar"), "file:repo"));
+    // nothing to check
+    assertFalse(NarDeployMojo.alreadyDeployed(List.of(), List.of(), "file:repo"));
+  }
+
+  public final void testPartlyDeployed() {
+    try {
+      NarDeployMojo.alreadyDeployed(List.of("a:pom"), List.of("a:nar"), "file:repo");
+      fail("accepted a partly deployed version");
+    } catch (final MojoExecutionException expected) {
+      assertTrue(expected.getMessage(), expected.getMessage().contains("[a:pom] but not [a:nar]"));
+    }
+  }
 }

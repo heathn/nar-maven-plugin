@@ -331,12 +331,27 @@ public class NarInfo {
     if (descriptor == null || !Files.isRegularFile(descriptor)) {
       return false;
     }
-    final Properties properties = new Properties();
     try (InputStream in = Files.newInputStream(descriptor)) {
-      properties.load(in);
+      return overlayDescriptor(in, descriptor.toString(), aol);
     } catch (final IOException e) {
       throw new MojoExecutionException("Problem loading " + descriptor, e);
     }
+  }
+
+  /**
+   * Lays a descriptor read from a stream over these properties, as
+   * {@link #overlayDescriptor(Path, AOL)} does.
+   *
+   * @param in the descriptor
+   * @param descriptor where it was read from, for the messages
+   * @param aol the AOL the consumer looks the properties up with
+   * @return whether the descriptor was applied
+   * @throws IOException if it can't be read
+   */
+  public final boolean overlayDescriptor(final InputStream in, final String descriptor, final AOL aol)
+      throws IOException {
+    final Properties properties = new Properties();
+    properties.load(in);
     final String version = properties.getProperty(DESCRIPTOR_VERSION_KEY);
     if (version == null) {
       this.log.warn("Ignoring " + descriptor + ", which has no " + DESCRIPTOR_VERSION_KEY);

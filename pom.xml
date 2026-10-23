@@ -11,7 +11,7 @@
 
   <groupId>com.github.maven-nar</groupId>
   <artifactId>nar-maven-plugin</artifactId>
-  <version>3.10.1-fh14</version>
+  <version>3.10.1-fh15</version>
   <packaging>maven-plugin</packaging>
 
   <name>Native ARchive plugin for Maven</name>
@@ -122,7 +122,7 @@
       build a library with one version of the plugin and consume it with the
       other.  It must be resolvable from the local repository.
     -->
-    <nar.compat.version>3.10.1-fh13</nar.compat.version>
+    <nar.compat.version>3.10.1-fh14</nar.compat.version>
     <its.to.skip>dummy</its.to.skip>
     <mavenVersion>3.9.16</mavenVersion>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
@@ -202,6 +202,19 @@
       <groupId>org.apache.maven.resolver</groupId>
       <artifactId>maven-resolver-api</artifactId>
       <!-- Maven provides it: 1.9.x in Maven 3.9 -->
+      <version>1.9.27</version>
+      <scope>provided</scope>
+    </dependency>
+    <dependency>
+      <!-- the repository connector, for nar.skipDeployed's existence checks -->
+      <groupId>org.apache.maven.resolver</groupId>
+      <artifactId>maven-resolver-spi</artifactId>
+      <version>1.9.27</version>
+      <scope>provided</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.maven.resolver</groupId>
+      <artifactId>maven-resolver-impl</artifactId>
       <version>1.9.27</version>
       <scope>provided</scope>
     </dependency>
